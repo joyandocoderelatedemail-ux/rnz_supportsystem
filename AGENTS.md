@@ -7,7 +7,7 @@ Two separate PHP apps in one folder, no framework, no build step, no tests/lint:
 
 ## Run / DB
 - Served by XAMPP from `C:\xampp\htdocs\rnz_supportsystem`. Client portal: `http://localhost/rnz_supportsystem/`, admin: `.../backend/`.
-- MySQL db `rnz_supportsystem`, credentials `root` / empty (`includes/config.php`, `backend/includes/config.php` — duplicated; each app has its own copy plus its own `auth.php`. Do not cross-require).
+- MySQL db `vovoco5_rnz_supportsystem` (fallback `rnz_supportsystem` for local dev), credentials `root` / empty (`includes/config.php`, `backend/includes/config.php` — duplicated; each app has its own copy plus its own `auth.php`. Do not cross-require).
 - Verify edits with `php -l <file>`. There is no test suite or lint config.
 
 ## PHP compatibility (critical)

@@ -29,12 +29,12 @@ if ($is_local) {
     define('DB_HOST', 'localhost');
     define('DB_USER', 'root');
     define('DB_PASS', '');
-    define('DB_NAME', 'rnz_supportsystem');
+    define('DB_NAME', 'vovoco5_rnz_supportsystem');
 } else {
     define('DB_HOST', 'localhost');
     define('DB_USER', 'dswzamljoxvz');
     define('DB_PASS', 'LAUj18%kbuED');
-    define('DB_NAME', 'rnz_supportsystem');
+    define('DB_NAME', 'vovoco5_rnz_supportsystem');
 }
 
 /**
@@ -44,15 +44,25 @@ if ($is_local) {
 function get_db_connection() {
     static $pdo = null;
     if ($pdo === null) {
+        $options = array(
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"
+        );
         try {
             $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8";
-            $options = array(
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"
-            );
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
         } catch (PDOException $e) {
+            // Local fallback if local DB has not been renamed from rnz_supportsystem
+            if (DB_USER === 'root' && DB_PASS === '') {
+                try {
+                    $fallback_dsn = "mysql:host=" . DB_HOST . ";dbname=rnz_supportsystem;charset=utf8";
+                    $pdo = new PDO($fallback_dsn, DB_USER, DB_PASS, $options);
+                    return $pdo;
+                } catch (PDOException $e2) {
+                    die("Database Connection Error: " . $e->getMessage());
+                }
+            }
             die("Database Connection Error: " . $e->getMessage());
         }
     }
