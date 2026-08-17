@@ -3,4 +3,4 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/vovoco5/public_html/rnzsoftwaredevelopmentservices
     - /bin/mkdir -p $DEPLOYPATH
-    - /bin/cp -R * $DEPLOYPATH
+    - /usr/bin/rsync -av --delete --exclude=".git" --exclude=".github" --exclude=".gitignore" --exclude=".cpanel.yml" ./ $DEPLOYPATH/
