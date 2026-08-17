@@ -1,0 +1,126 @@
+<?php
+// Configuration and Database Connection for PHP 5.6
+if (session_status() == PHP_SESSION_NONE) {
+    session_name('RNZ_CLIENT_SESSID');
+    session_start();
+}
+
+// Environment Detection (Local vs Production)
+$is_local = false;
+$server_host = '';
+if (isset($_SERVER['HTTP_HOST'])) {
+    $server_host = $_SERVER['HTTP_HOST'];
+} elseif (isset($_SERVER['SERVER_NAME'])) {
+    $server_host = $_SERVER['SERVER_NAME'];
+}
+
+if (
+    empty($server_host) ||
+    strpos($server_host, 'localhost') !== false ||
+    strpos($server_host, '127.0.0.1') !== false ||
+    strpos($server_host, '::1') !== false ||
+    substr($server_host, 0, 8) === '192.168.' ||
+    substr($server_host, 0, 3) === '10.'
+) {
+    $is_local = true;
+}
+
+if ($is_local) {
+    define('DB_HOST', 'localhost');
+    define('DB_USER', 'root');
+    define('DB_PASS', '');
+    define('DB_NAME', 'rnz_supportsystem');
+} else {
+    define('DB_HOST', 'localhost');
+    define('DB_USER', 'dswzamljoxvz');
+    define('DB_PASS', 'LAUj18%kbuED');
+    define('DB_NAME', 'rnz_supportsystem');
+}
+
+/**
+ * Get PDO Database Connection
+ * @return PDO|null
+ */
+function get_db_connection() {
+    static $pdo = null;
+    if ($pdo === null) {
+        try {
+            $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8";
+            $options = array(
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"
+            );
+            $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+        } catch (PDOException $e) {
+            die("Database Connection Error: " . $e->getMessage());
+        }
+    }
+    return $pdo;
+}
+
+/**
+ * Sanitize string input
+ */
+function sanitize($data) {
+    return htmlspecialchars(trim($data), ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * Check if client is logged in
+ */
+function is_logged_in() {
+    return isset($_SESSION['client_logged_in']) && $_SESSION['client_logged_in'] === true;
+}
+
+/**
+ * Require client to be logged in, otherwise redirect to login page
+ */
+function require_login() {
+    if (!is_logged_in()) {
+        header("Location: login.php");
+        exit;
+    }
+}
+
+/**
+ * Get logged in client session array
+ */
+function get_logged_client() {
+    if (is_logged_in() && isset($_SESSION['client_data'])) {
+        return $_SESSION['client_data'];
+    }
+    return null;
+}
+
+/**
+ * Format Date cleanly
+ */
+function format_date($date_str) {
+    if (empty($date_str) || $date_str == 'N/A') {
+        return 'N/A';
+    }
+    $timestamp = strtotime($date_str);
+    if ($timestamp === false) {
+        return $date_str;
+    }
+    return date('M d, Y', $timestamp);
+}
+
+/**
+ * Get Tailwind CSS badge class by status
+ */
+function get_status_badge_class($status) {
+    $status = strtolower(trim($status));
+    if ($status === 'tech reply') {
+        return 'bg-[#EB3E0B] text-white border-[#C32C0B]';
+    } elseif ($status === 'done' || $status === 'resolved' || $status === 'closed' || $status === 'paid') {
+        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    } elseif ($status === 'in progress' || $status === 'working') {
+        return 'bg-blue-50 text-blue-700 border-blue-200';
+    } elseif ($status === 'pending' || $status === 'pending issue' || $status === 'unpaid') {
+        return 'bg-amber-50 text-amber-700 border-amber-200';
+    }
+    return 'bg-slate-50 text-slate-700 border-slate-200';
+}
+?>

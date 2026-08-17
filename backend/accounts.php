@@ -1,0 +1,1303 @@
+<?php
+// Manage Accounts Hub for Support Center (PHP 5.6 Compatible)
+require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/auth.php';
+
+require_tech_login();
+
+$pdo = get_db_connection();
+
+// Handle Account Profile Update Form Submission
+$update_msg = '';
+$update_error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_client_profile') {
+    $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+    $tradename = isset($_POST['tradename']) ? trim($_POST['tradename']) : '';
+    $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
+    $contactnum = isset($_POST['contactnum']) ? trim($_POST['contactnum']) : '';
+    $emailaddress = isset($_POST['emailaddress']) ? trim($_POST['emailaddress']) : '';
+    $address = isset($_POST['address']) ? trim($_POST['address']) : '';
+    $type = isset($_POST['type']) ? trim($_POST['type']) : '';
+    $monthlyretainersfee = isset($_POST['monthlyretainersfee']) ? trim($_POST['monthlyretainersfee']) : '';
+
+    if (!empty($accountnum)) {
+        try {
+            $stmt_up = $pdo->prepare("UPDATE bucket_client 
+                SET tradename = :tname, 
+                    clientname = :cname, 
+                    contactnum = :contact, 
+                    emailaddress = :email, 
+                    address = :addr, 
+                    type = :type, 
+                    monthlyretainersfee = :fee 
+                WHERE accountnum = :acct");
+
+            $stmt_up->execute(array(
+                ':tname' => $tradename,
+                ':cname' => $clientname,
+                ':contact' => $contactnum,
+                ':email' => $emailaddress,
+                ':addr' => $address,
+                ':type' => $type,
+                ':fee' => $monthlyretainersfee,
+                ':acct' => $accountnum
+            ));
+
+            $update_msg = "Client Account #$accountnum profile updated successfully!";
+        } catch (PDOException $e) {
+            $update_error = "Error updating account: " . $e->getMessage();
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_client_warranty') {
+    $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+    $warranty_status = isset($_POST['warranty_status']) ? trim($_POST['warranty_status']) : 'Inactive';
+    $warranty_coverage_type = isset($_POST['warranty_coverage_type']) ? trim($_POST['warranty_coverage_type']) : 'Both';
+    $warranty_expiry = isset($_POST['warranty_expiry']) && !empty($_POST['warranty_expiry']) ? trim($_POST['warranty_expiry']) : null;
+    $warranty_notes = isset($_POST['warranty_notes']) ? trim($_POST['warranty_notes']) : '';
+
+    if (!empty($accountnum)) {
+        try {
+            $stmt_w = $pdo->prepare("UPDATE bucket_client 
+                SET warranty_status = :status, 
+                    warranty_coverage_type = :cov_type, 
+                    warranty_expiry = :expiry, 
+                    warranty_notes = :notes 
+                WHERE accountnum = :acct");
+
+            $stmt_w->execute(array(
+                ':status' => $warranty_status,
+                ':cov_type' => $warranty_coverage_type,
+                ':expiry' => $warranty_expiry,
+                ':notes' => $warranty_notes,
+                ':acct' => $accountnum
+            ));
+
+            $update_msg = ($warranty_status === 'Active') 
+                ? "Active Warranty ($warranty_coverage_type) granted to Account #$accountnum successfully!" 
+                : "Warranty status set to Inactive for Account #$accountnum.";
+        } catch (PDOException $e) {
+            $update_error = "Error updating warranty: " . $e->getMessage();
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'remove_client_warranty') {
+    $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+    if (!empty($accountnum)) {
+        try {
+            $stmt_w = $pdo->prepare("UPDATE bucket_client 
+                SET warranty_status = 'Inactive', 
+                    warranty_expiry = NULL, 
+                    warranty_notes = NULL 
+                WHERE accountnum = :acct");
+            $stmt_w->execute(array(':acct' => $accountnum));
+            $update_msg = "Active warranty removed for Account #$accountnum.";
+        } catch (PDOException $e) {
+            $update_error = "Error removing warranty: " . $e->getMessage();
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create_workorder') {
+    $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+    $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
+    $address = isset($_POST['address']) ? trim($_POST['address']) : '';
+    $xdate = isset($_POST['xdate']) && !empty($_POST['xdate']) ? trim($_POST['xdate']) : date('Y-m-d');
+    $natureofwork = isset($_POST['natureofwork']) ? trim($_POST['natureofwork']) : '';
+    $amount = isset($_POST['amount']) ? trim($_POST['amount']) : '0';
+    $status = isset($_POST['status']) ? trim($_POST['status']) : 'paid';
+    $ornum = isset($_POST['ornum']) ? trim($_POST['ornum']) : '';
+
+    if (!empty($accountnum) && !empty($natureofwork)) {
+        try {
+            if (empty($clientname) || empty($address)) {
+                $stmt_c = $pdo->prepare("SELECT tradename, clientname, address FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+                $stmt_c->execute(array(':acct' => $accountnum));
+                $c_row = $stmt_c->fetch();
+                if ($c_row) {
+                    if (empty($clientname)) $clientname = !empty($c_row['tradename']) ? $c_row['tradename'] : $c_row['clientname'];
+                    if (empty($address)) $address = $c_row['address'];
+                }
+            }
+
+            $stmt_wo = $pdo->prepare("INSERT INTO bucket_workorder 
+                (accountnum, xdate, clientname, address, natureofwork, amount, status, ornum) 
+                VALUES (:acct, :xdate, :cname, :addr, :nature, :amount, :status, :ornum)");
+            $stmt_wo->execute(array(
+                ':acct' => $accountnum,
+                ':xdate' => $xdate,
+                ':cname' => $clientname,
+                ':addr' => $address,
+                ':nature' => $natureofwork,
+                ':amount' => $amount,
+                ':status' => $status,
+                ':ornum' => $ornum
+            ));
+
+            $update_msg = "Work order created and recorded successfully!";
+        } catch (PDOException $e) {
+            $update_error = "Error creating work order: " . $e->getMessage();
+        }
+    } else {
+        $update_error = "Account Number and Nature of Work are required.";
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_workorder') {
+    $wo_id = isset($_POST['wo_id']) ? intval($_POST['wo_id']) : 0;
+    $xdate = isset($_POST['xdate']) ? trim($_POST['xdate']) : date('Y-m-d');
+    $natureofwork = isset($_POST['natureofwork']) ? trim($_POST['natureofwork']) : '';
+    $amount = isset($_POST['amount']) ? trim($_POST['amount']) : '0';
+    $status = isset($_POST['status']) ? trim($_POST['status']) : 'paid';
+    $ornum = isset($_POST['ornum']) ? trim($_POST['ornum']) : '';
+
+    if ($wo_id > 0 && !empty($natureofwork)) {
+        try {
+            $stmt_up = $pdo->prepare("UPDATE bucket_workorder 
+                SET xdate = :xdate, natureofwork = :nature, amount = :amount, status = :status, ornum = :ornum 
+                WHERE id = :id");
+            $stmt_up->execute(array(
+                ':xdate' => $xdate,
+                ':nature' => $natureofwork,
+                ':amount' => $amount,
+                ':status' => $status,
+                ':ornum' => $ornum,
+                ':id' => $wo_id
+            ));
+            $update_msg = "Work Order #WO-$wo_id updated successfully!";
+        } catch (PDOException $e) {
+            $update_error = "Error updating work order: " . $e->getMessage();
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_workorder') {
+    $wo_id = isset($_POST['wo_id']) ? intval($_POST['wo_id']) : 0;
+    if ($wo_id > 0) {
+        try {
+            $stmt_del = $pdo->prepare("DELETE FROM bucket_workorder WHERE id = :id");
+            $stmt_del->execute(array(':id' => $wo_id));
+            $update_msg = "Work Order #WO-$wo_id deleted successfully.";
+        } catch (PDOException $e) {
+            $update_error = "Error deleting work order: " . $e->getMessage();
+        }
+    }
+}
+
+// Search & Selected Account logic
+$search = isset($_GET['q']) ? trim($_GET['q']) : (isset($_GET['account']) ? trim($_GET['account']) : (isset($_POST['accountnum']) ? trim($_POST['accountnum']) : ''));
+$active_tab = isset($_GET['tab']) ? trim($_GET['tab']) : 'logs';
+if (isset($_POST['action']) && in_array($_POST['action'], array('create_workorder', 'update_workorder', 'delete_workorder'))) {
+    $active_tab = 'orders';
+}
+
+$selected_client = null;
+$searched = !empty($search);
+
+if ($searched) {
+    // Exact or LIKE match in bucket_client
+    $stmt_c = $pdo->prepare("SELECT * FROM bucket_client 
+        WHERE accountnum = :exact_acct OR accountnum LIKE :q OR LOWER(tradename) LIKE :q OR LOWER(clientname) LIKE :q LIMIT 1");
+    $stmt_c->execute(array(
+        ':exact_acct' => $search,
+        ':q' => '%' . strtolower($search) . '%'
+    ));
+    $selected_client = $stmt_c->fetch();
+}
+
+// Fetch top quick clients
+$stmt_quick = $pdo->query("SELECT accountnum, tradename, clientname FROM bucket_client ORDER BY id ASC LIMIT 6");
+$quick_clients = $stmt_quick->fetchAll();
+
+// Data queries for active tabs if client selected
+$client_acct = $selected_client ? $selected_client['accountnum'] : '';
+$hw_logs = array();
+$tech_notes = array();
+$work_orders = array();
+
+if ($selected_client) {
+    // 1. Hardware Logs for this account
+    $stmt_hw = $pdo->prepare("SELECT * FROM hardware_troubleshooting_logs WHERE accountnum = :acct ORDER BY created_at DESC");
+    $stmt_hw->execute(array(':acct' => $client_acct));
+    $hw_logs = $stmt_hw->fetchAll();
+
+    // 2. Service Notes for this account
+    $stmt_notes = $pdo->prepare("SELECT * FROM bucket_technotes WHERE accountnum = :acct ORDER BY id DESC");
+    $stmt_notes->execute(array(':acct' => $client_acct));
+    $tech_notes = $stmt_notes->fetchAll();
+
+    // 3. Work Orders for this account
+    $stmt_wo = $pdo->prepare("SELECT * FROM bucket_workorder WHERE accountnum = :acct ORDER BY id DESC");
+    $stmt_wo->execute(array(':acct' => $client_acct));
+    $work_orders = $stmt_wo->fetchAll();
+}
+
+// Fetch ALL client accounts for instant autocomplete dropdown
+$stmt_all_accts = $pdo->query("SELECT accountnum, tradename, clientname FROM bucket_client ORDER BY tradename ASC");
+$all_accounts_list = $stmt_all_accts->fetchAll();
+
+$active_page = 'accounts';
+$page_title = 'Manage Accounts';
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Accounts - RNZ Admin</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#FFF5ED',
+                            100: '#FFE8D5',
+                            500: '#FA5915',
+                            600: '#EB3E0B',
+                            700: '#C32C0B',
+                        }
+                    }
+                }
+            }
+        }
+        const ALL_ACCOUNTS = <?php echo json_encode($all_accounts_list); ?>;
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+
+<div class="flex min-h-screen">
+    <!-- Admin Sidebar Navigation -->
+    <?php include __DIR__ . '/includes/sidebar.php'; ?>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col min-w-0">
+        <!-- Top Admin Header -->
+        <?php include __DIR__ . '/includes/header.php'; ?>
+
+        <main class="p-6 sm:p-8 space-y-6 max-w-7xl w-full mx-auto">
+
+            <!-- Notification Alerts -->
+            <?php if (!empty($update_msg)): ?>
+                <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between shadow-sm">
+                    <span class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <?php echo sanitize($update_msg); ?>
+                    </span>
+                    <button onclick="this.parentElement.remove()" class="text-emerald-500 hover:text-emerald-800">&times;</button>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($update_error)): ?>
+                <div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between shadow-sm">
+                    <span class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                        <?php echo sanitize($update_error); ?>
+                    </span>
+                    <button onclick="this.parentElement.remove()" class="text-rose-500 hover:text-rose-800">&times;</button>
+                </div>
+            <?php endif; ?>
+
+            <!-- Prominent Account Search Bar -->
+            <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
+                <div>
+                    <div class="inline-flex items-center space-x-2 bg-[#FFE8D5] px-3 py-1 rounded-full text-[#EB3E0B] text-xs font-bold uppercase tracking-wider mb-2">
+                        <span>Account Management Hub</span>
+                    </div>
+                    <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900">Manage Client Accounts</h2>
+                    <p class="text-xs text-slate-500 mt-1">Search an account below to view/edit client profile details, diagnostic logs, service notes, and work orders.</p>
+                </div>
+
+                <!-- Search Input Form with Live Autocomplete -->
+                <form action="accounts.php" method="GET" class="flex flex-col sm:flex-row items-center gap-3">
+                    <div class="relative flex-1 w-full">
+                        <input type="text" 
+                               id="accountSearchInput"
+                               name="q" 
+                               value="<?php echo sanitize($search); ?>" 
+                               required 
+                               autocomplete="off"
+                               placeholder="Type Account # (e.g. 00000002) or Client Business Name..." 
+                               class="w-full bg-slate-50 text-slate-900 text-sm pl-11 pr-4 py-3.5 rounded-2xl border border-slate-200 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all placeholder-slate-400 font-medium"
+                               oninput="handleAccountSearchInput(this.value)"
+                               onfocus="handleAccountSearchInput(this.value)">
+                        <svg class="w-5 h-5 text-slate-400 absolute left-3.5 top-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+
+                        <!-- INSTANT LIVE AUTOCOMPLETE DROPDOWN -->
+                        <div id="accountAutocompleteDropdown" 
+                             class="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 hidden max-h-72 overflow-y-auto divide-y divide-slate-100 animate-fadeIn">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full sm:w-auto bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-8 py-3.5 rounded-2xl shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 flex items-center justify-center space-x-2 shrink-0">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        <span>Search Account</span>
+                    </button>
+
+                    <?php if ($searched): ?>
+                        <a href="accounts.php" class="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm px-5 py-3.5 rounded-2xl transition-all text-center shrink-0">
+                            Clear Search
+                        </a>
+                    <?php endif; ?>
+                </form>
+
+                <!-- Quick Client Suggestions -->
+                <?php if (!empty($quick_clients)): ?>
+                    <div class="pt-1 flex flex-wrap items-center gap-2 text-xs">
+                        <span class="text-slate-400 font-bold text-[11px] uppercase tracking-wider">Quick Accounts:</span>
+                        <?php foreach ($quick_clients as $qc): 
+                            $qc_label = !empty($qc['tradename']) ? $qc['tradename'] : $qc['clientname'];
+                        ?>
+                            <a href="accounts.php?q=<?php echo urlencode($qc['accountnum']); ?>" 
+                               class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-700 hover:text-[#EB3E0B] px-3 py-1 rounded-full border border-slate-200/80 font-mono transition-colors">
+                                <?php echo sanitize($qc['accountnum']); ?> (<?php echo sanitize($qc_label); ?>)
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- INITIAL STATE: NO ACCOUNT SEARCHED -->
+            <?php if (!$searched || !$selected_client): ?>
+                
+                <?php if ($searched && !$selected_client): ?>
+                    <!-- Account Not Found Alert -->
+                    <div class="bg-white rounded-3xl p-12 border border-rose-200 shadow-sm text-center space-y-4">
+                        <div class="w-20 h-20 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center mx-auto shadow-inner">
+                            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                        </div>
+                        <div class="space-y-1">
+                            <h3 class="text-lg font-extrabold text-slate-900">Account Not Found</h3>
+                            <p class="text-xs text-slate-500 max-w-md mx-auto">No client account matched your search <strong>"<?php echo sanitize($search); ?>"</strong>. Please try another account number or trade name.</p>
+                        </div>
+                    </div>
+                <?php else: ?>
+                    <!-- Initial State Empty Card -->
+                    <div class="bg-white rounded-3xl p-12 border border-slate-200 shadow-sm text-center space-y-4">
+                        <div class="w-20 h-20 rounded-full bg-[#FFE8D5] text-[#EB3E0B] flex items-center justify-center mx-auto shadow-inner">
+                            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0V11m0 0h4m-4 0H9m4 0V7m0 0h4m-4 0H9"/>
+                            </svg>
+                        </div>
+                        <div class="space-y-1">
+                            <h3 class="text-lg font-extrabold text-slate-900">Search a Client Account First</h3>
+                            <p class="text-xs text-slate-500 max-w-md mx-auto">Please enter an account number or client business name in the search bar above to manage profile information, diagnostic logs, service notes, and work orders.</p>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+            <?php else: ?>
+
+                <!-- ACCOUNT SELECTED: PROFILE HEADER CARD -->
+                <?php 
+                $has_warranty = (isset($selected_client['warranty_status']) && $selected_client['warranty_status'] === 'Active');
+                ?>
+                <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-6 gap-4">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-16 h-16 rounded-3xl bg-[#EB3E0B] text-white flex items-center justify-center font-bold text-2xl shadow-md shadow-[#EB3E0B]/25 shrink-0">
+                                <?php echo strtoupper(substr($selected_client['tradename'], 0, 1)); ?>
+                            </div>
+                            <div>
+                                <div class="flex items-center flex-wrap gap-2">
+                                    <span class="text-xs font-mono font-bold bg-[#FFE8D5] text-[#EB3E0B] px-3 py-0.5 rounded-full border border-[#FECDAA]">
+                                        Acct: <?php echo sanitize($selected_client['accountnum']); ?>
+                                    </span>
+                                    <span class="text-xs font-bold bg-slate-100 text-slate-700 px-3 py-0.5 rounded-full">
+                                        <?php echo !empty($selected_client['type']) ? sanitize($selected_client['type']) : 'Client'; ?>
+                                    </span>
+                                    <?php if ($has_warranty): ?>
+                                        <span class="text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-0.5 rounded-full flex items-center space-x-1 shadow-sm">
+                                            <svg class="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                            </svg>
+                                            <span>Active Warranty</span>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="text-xs font-extrabold bg-rose-100 text-rose-800 px-3 py-0.5 rounded-full border border-rose-300 shadow-sm">
+                                            No Active Warranty
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                                <h2 class="text-2xl font-extrabold text-slate-900 mt-1.5"><?php echo sanitize($selected_client['tradename']); ?></h2>
+                                <p class="text-xs text-slate-500 font-medium">Owner: <strong><?php echo sanitize($selected_client['clientname']); ?></strong></p>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons Group (Warranty & Profile) -->
+                        <div class="flex items-center flex-wrap gap-2.5 self-start md:self-center">
+                            <!-- Set / Edit Warranty Button -->
+                            <button onclick="openWarrantyModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                </svg>
+                                <span><?php echo $has_warranty ? 'Edit Warranty' : 'Set Warranty'; ?></span>
+                            </button>
+
+                            <?php if ($has_warranty): ?>
+                                <!-- Remove Warranty Button -->
+                                <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>" method="POST" onsubmit="return confirm('Are you sure you want to remove the active warranty from this account?');" class="inline">
+                                    <input type="hidden" name="action" value="remove_client_warranty">
+                                    <input type="hidden" name="accountnum" value="<?php echo sanitize($selected_client['accountnum']); ?>">
+                                    <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs sm:text-sm px-4 py-3 rounded-full transition-all flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                        </svg>
+                                        <span>Remove Warranty</span>
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+
+                            <!-- Edit Account Profile Button -->
+                            <button onclick="openEditAccountModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                                <span>Edit Profile</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Client Profile Information Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                            <span class="block text-slate-400 font-bold uppercase text-[10px]">Contact Number</span>
+                            <p class="font-mono font-bold text-slate-800"><?php echo !empty($selected_client['contactnum']) ? sanitize($selected_client['contactnum']) : 'N/A'; ?></p>
+                        </div>
+
+                        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                            <span class="block text-slate-400 font-bold uppercase text-[10px]">Email Address</span>
+                            <p class="font-bold text-slate-800 truncate"><?php echo !empty($selected_client['emailaddress']) ? sanitize($selected_client['emailaddress']) : 'N/A'; ?></p>
+                        </div>
+
+                        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                            <span class="block text-slate-400 font-bold uppercase text-[10px]">Monthly Retainer</span>
+                            <p class="font-mono font-bold text-slate-800"><?php echo !empty($selected_client['monthlyretainersfee']) ? '₱' . sanitize($selected_client['monthlyretainersfee']) : 'N/A'; ?></p>
+                        </div>
+
+                        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                            <span class="block text-slate-400 font-bold uppercase text-[10px]">Outstanding Balance</span>
+                            <p class="font-mono font-bold text-[#EB3E0B]">₱<?php echo number_format($selected_client['outstandingbalance'], 2); ?></p>
+                        </div>
+                    </div>
+
+                    <!-- Store Address & Warranty Overview Row -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                            <span class="block text-slate-400 font-bold uppercase text-[10px]">Physical Store Address</span>
+                            <p class="font-medium text-slate-800"><?php echo !empty($selected_client['address']) ? sanitize($selected_client['address']) : 'N/A'; ?></p>
+                        </div>
+
+                        <div class="p-4 rounded-2xl <?php echo $has_warranty ? 'bg-emerald-50/90 border border-emerald-200 text-emerald-900' : 'bg-rose-50/90 border border-rose-200 text-rose-900 shadow-sm'; ?> space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <span class="font-bold uppercase text-[10px] tracking-wider <?php echo $has_warranty ? 'text-emerald-800' : 'text-rose-800'; ?>">
+                                    🛡️ Warranty & System Protection
+                                </span>
+                                <span class="font-mono font-extrabold text-[11px] <?php echo $has_warranty ? 'text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300' : 'text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-300'; ?>">
+                                    <?php echo $has_warranty ? 'ACTIVE COVERAGE' : 'INACTIVE'; ?>
+                                </span>
+                            </div>
+                            <?php if ($has_warranty): ?>
+                                <p class="font-semibold text-xs text-emerald-950">
+                                    <?php echo !empty($selected_client['warranty_notes']) ? sanitize($selected_client['warranty_notes']) : 'Full Hardware & POS System Warranty Coverage'; ?>
+                                </p>
+                                <div class="text-[11px] text-emerald-700 font-mono">
+                                    Expires: <strong><?php echo !empty($selected_client['warranty_expiry']) ? format_date($selected_client['warranty_expiry']) : 'No Expiry Date Set'; ?></strong>
+                                </div>
+                            <?php else: ?>
+                                <p class="text-xs text-rose-800 font-medium">No active warranty assigned to this account. Click <strong>Set Warranty</strong> above to grant warranty protection.</p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INTEGRATED ACCOUNT HUB TABS -->
+                <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-6 p-6 sm:p-8">
+                    
+                    <!-- Tab Buttons Bar -->
+                    <div class="flex items-center space-x-2 border-b border-slate-100 pb-4 overflow-x-auto">
+                        <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=logs" 
+                           class="px-5 py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 shrink-0 <?php echo ($active_tab === 'logs') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+                            </svg>
+                            <span>Hardware Diagnostic Logs (<?php echo count($hw_logs); ?>)</span>
+                        </a>
+
+                        <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=notes" 
+                           class="px-5 py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 shrink-0 <?php echo ($active_tab === 'notes') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <span>Tech Service Notes (<?php echo count($tech_notes); ?>)</span>
+                        </a>
+
+                        <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=orders" 
+                           class="px-5 py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 shrink-0 <?php echo ($active_tab === 'orders') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                            </svg>
+                            <span>Work Orders (<?php echo count($work_orders); ?>)</span>
+                        </a>
+                    </div>
+
+                    <!-- TAB 1: HARDWARE DIAGNOSTIC LOGS -->
+                    <?php if ($active_tab === 'logs'): ?>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-base font-extrabold text-slate-900">Hardware Troubleshooting Sessions</h3>
+                                <span class="text-xs text-slate-400">Account #<?php echo sanitize($client_acct); ?></span>
+                            </div>
+
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                                            <th class="py-3 px-4">Log ID</th>
+                                            <th class="py-3 px-4">Hardware Device</th>
+                                            <th class="py-3 px-4">Selected Issue</th>
+                                            <th class="py-3 px-4">Steps Completed</th>
+                                            <th class="py-3 px-4">Status</th>
+                                            <th class="py-3 px-4">Timestamp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 font-medium">
+                                        <?php if (empty($hw_logs)): ?>
+                                            <tr>
+                                                <td colspan="6" class="py-8 text-center text-slate-400">No hardware troubleshooting logs found for this account.</td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($hw_logs as $hl): 
+                                                $st_badge = get_status_badge_class($hl['resolution_status']);
+                                            ?>
+                                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                                    <td class="py-3 px-4 font-mono text-slate-400">#<?php echo $hl['id']; ?></td>
+                                                    <td class="py-3 px-4 font-bold text-slate-900"><?php echo sanitize($hl['hardware_selected']); ?></td>
+                                                    <td class="py-3 px-4 max-w-xs space-y-1">
+                                                        <div class="font-semibold text-slate-800"><?php echo !empty($hl['issue_selected']) ? sanitize($hl['issue_selected']) : 'Diagnostic Check'; ?></div>
+                                                        <?php if (!empty($hl['custom_answer'])): ?>
+                                                            <div class="text-[11px] text-slate-500 italic">"<?php echo sanitize($hl['custom_answer']); ?>"</div>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 font-mono font-bold text-slate-700">Step <?php echo $hl['step_completed']; ?></td>
+                                                    <td class="py-3 px-4">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border <?php echo $st_badge; ?>">
+                                                            <?php echo sanitize($hl['resolution_status']); ?>
+                                                        </span>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-slate-500 font-mono"><?php echo format_date($hl['created_at']); ?></td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    <!-- TAB 2: TECH SERVICE NOTES (STREAMLINED VIEW DETAILS) -->
+                    <?php elseif ($active_tab === 'notes'): ?>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-base font-extrabold text-slate-900">Technical Service Notes</h3>
+                                <button onclick="openNewServiceNoteModal('<?php echo addslashes($client_acct); ?>', '<?php echo addslashes($selected_client['tradename']); ?>', '<?php echo addslashes($selected_client['address']); ?>')" 
+                                        class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-4 py-2 rounded-full shadow-sm flex items-center space-x-1 transition-all">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    <span>Log Service Note</span>
+                                </button>
+                            </div>
+
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                                            <th class="py-3 px-4">ID / Date</th>
+                                            <th class="py-3 px-4">Technician</th>
+                                            <th class="py-3 px-4">Status</th>
+                                            <th class="py-3 px-4 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 font-medium">
+                                        <?php if (empty($tech_notes)): ?>
+                                            <tr>
+                                                <td colspan="4" class="py-8 text-center text-slate-400">No service notes found for this account.</td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($tech_notes as $tn): 
+                                                $st_badge = get_status_badge_class($tn['status']);
+                                            ?>
+                                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                                    <td class="py-3 px-4 space-y-0.5">
+                                                        <div class="font-mono text-slate-400">#<?php echo $tn['id']; ?></div>
+                                                        <div class="font-bold text-slate-800"><?php echo sanitize($tn['xdate']); ?></div>
+                                                    </td>
+                                                    <td class="py-3 px-4 font-bold text-[#EB3E0B]"><?php echo sanitize($tn['techname']); ?></td>
+                                                    <td class="py-3 px-4">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border <?php echo $st_badge; ?>">
+                                                            <?php echo sanitize($tn['status']); ?>
+                                                        </span>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-right">
+                                                        <button data-note="<?php echo htmlspecialchars(json_encode($tn), ENT_QUOTES, 'UTF-8'); ?>"
+                                                                onclick="openServiceNoteDetailsModal(this)" 
+                                                                class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-700 hover:text-[#EB3E0B] font-bold text-[11px] px-3 py-1.5 rounded-full inline-flex items-center space-x-1 transition-all">
+                                                            <svg class="w-4 h-4 text-[#FA5915]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                                            </svg>
+                                                            <span>View Details</span>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    <!-- TAB 3: WORK ORDERS -->
+                    <?php elseif ($active_tab === 'orders'): ?>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-base font-extrabold text-slate-900">Work Orders & Billing History</h3>
+                                    <p class="text-xs text-slate-500">Service statements, supplies, hardware repairs, and billing for Account #<?php echo sanitize($client_acct); ?></p>
+                                </div>
+                                <button onclick="openCreateWorkOrderModal('<?php echo addslashes($client_acct); ?>', '<?php echo addslashes(!empty($selected_client['tradename']) ? $selected_client['tradename'] : $selected_client['clientname']); ?>', '<?php echo addslashes($selected_client['address']); ?>')" 
+                                        class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-4 py-2 rounded-full shadow-sm flex items-center space-x-1.5 transition-all active:scale-95">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    <span>Create Work Order</span>
+                                </button>
+                            </div>
+
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                                            <th class="py-3 px-4">WO # / Date</th>
+                                            <th class="py-3 px-4">Nature of Work / Particulars</th>
+                                            <th class="py-3 px-4">Amount</th>
+                                            <th class="py-3 px-4">OR #</th>
+                                            <th class="py-3 px-4">Status</th>
+                                            <th class="py-3 px-4 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 font-medium">
+                                        <?php if (empty($work_orders)): ?>
+                                            <tr>
+                                                <td colspan="6" class="py-8 text-center text-slate-400">No work orders recorded for this account. Click "Create Work Order" to add one.</td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($work_orders as $wo): 
+                                                $st_badge = get_status_badge_class($wo['status']);
+                                            ?>
+                                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                                    <td class="py-3 px-4 space-y-0.5">
+                                                        <div class="font-mono font-bold text-[#EB3E0B]">WO-<?php echo $wo['id']; ?></div>
+                                                        <div class="text-slate-500 font-mono text-[11px]"><?php echo format_date($wo['xdate']); ?></div>
+                                                    </td>
+                                                    <td class="py-3 px-4 max-w-sm font-semibold text-slate-800 leading-relaxed"><?php echo sanitize($wo['natureofwork']); ?></td>
+                                                    <td class="py-3 px-4 font-mono font-bold text-slate-900 text-sm">₱<?php echo number_format(floatval($wo['amount']), 2); ?></td>
+                                                    <td class="py-3 px-4 font-mono text-slate-600"><?php echo !empty($wo['ornum']) ? 'OR #' . sanitize($wo['ornum']) : 'N/A'; ?></td>
+                                                    <td class="py-3 px-4">
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border <?php echo $st_badge; ?>">
+                                                            <?php echo sanitize(ucfirst($wo['status'])); ?>
+                                                        </span>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-right">
+                                                        <div class="flex items-center justify-end space-x-1.5">
+                                                            <button data-wo="<?php echo htmlspecialchars(json_encode($wo), ENT_QUOTES, 'UTF-8'); ?>"
+                                                                    onclick="openEditWorkOrderModal(this)" 
+                                                                    class="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Edit Work Order">
+                                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                                                </svg>
+                                                            </button>
+
+                                                            <form method="POST" action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=orders" onsubmit="return confirm('Are you sure you want to delete Work Order #WO-<?php echo $wo['id']; ?>?');" class="inline">
+                                                                <input type="hidden" name="action" value="delete_workorder">
+                                                                <input type="hidden" name="wo_id" value="<?php echo $wo['id']; ?>">
+                                                                <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                                                                <button type="submit" class="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-colors" title="Delete Work Order">
+                                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                                    </svg>
+                                                                </button>
+                                                            </form>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                </div>
+
+                <!-- EDIT ACCOUNT DETAILS MODAL -->
+                <div id="editAccountModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto">
+                        <!-- Close Button -->
+                        <button onclick="closeEditAccountModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 mb-6">
+                            <div class="w-10 h-10 rounded-2xl bg-[#FFE8D5] text-[#EB3E0B] flex items-center justify-center font-bold shadow-sm">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Edit Client Account Details</h3>
+                                <p class="text-xs text-slate-500">Update client profile information in bucket_client table.</p>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=<?php echo $active_tab; ?>" method="POST" class="space-y-4">
+                            <input type="hidden" name="action" value="update_client_profile">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($selected_client['accountnum']); ?>">
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Trade Business Name *</label>
+                                    <input type="text" name="tradename" value="<?php echo sanitize($selected_client['tradename']); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Owner / Client Name *</label>
+                                    <input type="text" name="clientname" value="<?php echo sanitize($selected_client['clientname']); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Contact Number</label>
+                                    <input type="text" name="contactnum" value="<?php echo sanitize($selected_client['contactnum']); ?>" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Email Address</label>
+                                    <input type="email" name="emailaddress" value="<?php echo sanitize($selected_client['emailaddress']); ?>" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Physical Address</label>
+                                <textarea name="address" rows="2" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"><?php echo sanitize($selected_client['address']); ?></textarea>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Client Type</label>
+                                    <input type="text" name="type" value="<?php echo sanitize($selected_client['type']); ?>" placeholder="POS Client / Standard" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Monthly Retainer Fee</label>
+                                    <input type="text" name="monthlyretainersfee" value="<?php echo sanitize($selected_client['monthlyretainersfee']); ?>" placeholder="e.g. 5000" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <div class="pt-4 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeEditAccountModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                                    Save Account Profile
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- SET / EDIT WARRANTY MODAL -->
+                <div id="warrantyModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn space-y-6">
+                        <button onclick="closeWarrantyModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-800 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                            <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold shadow-sm shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Manage Account Warranty Protection</h3>
+                                <p class="text-xs text-slate-500 font-mono">Account #<?php echo sanitize($selected_client['accountnum']); ?> - <?php echo sanitize($selected_client['tradename']); ?></p>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>" method="POST" class="space-y-4 text-xs">
+                            <input type="hidden" name="action" value="update_client_warranty">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($selected_client['accountnum']); ?>">
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1.5">Warranty Status</label>
+                                    <select name="warranty_status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all font-bold">
+                                        <option value="Active" <?php echo ($has_warranty) ? 'selected' : ''; ?>>Active Warranty</option>
+                                        <option value="Inactive" <?php echo (!$has_warranty) ? 'selected' : ''; ?>>Inactive / No Warranty</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1.5">Coverage Scope</label>
+                                    <?php $cur_cov = isset($selected_client['warranty_coverage_type']) ? $selected_client['warranty_coverage_type'] : 'Both'; ?>
+                                    <select name="warranty_coverage_type" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all font-bold">
+                                        <option value="Both" <?php echo ($cur_cov === 'Both') ? 'selected' : ''; ?>>Software & Hardware</option>
+                                        <option value="Software" <?php echo ($cur_cov === 'Software') ? 'selected' : ''; ?>>Software Only</option>
+                                        <option value="Hardware" <?php echo ($cur_cov === 'Hardware') ? 'selected' : ''; ?>>Hardware Only</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1.5">Warranty Expiry Date (Optional)</label>
+                                <input type="date" 
+                                       id="warrantyExpiryInput"
+                                       name="warranty_expiry" 
+                                       value="<?php echo !empty($selected_client['warranty_expiry']) ? sanitize($selected_client['warranty_expiry']) : ''; ?>"
+                                       class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all font-mono font-bold">
+                                
+                                <div class="mt-2 flex items-center space-x-2 text-[11px]">
+                                    <span class="text-slate-400 font-bold">Quick Presets:</span>
+                                    <button type="button" onclick="setWarrantyPresetMonths(6)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded-lg transition-colors">+6 Months</button>
+                                    <button type="button" onclick="setWarrantyPresetMonths(12)" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded-lg transition-colors">+1 Year</button>
+                                    <button type="button" onclick="document.getElementById('warrantyExpiryInput').value=''" class="bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold px-2.5 py-1 rounded-lg transition-colors">Clear Date</button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1.5">Warranty Coverage & Details</label>
+                                <textarea name="warranty_notes" rows="3" placeholder="e.g., Full POS Hardware, Thermal Printer, and Maintenance Coverage" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all font-medium"><?php echo !empty($selected_client['warranty_notes']) ? sanitize($selected_client['warranty_notes']) : ''; ?></textarea>
+                            </div>
+
+                            <div class="pt-2 flex justify-end space-x-3">
+                                <button type="button" onclick="closeWarrantyModal()" class="px-5 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                                    Save Warranty Settings
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <script>
+                function openWarrantyModal() {
+                    document.getElementById('warrantyModal').classList.remove('hidden');
+                }
+                function closeWarrantyModal() {
+                    document.getElementById('warrantyModal').classList.add('hidden');
+                }
+                function setWarrantyPresetMonths(m) {
+                    var d = new Date();
+                    d.setMonth(d.getMonth() + m);
+                    var yr = d.getFullYear();
+                    var mo = String(d.getMonth() + 1);
+                    if (mo.length === 1) mo = '0' + mo;
+                    var day = String(d.getDate());
+                    if (day.length === 1) day = '0' + day;
+                    document.getElementById('warrantyExpiryInput').value = yr + '-' + mo + '-' + day;
+                }
+                </script>
+
+                <!-- VIEW SERVICE NOTE DETAILS MODAL -->
+                <div id="viewServiceNoteModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto space-y-6">
+                        <!-- Close Button -->
+                        <button onclick="closeServiceNoteModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                            <div class="w-12 h-12 rounded-2xl bg-[#FFE8D5] text-[#EB3E0B] flex items-center justify-center font-bold shadow-sm shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <span id="v_note_id" class="text-xs font-mono font-bold text-[#EB3E0B]">#000</span>
+                                    <span id="v_note_date" class="text-xs text-slate-500 font-mono">Date</span>
+                                </div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Technical Service Note Details</h3>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 text-xs">
+                            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                                <span class="block text-slate-400 font-bold uppercase text-[10px]">Technician</span>
+                                <p id="v_note_tech" class="font-extrabold text-[#EB3E0B] text-sm mt-0.5">-</p>
+                            </div>
+                            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                                <span class="block text-slate-400 font-bold uppercase text-[10px]">Status</span>
+                                <div id="v_note_status" class="font-bold text-slate-800 text-sm mt-0.5">-</div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4 text-xs">
+                            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                                <span class="block text-[#EB3E0B] font-bold uppercase text-[10px] tracking-wider">Reason for Visit / Requested Service</span>
+                                <p id="v_note_reason" class="font-semibold text-slate-900 leading-relaxed whitespace-pre-wrap text-xs sm:text-sm">-</p>
+                            </div>
+
+                            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                                <span class="block text-amber-700 font-bold uppercase text-[10px] tracking-wider">Cause of the Issue</span>
+                                <p id="v_note_cause" class="font-medium text-slate-800 leading-relaxed whitespace-pre-wrap text-xs sm:text-sm">-</p>
+                            </div>
+
+                            <div class="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1">
+                                <span class="block text-emerald-700 font-bold uppercase text-[10px] tracking-wider">Resolution / Solution Work Done</span>
+                                <p id="v_note_resso" class="font-semibold text-emerald-950 leading-relaxed whitespace-pre-wrap text-xs sm:text-sm">-</p>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 flex justify-end">
+                            <button onclick="closeServiceNoteModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-sm">
+                                Close Details
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CREATE WORK ORDER MODAL -->
+                <div id="createWorkOrderModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto space-y-6">
+                        <!-- Close Button -->
+                        <button onclick="closeCreateWorkOrderModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                            <div class="w-12 h-12 rounded-2xl bg-[#FFE8D5] text-[#EB3E0B] flex items-center justify-center font-bold shadow-sm shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Create New Work Order</h3>
+                                <p class="text-xs text-slate-500">Record billing statement or service repair for Account #<?php echo sanitize($client_acct); ?></p>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=orders" method="POST" class="space-y-4 text-xs">
+                            <input type="hidden" name="action" value="create_workorder">
+                            <input type="hidden" name="accountnum" id="create_wo_accountnum" value="<?php echo sanitize($client_acct); ?>">
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Client Name / Trade Name</label>
+                                    <input type="text" name="clientname" id="create_wo_clientname" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-semibold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Work Order Date</label>
+                                    <input type="date" name="xdate" id="create_wo_xdate" value="<?php echo date('Y-m-d'); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono font-bold">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Client Address</label>
+                                <input type="text" name="address" id="create_wo_address" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider">Nature of Work / Particulars <span class="text-[#EB3E0B]">*</span></label>
+                                    <span class="text-[10px] text-slate-400 font-medium">Service description, parts or supplies</span>
+                                </div>
+                                <textarea name="natureofwork" id="create_wo_natureofwork" rows="3" required placeholder="e.g., POS Maintenance and Database Backup, Thermal Printer repair..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all leading-relaxed"></textarea>
+                                
+                                <div class="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                                    <span class="text-slate-400 font-bold self-center mr-1">Quick Presets:</span>
+                                    <button type="button" onclick="appendWoNature('POS Maintenance and Database Backup')" class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-600 hover:text-[#EB3E0B] font-bold px-2 py-0.5 rounded-md transition-colors">+ POS Maintenance</button>
+                                    <button type="button" onclick="appendWoNature('10pcs 80mm Thermal Paper Roll Supply')" class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-600 hover:text-[#EB3E0B] font-bold px-2 py-0.5 rounded-md transition-colors">+ Thermal Paper Supply</button>
+                                    <button type="button" onclick="appendWoNature('Thermal Receipt Printer Hardware Troubleshooting & Repair')" class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-600 hover:text-[#EB3E0B] font-bold px-2 py-0.5 rounded-md transition-colors">+ Printer Repair</button>
+                                    <button type="button" onclick="appendWoNature('System Unit Diagnostic & Troubleshooting')" class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-600 hover:text-[#EB3E0B] font-bold px-2 py-0.5 rounded-md transition-colors">+ System Unit Diagnostic</button>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Amount (₱)</label>
+                                    <input type="number" step="0.01" min="0" name="amount" id="create_wo_amount" value="0.00" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">O.R. Number (Optional)</label>
+                                    <input type="text" name="ornum" id="create_wo_ornum" placeholder="e.g. 01795" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Payment Status</label>
+                                    <select name="status" id="create_wo_status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-bold">
+                                        <option value="paid">Paid</option>
+                                        <option value="unpaid">Unpaid</option>
+                                        <option value="pending">Pending</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeCreateWorkOrderModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/30 transition-all active:scale-95">
+                                    Save Work Order
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- EDIT WORK ORDER MODAL -->
+                <div id="editWorkOrderModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto space-y-6">
+                        <!-- Close Button -->
+                        <button onclick="closeEditWorkOrderModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                            <div class="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <span id="edit_wo_title_id" class="text-xs font-mono font-bold text-[#EB3E0B]">#WO-000</span>
+                                <h3 class="text-lg font-extrabold text-slate-900">Edit Work Order Statement</h3>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=orders" method="POST" class="space-y-4 text-xs">
+                            <input type="hidden" name="action" value="update_workorder">
+                            <input type="hidden" name="wo_id" id="edit_wo_id" value="0">
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Work Order Date</label>
+                                    <input type="date" name="xdate" id="edit_wo_xdate" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">O.R. Number (Optional)</label>
+                                    <input type="text" name="ornum" id="edit_wo_ornum" placeholder="e.g. 01795" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Nature of Work / Particulars <span class="text-[#EB3E0B]">*</span></label>
+                                <textarea name="natureofwork" id="edit_wo_natureofwork" rows="3" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all leading-relaxed"></textarea>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Amount (₱)</label>
+                                    <input type="number" step="0.01" min="0" name="amount" id="edit_wo_amount" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Payment Status</label>
+                                    <select name="status" id="edit_wo_status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-bold">
+                                        <option value="paid">Paid</option>
+                                        <option value="unpaid">Unpaid</option>
+                                        <option value="pending">Pending</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeEditWorkOrderModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all">
+                                    Update Work Order
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <script>
+                function openEditAccountModal() {
+                    var modal = document.getElementById('editAccountModal');
+                    if (modal) modal.classList.remove('hidden');
+                }
+                function closeEditAccountModal() {
+                    var modal = document.getElementById('editAccountModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+
+                function openServiceNoteDetailsModal(btn) {
+                    try {
+                        var raw = btn.getAttribute('data-note');
+                        var tn = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                        document.getElementById('v_note_id').innerText = '#' + (tn.id || '0');
+                        document.getElementById('v_note_date').innerText = tn.xdate || '';
+                        document.getElementById('v_note_tech').innerText = tn.techname || '';
+                        document.getElementById('v_note_status').innerText = tn.status || '';
+                        document.getElementById('v_note_reason').innerText = tn.reasonoftech ? tn.reasonoftech : 'N/A';
+                        document.getElementById('v_note_cause').innerText = tn.causeoftheissue ? tn.causeoftheissue : 'N/A';
+                        document.getElementById('v_note_resso').innerText = tn.resso ? tn.resso : 'N/A';
+                        var modal = document.getElementById('viewServiceNoteModal');
+                        if (modal) modal.classList.remove('hidden');
+                    } catch(e) {
+                        console.error('Error opening note modal:', e);
+                    }
+                }
+
+                function closeServiceNoteModal() {
+                    var modal = document.getElementById('viewServiceNoteModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+
+                function openCreateWorkOrderModal(acct, name, addr) {
+                    var mAcct = document.getElementById('create_wo_accountnum');
+                    var mName = document.getElementById('create_wo_clientname');
+                    var mAddr = document.getElementById('create_wo_address');
+                    if (mAcct) mAcct.value = acct || '';
+                    if (mName) mName.value = name || '';
+                    if (mAddr) mAddr.value = addr || '';
+                    var modal = document.getElementById('createWorkOrderModal');
+                    if (modal) modal.classList.remove('hidden');
+                }
+
+                function closeCreateWorkOrderModal() {
+                    var modal = document.getElementById('createWorkOrderModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+
+                function appendWoNature(text) {
+                    var field = document.getElementById('create_wo_natureofwork');
+                    if (!field) return;
+                    if (field.value.trim() === '') {
+                        field.value = text;
+                    } else {
+                        field.value += ', ' + text;
+                    }
+                }
+
+                function openEditWorkOrderModal(btn) {
+                    try {
+                        var raw = btn.getAttribute('data-wo');
+                        var wo = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                        document.getElementById('edit_wo_id').value = wo.id || '0';
+                        document.getElementById('edit_wo_title_id').innerText = '#WO-' + (wo.id || '0');
+                        document.getElementById('edit_wo_xdate').value = wo.xdate || '';
+                        document.getElementById('edit_wo_natureofwork').value = wo.natureofwork || '';
+                        document.getElementById('edit_wo_amount').value = wo.amount || '0.00';
+                        document.getElementById('edit_wo_ornum').value = wo.ornum || '';
+                        document.getElementById('edit_wo_status').value = (wo.status || 'paid').toLowerCase();
+                        var modal = document.getElementById('editWorkOrderModal');
+                        if (modal) modal.classList.remove('hidden');
+                    } catch(e) {
+                        console.error('Error opening work order edit modal:', e);
+                    }
+                }
+
+                function closeEditWorkOrderModal() {
+                    var modal = document.getElementById('editWorkOrderModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+                </script>
+
+            <?php endif; ?>
+
+<script>
+function handleAccountSearchInput(val) {
+    var dropdown = document.getElementById('accountAutocompleteDropdown');
+    if (!dropdown || typeof ALL_ACCOUNTS === 'undefined') return;
+
+    var query = (val || '').trim().toLowerCase();
+
+    if (query.length === 0) {
+        dropdown.classList.add('hidden');
+        dropdown.innerHTML = '';
+        return;
+    }
+
+    var matches = ALL_ACCOUNTS.filter(function(acct) {
+        var num = (acct.accountnum || '').toLowerCase();
+        var trade = (acct.tradename || '').toLowerCase();
+        var client = (acct.clientname || '').toLowerCase();
+        return num.indexOf(query) !== -1 || trade.indexOf(query) !== -1 || client.indexOf(query) !== -1;
+    });
+
+    if (matches.length === 0) {
+        dropdown.innerHTML = '<div class="p-4 text-center text-xs text-slate-400 font-medium">No matching client accounts found</div>';
+        dropdown.classList.remove('hidden');
+        return;
+    }
+
+    var html = '';
+    matches.forEach(function(acct) {
+        var tradeLabel = acct.tradename ? acct.tradename : acct.clientname;
+        var ownerLabel = acct.clientname ? acct.clientname : '';
+        html += '<a href="accounts.php?q=' + encodeURIComponent(acct.accountnum) + '" class="flex items-center justify-between p-3.5 hover:bg-[#FFE8D5] transition-colors group cursor-pointer text-left block text-slate-900 border-b border-slate-100 last:border-0">';
+        html += '  <div class="flex items-center space-x-3 overflow-hidden">';
+        html += '    <div class="w-8 h-8 rounded-xl bg-[#EB3E0B] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">';
+        html +=        escapeHtml((tradeLabel.charAt(0) || 'C').toUpperCase());
+        html += '    </div>';
+        html += '    <div class="truncate">';
+        html += '      <p class="text-xs font-extrabold text-slate-900 group-hover:text-[#EB3E0B] truncate">' + escapeHtml(tradeLabel) + '</p>';
+        html += '      <p class="text-[11px] text-slate-500 truncate">Owner: ' + escapeHtml(ownerLabel) + '</p>';
+        html += '    </div>';
+        html += '  </div>';
+        html += '  <span class="text-xs font-mono font-bold bg-slate-100 group-hover:bg-white text-[#EB3E0B] px-2.5 py-1 rounded-full border border-slate-200/80 shrink-0 ml-2">';
+        html +=      escapeHtml(acct.accountnum);
+        html += '  </span>';
+        html += '</a>';
+    });
+
+    dropdown.innerHTML = html;
+    dropdown.classList.remove('hidden');
+}
+
+function escapeHtml(str) {
+    return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+document.addEventListener('click', function(e) {
+    var searchBox = document.getElementById('accountSearchInput');
+    var dropdown = document.getElementById('accountAutocompleteDropdown');
+    if (searchBox && dropdown && !searchBox.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.classList.add('hidden');
+    }
+});
+</script>
+
+<?php include __DIR__ . '/includes/footer.php'; ?>
