@@ -1,27 +1,12 @@
-# Apache Rewrite Rules for RNZ Support System
+# Directory Index
+DirectoryIndex index.php index.html
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteBase /
-
-    # 1. Redirect external GET requests from *.php to extensionless URLs (e.g. /login.php -> /login)
-    RewriteCond %{THE_REQUEST} ^GET\s/+(.*?)\.php[\s?] [NC]
-    RewriteCond %{REQUEST_URI} !^/index\.php$ [NC]
-    RewriteCond %{REQUEST_URI} !^/backend/index\.php$ [NC]
-    RewriteRule ^(.*?)\.php$ $1 [R=301,L,NE]
-
-    # 2. Redirect direct index.php to / or /backend/
-    RewriteCond %{THE_REQUEST} ^GET\s/+index\.php[\s?] [NC]
-    RewriteRule ^index\.php$ / [R=301,L]
-
-    RewriteCond %{THE_REQUEST} ^GET\s/+backend/index\.php[\s?] [NC]
-    RewriteRule ^backend/index\.php$ /backend/ [R=301,L]
-
-    # 3. Allow real directories and files
-    RewriteCond %{REQUEST_FILENAME} -d [OR]
-    RewriteCond %{REQUEST_FILENAME} -f
-    RewriteRule ^ - [L]
-
-    # 4. Map extensionless URLs to PHP files
+    
+    # If the request is not a real directory and a matching .php file exists, rewrite internally
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{DOCUMENT_ROOT}/$1.php -f [OR]
     RewriteCond %{REQUEST_FILENAME}.php -f
     RewriteRule ^(.*)$ $1.php [L,QSA]
 </IfModule>
