@@ -14,3 +14,7 @@ $RECYCLE.BIN/
 # Logs and scratch
 *.log
 graphify-out/
+node_modules/
+.npm-cache/
+RNZWEBSITE/IMAGES/caferesto.sql
+RNZWEBSITE/videos/*.mp4

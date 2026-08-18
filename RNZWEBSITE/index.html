@@ -1,0 +1,1300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="RNZ Software Development Services provides POS systems, POS hardware, inventory systems, cloud POS, and business software for Philippine SMEs."
+    />
+    <meta
+      name="keywords"
+      content="RNZ Software Development Services, POS Philippines, POS system, inventory system, business software, cloud POS, retail POS, restaurant POS"
+    />
+    <meta name="theme-color" content="#151515" />
+    <title>RNZ Software Development Services | Premium POS & Business Software</title>
+    <link rel="icon" href="./new_logo_rnz_software_development_services_8Fg_icon.ico" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./assets/styles.css" />
+    <style>
+      :root {
+        --charcoal: #151515;
+        --ink: #23201d;
+        --muted: #716c66;
+        --line: rgba(21, 21, 21, 0.1);
+        --paper: #fffdf8;
+        --cream: #fff7e6;
+        --orange: #ff6b22;
+        --red: #f0441c;
+        --yellow: #ffbf2f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          linear-gradient(115deg, rgba(255, 185, 35, 0.12), transparent 32%),
+          linear-gradient(155deg, transparent 20%, rgba(240, 68, 28, 0.08) 54%, transparent 74%),
+          var(--paper);
+        font-family: "Manrope", sans-serif;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: -1;
+        background-image:
+          linear-gradient(rgba(21, 21, 21, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(21, 21, 21, 0.035) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: linear-gradient(to bottom, black, transparent 78%);
+      }
+
+      .brand-mark {
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        background: #ffffff;
+        border: 1px solid rgba(21, 21, 21, 0.08);
+        box-shadow: 0 12px 28px rgba(21, 21, 21, 0.12);
+        overflow: hidden;
+      }
+
+      .header-brand-mark {
+        background: transparent;
+        border-color: transparent;
+        box-shadow: none;
+      }
+
+      .glass {
+        background: rgba(255, 253, 248, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.72);
+        backdrop-filter: blur(22px);
+        box-shadow: 0 16px 50px rgba(21, 21, 21, 0.08);
+      }
+
+      .nav-link {
+        position: relative;
+      }
+
+      .nav-link::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: -7px;
+        width: 100%;
+        height: 2px;
+        background: linear-gradient(90deg, var(--red), var(--yellow));
+        transform: scaleX(0);
+        transform-origin: left;
+        transition: transform 0.24s ease;
+      }
+
+      .nav-link:hover::after {
+        transform: scaleX(1);
+      }
+
+      .support-portal-button {
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+      }
+
+      .support-portal-button::after {
+        content: "";
+        position: absolute;
+        inset: -40%;
+        background: radial-gradient(circle, rgba(255, 191, 47, 0.45), transparent 60%);
+        opacity: 0;
+        transform: scale(0.6);
+        transition: opacity 0.2s ease;
+        z-index: -1;
+      }
+
+      .support-portal-button.is-clicked {
+        animation: supportBounce 320ms ease;
+      }
+
+      .support-portal-button.is-clicked::after {
+        opacity: 0.6;
+        animation: supportRipple 320ms ease;
+      }
+
+      @keyframes supportBounce {
+        0% {
+          transform: translateY(0) scale(1);
+        }
+        40% {
+          transform: translateY(-2px) scale(0.98);
+        }
+        100% {
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      @keyframes supportRipple {
+        0% {
+          opacity: 0;
+          transform: scale(0.6);
+        }
+        40% {
+          opacity: 0.55;
+          transform: scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(1.15);
+        }
+      }
+
+      .hero-shell {
+        min-height: 92vh;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero-shell::after {
+        content: "";
+        position: absolute;
+        inset: auto -10% -22% -10%;
+        height: 42%;
+        background:
+          linear-gradient(90deg, rgba(255, 191, 47, 0.18), rgba(240, 68, 28, 0.16)),
+          repeating-linear-gradient(135deg, rgba(21, 21, 21, 0.08) 0 1px, transparent 1px 18px);
+        transform: skewY(-3deg);
+        z-index: 0;
+      }
+
+      .hardware-stage {
+        position: relative;
+        min-height: 460px;
+        perspective: 1200px;
+      }
+
+      .hero-photo-frame {
+        position: absolute;
+        inset: 5% 0 8% 8%;
+        overflow: hidden;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        background: #151515;
+        box-shadow: 0 34px 90px rgba(21, 21, 21, 0.2);
+        transform: rotateX(3deg) rotateY(-7deg) rotateZ(1deg);
+        animation: terminalFloat 6s ease-in-out infinite;
+      }
+
+      .hero-photo-frame img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        opacity: 0.92;
+      }
+
+      .hero-photo-frame::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, rgba(21, 21, 21, 0.58), transparent 42%),
+          linear-gradient(0deg, rgba(240, 68, 28, 0.18), transparent 46%);
+        pointer-events: none;
+      }
+
+      .pos-terminal {
+        position: absolute;
+        right: 9%;
+        top: 11%;
+        width: min(460px, 78vw);
+        aspect-ratio: 1.1;
+        transform: rotateX(8deg) rotateY(-13deg) rotateZ(1deg);
+        transform-style: preserve-3d;
+        filter: drop-shadow(0 36px 44px rgba(21, 21, 21, 0.24));
+        animation: terminalFloat 6s ease-in-out infinite;
+      }
+
+      .screen {
+        position: absolute;
+        inset: 0 6% 31% 0;
+        background: linear-gradient(145deg, #242424, #0f0f0f);
+        border: 10px solid #1e1e1e;
+        border-radius: 8px;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      }
+
+      .screen-ui {
+        position: absolute;
+        inset: 9%;
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 10px;
+      }
+
+      .screen-left,
+      .screen-right {
+        background: #111;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        padding: 10px;
+      }
+
+      .product-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+        margin-top: 10px;
+      }
+
+      .product-grid span {
+        min-height: 35px;
+        border-radius: 5px;
+        background: linear-gradient(135deg, rgba(255, 185, 35, 0.22), rgba(240, 68, 28, 0.18));
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .receipt {
+        display: grid;
+        gap: 8px;
+      }
+
+      .receipt span {
+        height: 8px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .receipt strong {
+        height: 34px;
+        border-radius: 6px;
+        background: linear-gradient(90deg, var(--yellow), var(--orange));
+      }
+
+      .neck {
+        position: absolute;
+        left: 39%;
+        bottom: 16%;
+        width: 25%;
+        height: 19%;
+        background: linear-gradient(135deg, #1d1d1d, #090909);
+        transform: translateZ(-40px);
+      }
+
+      .base {
+        position: absolute;
+        left: 22%;
+        bottom: 4%;
+        width: 56%;
+        height: 17%;
+        background: linear-gradient(135deg, #2a2a2a, #0f0f0f);
+        border-radius: 8px;
+        transform: rotateX(72deg);
+        box-shadow: 0 24px 40px rgba(21, 21, 21, 0.25);
+      }
+
+      .scanner {
+        position: absolute;
+        left: 2%;
+        bottom: 8%;
+        width: 38%;
+        height: 17%;
+        background: linear-gradient(135deg, #323232, #111);
+        border-radius: 8px;
+        transform: rotateZ(-8deg);
+        box-shadow: 0 18px 34px rgba(21, 21, 21, 0.2);
+      }
+
+      .floating-card {
+        position: absolute;
+        z-index: 3;
+        border-radius: 8px;
+        background: rgba(255, 253, 248, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.78);
+        backdrop-filter: blur(18px);
+        box-shadow: 0 18px 44px rgba(21, 21, 21, 0.12);
+        animation: cardFloat 5.8s ease-in-out infinite;
+      }
+
+      .feature-card,
+      .product-card,
+      .module-card,
+      .testimonial-card,
+      .choose-card {
+        border-radius: 8px;
+        border: 1px solid rgba(21, 21, 21, 0.08);
+        background: rgba(255, 255, 255, 0.76);
+        box-shadow: 0 20px 60px rgba(21, 21, 21, 0.07);
+        transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+      }
+
+      .feature-card:hover,
+      .product-card:hover,
+      .installation-card:hover,
+      .module-card:hover,
+      .testimonial-card:hover,
+      .choose-card:hover {
+        transform: translateY(-8px);
+        border-color: rgba(240, 68, 28, 0.26);
+        box-shadow: 0 24px 70px rgba(21, 21, 21, 0.12);
+      }
+
+      .icon-box {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        color: #151515;
+        background: linear-gradient(135deg, rgba(255, 191, 47, 0.95), rgba(255, 107, 34, 0.92));
+        box-shadow: 0 16px 34px rgba(255, 107, 34, 0.18);
+      }
+
+      .installation-card {
+        overflow: hidden;
+        border-radius: 8px;
+        border: 1px solid rgba(21, 21, 21, 0.08);
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 20px 60px rgba(21, 21, 21, 0.07);
+        transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+      }
+
+      .installation-card img {
+        width: 100%;
+        height: 280px;
+        object-fit: cover;
+        transition: transform 0.4s ease;
+      }
+
+      .installation-card:hover img {
+        transform: scale(1.04);
+      }
+
+      .video-card {
+        overflow: hidden;
+        border-radius: 8px;
+        border: 1px solid rgba(21, 21, 21, 0.08);
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 20px 60px rgba(21, 21, 21, 0.08);
+        transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease;
+      }
+
+      .video-card:hover {
+        transform: translateY(-8px);
+        border-color: rgba(240, 68, 28, 0.26);
+        box-shadow: 0 24px 70px rgba(21, 21, 21, 0.13);
+      }
+
+      .video-card video {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        background: #151515;
+        object-fit: cover;
+      }
+
+      .demo-field {
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        padding: 14px 16px;
+        outline: none;
+        transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .demo-field::placeholder {
+        color: rgba(255, 255, 255, 0.45);
+      }
+
+      .demo-field:focus {
+        border-color: rgba(255, 185, 35, 0.72);
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow: 0 0 0 4px rgba(255, 185, 35, 0.12);
+      }
+
+      .demo-field option {
+        color: #151515;
+      }
+
+      .form-status {
+        display: none;
+      }
+
+      .form-status.is-visible {
+        display: block;
+      }
+
+      .section-kicker {
+        color: var(--red);
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.78rem;
+      }
+
+      .module-shot {
+        aspect-ratio: 16 / 9;
+        background: #eef2f6;
+        border-bottom: 1px solid rgba(21, 21, 21, 0.08);
+        overflow: hidden;
+      }
+
+      .module-shot img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: left top;
+        transition: transform 0.32s ease;
+      }
+
+      .module-card:hover .module-shot img {
+        transform: scale(1.03);
+      }
+
+      .reveal {
+        opacity: 0;
+        transform: translateY(22px);
+        transition: opacity 0.65s ease, transform 0.65s ease;
+      }
+
+      .reveal.is-visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .mobile-menu {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.28s ease;
+      }
+
+      .mobile-menu.is-open {
+        max-height: 420px;
+      }
+
+      @keyframes terminalFloat {
+        0%,
+        100% {
+          transform: rotateX(8deg) rotateY(-13deg) rotateZ(1deg) translateY(0);
+        }
+        50% {
+          transform: rotateX(8deg) rotateY(-13deg) rotateZ(1deg) translateY(-16px);
+        }
+      }
+
+      @keyframes cardFloat {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-12px);
+        }
+      }
+
+      @media (max-width: 1023px) {
+        .hero-shell {
+          min-height: auto;
+        }
+
+        .hardware-stage {
+          min-height: 460px;
+        }
+
+        .pos-terminal {
+          right: 8%;
+          top: 8%;
+          width: min(430px, 86vw);
+        }
+      }
+
+      @media (max-width: 640px) {
+        .hardware-stage {
+          min-height: 390px;
+        }
+
+        .pos-terminal {
+          right: 0;
+          width: 92vw;
+        }
+
+        .floating-card {
+          transform: scale(0.88);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="fixed left-0 right-0 top-0 z-50 px-4 pt-4">
+      <nav class="glass mx-auto max-w-7xl rounded-lg px-4 py-3 lg:px-5" aria-label="Primary navigation">
+        <div class="flex items-center justify-between gap-5">
+          <a href="#home" class="flex items-center gap-3" aria-label="RNZ home">
+            <span class="brand-mark header-brand-mark rounded-lg">
+              <img
+                src="./new_logo_rnz_software_development_services_8Fg_icon.ico"
+                alt="RNZ Software Development Services logo"
+                class="h-8 w-8 object-contain"
+              />
+            </span>
+            <span class="leading-tight">
+              <span class="block font-display text-xl font-bold text-charcoal sm:text-2xl">RNZ</span>
+              <span class="block text-[11px] font-bold uppercase tracking-[0.22em] text-neutral-500">Software</span>
+            </span>
+          </a>
+
+          <div class="hidden items-center gap-7 text-sm font-bold text-neutral-700 lg:flex">
+            <a class="nav-link" href="#home">Home</a>
+            <a class="nav-link" href="#solutions">Solutions</a>
+            <a class="nav-link" href="#features">Features</a>
+            <a class="nav-link" href="#hardware">Hardware</a>
+            <a class="nav-link" href="#pricing">Pricing</a>
+            <a class="nav-link" href="#about">About</a>
+            <a class="nav-link" href="#contact">Contact</a>
+          </div>
+
+          <div class="hidden items-center gap-3 lg:flex">
+            <a
+              href="../"
+              class="support-portal-button rounded-lg border border-charcoal/15 px-5 py-3 text-sm font-extrabold text-charcoal transition hover:border-charcoal hover:bg-charcoal hover:text-white"
+            >
+              Support Portal
+            </a>
+            <a
+              href="#contact"
+              class="rounded-lg border border-charcoal/15 px-5 py-3 text-sm font-extrabold text-charcoal transition hover:border-charcoal hover:bg-charcoal hover:text-white"
+            >
+              Contact Us
+            </a>
+            <a
+              href="#demo"
+              class="inline-flex items-center gap-2 rounded-lg bg-charcoal px-5 py-3 text-sm font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:bg-ember"
+            >
+              Get Free Demo
+              <i data-lucide="arrow-right" class="h-4 w-4"></i>
+            </a>
+          </div>
+
+          <button
+            id="menuButton"
+            class="grid h-11 w-11 place-items-center rounded-lg border border-charcoal/10 text-charcoal lg:hidden"
+            aria-label="Open menu"
+            aria-expanded="false"
+          >
+            <i data-lucide="menu" class="h-5 w-5"></i>
+          </button>
+        </div>
+
+        <div id="mobileMenu" class="mobile-menu lg:hidden">
+          <div class="grid gap-3 pb-2 pt-5 text-sm font-bold text-neutral-700">
+            <a href="#home">Home</a>
+            <a href="#solutions">Solutions</a>
+            <a href="#features">Features</a>
+            <a href="#hardware">Hardware</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#about">About</a>
+            <a href="#contact">Contact</a>
+            <a href="../" class="support-portal-button">Support Portal</a>
+            <a href="#demo" class="mt-2 rounded-lg bg-charcoal px-4 py-3 text-center text-white">Get Free Demo</a>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <main id="home">
+      <section class="hero-shell px-4 pb-12 pt-32 sm:pt-36 lg:pb-10">
+        <div class="relative z-10 mx-auto grid max-w-7xl items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
+          <div class="reveal max-w-3xl">
+            <div class="mb-6 inline-flex items-center gap-3 rounded-lg border border-amber/40 bg-white/70 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.16em] text-charcoal shadow-sm">
+              <span class="h-2 w-2 rounded-full bg-ember"></span>
+              Philippine POS, Hardware, and Business Software
+            </div>
+            <p class="mb-4 font-display text-lg font-bold text-ember">RNZ Software Development Services</p>
+            <h1 class="font-display text-5xl font-bold leading-[1.02] text-charcoal sm:text-6xl">
+              Power Your Business with Smarter POS Solutions
+            </h1>
+            <p class="mt-6 max-w-2xl text-lg leading-8 text-neutral-700">
+              Premium point of sale systems, hardware, inventory control, cloud backup, and custom business software
+              built for grocery stores, meat shops, restaurants, warehouses, and SMEs in the Philippines.
+            </p>
+
+            <div class="mt-9 flex flex-col gap-3 sm:flex-row">
+              <a
+                href="#demo"
+                class="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-ember to-signal px-7 py-4 text-sm font-extrabold text-white shadow-glow transition hover:-translate-y-1"
+              >
+                Get Free Demo
+                <i data-lucide="calendar-check" class="h-5 w-5"></i>
+              </a>
+              <a
+                href="#contact"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-charcoal/15 bg-white/70 px-7 py-4 text-sm font-extrabold text-charcoal transition hover:-translate-y-1 hover:border-charcoal hover:bg-charcoal hover:text-white"
+              >
+                Contact Us
+                <i data-lucide="phone-call" class="h-5 w-5"></i>
+              </a>
+            </div>
+
+            <div class="mt-8 hidden flex-wrap gap-3 2xl:flex">
+              <div class="inline-flex items-center gap-2 rounded-lg border border-charcoal/10 bg-white/65 px-4 py-3 text-sm font-extrabold text-charcoal">
+                <i data-lucide="cloud-check" class="h-4 w-4 text-ember"></i>
+                99.9% cloud-ready design
+              </div>
+              <div class="inline-flex items-center gap-2 rounded-lg border border-charcoal/10 bg-white/65 px-4 py-3 text-sm font-extrabold text-charcoal">
+                <i data-lucide="headphones" class="h-4 w-4 text-ember"></i>
+                Support-ready operations
+              </div>
+              <div class="inline-flex items-center gap-2 rounded-lg border border-charcoal/10 bg-white/65 px-4 py-3 text-sm font-extrabold text-charcoal">
+                <i data-lucide="store" class="h-4 w-4 text-ember"></i>
+                SME retail and food fit
+              </div>
+            </div>
+          </div>
+
+          <div class="hardware-stage reveal" aria-label="POS hardware and software dashboard mockup">
+            <div class="hero-photo-frame">
+              <img
+                src="./IMAGES/actualpos1.jpg"
+                alt="RNZ POS system installed in a Philippine retail store"
+              />
+            </div>
+
+            <div class="floating-card left-2 top-10 w-48 p-4">
+              <div class="flex items-center gap-3">
+                <span class="icon-box !h-10 !w-10"><i data-lucide="bar-chart-3" class="h-5 w-5"></i></span>
+                <div>
+                  <p class="text-xs font-bold uppercase text-neutral-500">Today Sales</p>
+                  <p class="text-xl font-extrabold text-charcoal">+18.4%</p>
+                </div>
+              </div>
+            </div>
+            <div class="floating-card right-2 top-14 w-52 p-4" style="animation-delay: -1.4s">
+              <p class="text-xs font-bold uppercase text-neutral-500">Inventory Alert</p>
+              <p class="mt-1 text-sm font-extrabold text-charcoal">42 items need restock</p>
+              <div class="mt-3 h-2 rounded-full bg-neutral-200"><span class="block h-full w-2/3 rounded-full bg-ember"></span></div>
+            </div>
+            <div class="floating-card bottom-12 left-8 w-56 p-4" style="animation-delay: -2.2s">
+              <div class="flex items-center gap-3">
+                <span class="icon-box !h-10 !w-10"><i data-lucide="cloud-check" class="h-5 w-5"></i></span>
+                <div>
+                  <p class="text-xs font-bold uppercase text-neutral-500">Cloud Sync</p>
+                  <p class="text-sm font-extrabold text-charcoal">Backed up 2 mins ago</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="solutions" class="px-4 py-20">
+        <div class="mx-auto max-w-7xl">
+          <div class="reveal mx-auto max-w-3xl text-center">
+            <p class="section-kicker">Built for Philippine SMEs</p>
+            <h2 class="mt-3 font-display text-4xl font-bold text-charcoal sm:text-5xl">Retail and restaurant technology that works as one system.</h2>
+            <p class="mt-5 text-lg leading-8 text-neutral-600">
+              RNZ brings software, devices, reports, and support into a practical operating platform for growing businesses.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-5 md:grid-cols-3">
+            <article class="feature-card reveal p-6">
+              <div class="icon-box"><i data-lucide="shopping-basket" class="h-6 w-6"></i></div>
+              <h3 class="mt-5 text-xl font-extrabold text-charcoal">Retail POS</h3>
+              <p class="mt-3 leading-7 text-neutral-600">Fast checkout, barcode scanning, receipts, discounts, returns, and daily cash tracking.</p>
+            </article>
+            <article class="feature-card reveal p-6">
+              <div class="icon-box"><i data-lucide="utensils" class="h-6 w-6"></i></div>
+              <h3 class="mt-5 text-xl font-extrabold text-charcoal">Restaurant POS</h3>
+              <p class="mt-3 leading-7 text-neutral-600">Table service, kitchen flow, orders, delivery coordination, and branch-level monitoring.</p>
+            </article>
+            <article class="feature-card reveal p-6">
+              <div class="icon-box"><i data-lucide="warehouse" class="h-6 w-6"></i></div>
+              <h3 class="mt-5 text-xl font-extrabold text-charcoal">Warehouse Systems</h3>
+              <p class="mt-3 leading-7 text-neutral-600">Stock receiving, transfers, supplier tracking, inventory audits, and multi-location visibility.</p>
+            </article>
+            <article class="feature-card reveal p-6">
+              <div class="icon-box"><i data-lucide="building-2" class="h-6 w-6"></i></div>
+              <h3 class="mt-5 text-xl font-extrabold text-charcoal">Company Software</h3>
+              <p class="mt-3 leading-7 text-neutral-600">Custom business systems built around approvals, records, reports, and daily team workflows.</p>
+            </article>
+            <article class="feature-card reveal p-6">
+              <div class="icon-box"><i data-lucide="wallet-cards" class="h-6 w-6"></i></div>
+              <h3 class="mt-5 text-xl font-extrabold text-charcoal">Payroll System</h3>
+              <p class="mt-3 leading-7 text-neutral-600">Employee records, attendance, payroll computation, deductions, and payout summaries.</p>
+            </article>
+            <article class="feature-card reveal p-6">
+              <div class="icon-box"><i data-lucide="calculator" class="h-6 w-6"></i></div>
+              <h3 class="mt-5 text-xl font-extrabold text-charcoal">Accounting System</h3>
+              <p class="mt-3 leading-7 text-neutral-600">Sales, expenses, payables, receivables, summaries, and export-ready financial reports.</p>
+            </article>
+            <article class="feature-card reveal p-6">
+              <div class="icon-box"><i data-lucide="code-2" class="h-6 w-6"></i></div>
+              <h3 class="mt-5 text-xl font-extrabold text-charcoal">Website Development</h3>
+              <p class="mt-3 leading-7 text-neutral-600">Responsive websites for company profiles, service pages, bookings, inquiries, and online presence.</p>
+            </article>
+            <article class="feature-card reveal p-6">
+              <div class="icon-box"><i data-lucide="users-round" class="h-6 w-6"></i></div>
+              <h3 class="mt-5 text-xl font-extrabold text-charcoal">Account Management System</h3>
+              <p class="mt-3 leading-7 text-neutral-600">Manage customers, accounts, transactions, balances, activity history, and service records.</p>
+            </article>
+            <article class="feature-card reveal p-6">
+              <div class="icon-box"><i data-lucide="server" class="h-6 w-6"></i></div>
+              <h3 class="mt-5 text-xl font-extrabold text-charcoal">Web Hosting</h3>
+              <p class="mt-3 leading-7 text-neutral-600">Hosting setup, domain support, email configuration, deployment, backups, and basic maintenance.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="px-4 py-20">
+        <div class="mx-auto max-w-7xl">
+          <div class="reveal flex flex-col justify-between gap-6 md:flex-row md:items-end">
+            <div class="max-w-2xl">
+              <p class="section-kicker">Features</p>
+              <h2 class="mt-3 font-display text-4xl font-bold text-charcoal sm:text-5xl">Everything needed to run daily operations.</h2>
+            </div>
+            <p class="max-w-md text-lg leading-8 text-neutral-600">
+              Designed for speed at the counter and clarity in the back office.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <article class="feature-card reveal p-5"><div class="icon-box"><i data-lucide="boxes" class="h-6 w-6"></i></div><h3 class="mt-5 font-extrabold">Inventory Management</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Track stocks, reorder points, transfers, and item movement.</p></article>
+            <article class="feature-card reveal p-5"><div class="icon-box"><i data-lucide="line-chart" class="h-6 w-6"></i></div><h3 class="mt-5 font-extrabold">Sales Reports</h3><p class="mt-2 text-sm leading-6 text-neutral-600">See daily sales, top products, margins, and cashier activity.</p></article>
+            <article class="feature-card reveal p-5"><div class="icon-box"><i data-lucide="scan-barcode" class="h-6 w-6"></i></div><h3 class="mt-5 font-extrabold">Barcode Scanning</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Move customers through checkout quickly and accurately.</p></article>
+            <article class="feature-card reveal p-5"><div class="icon-box"><i data-lucide="cloud-upload" class="h-6 w-6"></i></div><h3 class="mt-5 font-extrabold">Cloud Backup</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Protect transaction data with reliable online sync.</p></article>
+            <article class="feature-card reveal p-5"><div class="icon-box"><i data-lucide="wifi-off" class="h-6 w-6"></i></div><h3 class="mt-5 font-extrabold">Offline Mode</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Continue selling even during unstable internet windows.</p></article>
+            <article class="feature-card reveal p-5"><div class="icon-box"><i data-lucide="users-round" class="h-6 w-6"></i></div><h3 class="mt-5 font-extrabold">Multi User</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Set roles for owners, admins, cashiers, and warehouse teams.</p></article>
+            <article class="feature-card reveal p-5"><div class="icon-box"><i data-lucide="clipboard-list" class="h-6 w-6"></i></div><h3 class="mt-5 font-extrabold">Warehouse Monitoring</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Audit receiving, releases, transfers, and branch stock.</p></article>
+            <article class="feature-card reveal p-5"><div class="icon-box"><i data-lucide="smartphone" class="h-6 w-6"></i></div><h3 class="mt-5 font-extrabold">Mobile Access</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Monitor essential activity from mobile devices.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section id="hardware" class="bg-charcoal px-4 py-20 text-white">
+        <div class="mx-auto max-w-7xl">
+          <div class="reveal mx-auto max-w-3xl text-center">
+            <p class="font-bold uppercase tracking-[0.14em] text-amber">Hardware</p>
+            <h2 class="mt-3 font-display text-4xl font-bold sm:text-5xl">Complete POS hardware packages.</h2>
+            <p class="mt-5 text-lg leading-8 text-white/70">
+              Deploy with the devices your counter, kitchen, and stockroom actually need.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+            <article class="product-card reveal bg-white/8 p-5 text-white">
+              <div class="grid aspect-square place-items-center rounded-lg bg-white/8"><i data-lucide="monitor" class="h-16 w-16 text-amber"></i></div>
+              <h3 class="mt-5 font-extrabold">POS Terminals</h3>
+              <p class="mt-2 text-sm leading-6 text-white/65">Counter-ready terminals for fast transactions.</p>
+            </article>
+            <article class="product-card reveal bg-white/8 p-5 text-white">
+              <div class="grid aspect-square place-items-center rounded-lg bg-white/8"><i data-lucide="scan-barcode" class="h-16 w-16 text-amber"></i></div>
+              <h3 class="mt-5 font-extrabold">Barcode Scanners</h3>
+              <p class="mt-2 text-sm leading-6 text-white/65">Reliable item scanning for retail speed.</p>
+            </article>
+            <article class="product-card reveal bg-white/8 p-5 text-white">
+              <div class="grid aspect-square place-items-center rounded-lg bg-white/8"><i data-lucide="printer" class="h-16 w-16 text-amber"></i></div>
+              <h3 class="mt-5 font-extrabold">Receipt Printers</h3>
+              <p class="mt-2 text-sm leading-6 text-white/65">Thermal receipt printing for daily sales.</p>
+            </article>
+            <article class="product-card reveal bg-white/8 p-5 text-white">
+              <div class="grid aspect-square place-items-center rounded-lg bg-white/8"><i data-lucide="archive" class="h-16 w-16 text-amber"></i></div>
+              <h3 class="mt-5 font-extrabold">Cash Drawers</h3>
+              <p class="mt-2 text-sm leading-6 text-white/65">Secure drawer setup for cashier stations.</p>
+            </article>
+            <article class="product-card reveal bg-white/8 p-5 text-white">
+              <div class="grid aspect-square place-items-center rounded-lg bg-white/8"><i data-lucide="tablet-smartphone" class="h-16 w-16 text-amber"></i></div>
+              <h3 class="mt-5 font-extrabold">Touch Displays</h3>
+              <p class="mt-2 text-sm leading-6 text-white/65">Modern touchscreen monitors and tablets.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="px-4 py-20">
+        <div class="mx-auto max-w-7xl">
+          <div class="reveal flex flex-col justify-between gap-6 md:flex-row md:items-end">
+            <div class="max-w-2xl">
+              <p class="section-kicker">Actual Deployments</p>
+              <h2 class="mt-3 font-display text-4xl font-bold text-charcoal sm:text-5xl">Real RNZ POS setups inside active stores.</h2>
+            </div>
+            <p class="max-w-md text-lg leading-8 text-neutral-600">
+              Use the same reliable setup across checkout counters, grocery shelves, restaurants, and warehouse operations.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-5 lg:grid-cols-3">
+            <article class="installation-card reveal">
+              <img src="./IMAGES/actualpos%20(2).jpg" alt="RNZ POS counter installation with cashier" />
+              <div class="p-6">
+                <p class="text-sm font-extrabold uppercase tracking-[0.14em] text-ember">Retail Counter</p>
+                <h3 class="mt-2 text-xl font-extrabold text-charcoal">Fast cashier workflow</h3>
+                <p class="mt-3 leading-7 text-neutral-600">Monitor, printer, barcode scanner, keyboard, and cash drawer working together at the front counter.</p>
+              </div>
+            </article>
+            <article class="installation-card reveal">
+              <img src="./IMAGES/actualpos%20(3).jpg" alt="RNZ POS station with inventory shelves" />
+              <div class="p-6">
+                <p class="text-sm font-extrabold uppercase tracking-[0.14em] text-ember">Grocery Setup</p>
+                <h3 class="mt-2 text-xl font-extrabold text-charcoal">Inventory-ready selling</h3>
+                <p class="mt-3 leading-7 text-neutral-600">POS software connected to item scanning, sales reports, and daily store operations.</p>
+              </div>
+            </article>
+            <article class="installation-card reveal">
+              <img src="./IMAGES/actualpos1.jpg" alt="RNZ POS station with barcode scanner and cash drawer" />
+              <div class="p-6">
+                <p class="text-sm font-extrabold uppercase tracking-[0.14em] text-ember">Complete Package</p>
+                <h3 class="mt-2 text-xl font-extrabold text-charcoal">Hardware plus software</h3>
+                <p class="mt-3 leading-7 text-neutral-600">A practical POS bundle for SMEs that need reliable checkout, reports, and support.</p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="px-4 pb-20">
+        <div class="mx-auto max-w-7xl">
+          <div class="reveal mx-auto max-w-3xl text-center">
+            <p class="section-kicker">POS Demo Videos</p>
+            <h2 class="mt-3 font-display text-4xl font-bold text-charcoal sm:text-5xl">See RNZ POS in real retail and restaurant workflows.</h2>
+            <p class="mt-5 text-lg leading-8 text-neutral-600">
+              Watch the actual system flow for counter selling, restaurant transactions, and day-to-day operations.
+            </p>
+          </div>
+
+          <div class="mt-12 grid gap-6 lg:grid-cols-2">
+            <article class="video-card reveal">
+              <video
+                controls
+                playsinline
+                preload="metadata"
+                poster="./IMAGES/actualpos%20(3).jpg"
+                aria-label="Retail POS demo video"
+              >
+                <source src="./videos/RetailsPOS.2.mp4" type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+              <div class="p-6">
+                <p class="text-sm font-extrabold uppercase tracking-[0.14em] text-ember">Retail POS</p>
+                <h3 class="mt-2 text-xl font-extrabold text-charcoal">Fast checkout for stores and groceries</h3>
+                <p class="mt-3 leading-7 text-neutral-600">
+                  Product lookup, barcode scanning, receipt printing, sales tracking, and daily cashier workflow.
+                </p>
+              </div>
+            </article>
+
+            <article class="video-card reveal">
+              <video
+                controls
+                playsinline
+                preload="metadata"
+                poster="./IMAGES/brochure.jpg"
+                aria-label="Restaurant POS demo video"
+              >
+                <source src="./videos/RestaurantPOS.2.mp4" type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
+              <div class="p-6">
+                <p class="text-sm font-extrabold uppercase tracking-[0.14em] text-ember">Restaurant POS</p>
+                <h3 class="mt-2 text-xl font-extrabold text-charcoal">Restaurant orders, tables, and reports</h3>
+                <p class="mt-3 leading-7 text-neutral-600">
+                  Manage restaurant transactions with order handling, kitchen-ready workflows, and business reports.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="px-4 pb-20">
+        <div class="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+          <div class="reveal">
+            <p class="section-kicker">Offers & Brochures</p>
+            <h2 class="mt-3 font-display text-4xl font-bold text-charcoal sm:text-5xl">Package offers ready for restaurants, services, and retail.</h2>
+            <p class="mt-5 text-lg leading-8 text-neutral-600">
+              RNZ packages include the core counter hardware and POS software needed to start selling, tracking, and reporting from day one.
+            </p>
+            <div class="mt-7 grid gap-3 text-sm font-extrabold text-charcoal sm:grid-cols-2">
+              <span class="inline-flex items-center gap-2 rounded-lg border border-charcoal/10 bg-white/70 px-4 py-3"><i data-lucide="check-circle-2" class="h-5 w-5 text-ember"></i> Touchscreen monitor</span>
+              <span class="inline-flex items-center gap-2 rounded-lg border border-charcoal/10 bg-white/70 px-4 py-3"><i data-lucide="check-circle-2" class="h-5 w-5 text-ember"></i> POS unit</span>
+              <span class="inline-flex items-center gap-2 rounded-lg border border-charcoal/10 bg-white/70 px-4 py-3"><i data-lucide="check-circle-2" class="h-5 w-5 text-ember"></i> Thermal printer</span>
+              <span class="inline-flex items-center gap-2 rounded-lg border border-charcoal/10 bg-white/70 px-4 py-3"><i data-lucide="check-circle-2" class="h-5 w-5 text-ember"></i> Cash drawer</span>
+            </div>
+          </div>
+
+          <div class="reveal grid gap-5 sm:grid-cols-2">
+            <a href="./IMAGES/brochure3.jpg" class="installation-card block" aria-label="Open RNZ touch package brochure">
+              <img src="./IMAGES/brochure3.jpg" alt="RNZ touch package brochure" class="!h-[420px] object-top" />
+            </a>
+            <a href="./IMAGES/brochure.jpg" class="installation-card block" aria-label="Open RNZ summer POS package brochure">
+              <img src="./IMAGES/brochure.jpg" alt="RNZ summer POS package brochure" class="!h-[420px] object-top" />
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section id="about" class="px-4 py-20">
+        <div class="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+          <div class="reveal">
+            <p class="section-kicker">Why Choose RNZ</p>
+            <h2 class="mt-3 font-display text-4xl font-bold text-charcoal sm:text-5xl">Local support with serious software capability.</h2>
+            <p class="mt-5 text-lg leading-8 text-neutral-600">
+              RNZ combines POS implementation, custom development, hardware setup, and practical business workflows in one accountable team.
+            </p>
+            <div class="mt-7 flex flex-col gap-3 sm:flex-row">
+              <a href="../" class="inline-flex items-center justify-center gap-2 rounded-lg bg-charcoal px-6 py-4 font-extrabold text-white transition hover:-translate-y-1 hover:bg-ember">
+                Open Client Support
+                <i data-lucide="life-buoy" class="h-5 w-5"></i>
+              </a>
+              <a href="../backend/" class="inline-flex items-center justify-center gap-2 rounded-lg border border-charcoal/15 bg-white/70 px-6 py-4 font-extrabold text-charcoal transition hover:-translate-y-1 hover:border-charcoal hover:bg-charcoal hover:text-white">
+                Admin Support Desk
+                <i data-lucide="shield-check" class="h-5 w-5"></i>
+              </a>
+            </div>
+          </div>
+          <div class="grid gap-5 sm:grid-cols-2">
+            <article class="choose-card reveal p-6"><i data-lucide="headphones" class="h-7 w-7 text-ember"></i><h3 class="mt-4 font-extrabold">Fast Support</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Responsive help for stores that cannot afford long downtime.</p></article>
+            <article class="choose-card reveal p-6"><i data-lucide="code-2" class="h-7 w-7 text-ember"></i><h3 class="mt-4 font-extrabold">Custom Development</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Adapt modules around your process, reports, and branch setup.</p></article>
+            <article class="choose-card reveal p-6"><i data-lucide="philippine-peso" class="h-7 w-7 text-ember"></i><h3 class="mt-4 font-extrabold">Affordable Pricing</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Practical packages for SMEs, growing chains, and warehouses.</p></article>
+            <article class="choose-card reveal p-6"><i data-lucide="shield-check" class="h-7 w-7 text-ember"></i><h3 class="mt-4 font-extrabold">Enterprise Reliability</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Cloud-ready architecture, user controls, backups, and monitoring.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="px-4 py-20" id="pricing">
+        <div class="mx-auto max-w-7xl">
+          <div class="reveal mx-auto max-w-3xl text-center">
+            <p class="section-kicker">Software Modules</p>
+            <h2 class="mt-3 font-display text-4xl font-bold text-charcoal sm:text-5xl">A connected platform for every department.</h2>
+          </div>
+
+          <div class="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            <article class="module-card reveal overflow-hidden">
+              <div class="module-shot">
+                <img src="./IMAGES/POS.png" alt="RNZ POS checkout screen" loading="lazy" />
+              </div>
+              <div class="p-6"><h3 class="font-extrabold">POS</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Checkout, receipts, cashiers, discounts, and daily summaries.</p></div>
+            </article>
+            <article class="module-card reveal overflow-hidden">
+              <div class="module-shot">
+                <img src="./IMAGES/WAREHOUSE.png" alt="RNZ warehouse management screen" loading="lazy" />
+              </div>
+              <div class="p-6"><h3 class="font-extrabold">Warehouse</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Receiving, releases, transfers, audits, and branch allocation.</p></div>
+            </article>
+            <article class="module-card reveal overflow-hidden">
+              <div class="module-shot">
+                <img src="./IMAGES/INVENTORY.png" alt="RNZ inventory stock monitoring screen" loading="lazy" />
+              </div>
+              <div class="p-6"><h3 class="font-extrabold">Inventory</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Item master, stock counts, reorder alerts, and supplier flow.</p></div>
+            </article>
+            <article class="module-card reveal overflow-hidden">
+              <div class="module-shot">
+                <img src="./IMAGES/SALESREPORT.png" alt="RNZ sales report screen" loading="lazy" />
+              </div>
+              <div class="p-6"><h3 class="font-extrabold">Accounting</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Sales summaries, expenses, payables, and export-ready reports.</p></div>
+            </article>
+            <article class="module-card reveal overflow-hidden">
+              <div class="module-shot">
+                <img src="./IMAGES/LISTOFDELIVERY.png" alt="RNZ delivery monitoring list screen" loading="lazy" />
+              </div>
+              <div class="p-6"><h3 class="font-extrabold">Delivery Monitoring</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Track order status, delivery assignments, and customer updates.</p></div>
+            </article>
+            <article class="module-card reveal overflow-hidden">
+              <div class="module-shot">
+                <img src="./IMAGES/CLIENTLIST.png" alt="RNZ client list management screen" loading="lazy" />
+              </div>
+              <div class="p-6"><h3 class="font-extrabold">Client Management</h3><p class="mt-2 text-sm leading-6 text-neutral-600">Customer profiles, credit records, orders, and account history.</p></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="px-4 py-20">
+        <div class="mx-auto max-w-7xl">
+          <div class="reveal flex flex-col justify-between gap-6 md:flex-row md:items-end">
+            <div>
+              <p class="section-kicker">Testimonials</p>
+              <h2 class="mt-3 font-display text-4xl font-bold text-charcoal sm:text-5xl">Built for operators who need fewer headaches.</h2>
+            </div>
+          </div>
+          <div class="mt-12 grid gap-5 md:grid-cols-3">
+            <article class="testimonial-card reveal p-6">
+              <div class="mb-5 flex gap-1 text-amber"><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i></div>
+              <p class="leading-7 text-neutral-700">"RNZ helped us organize sales and inventory in one place. Checkout became faster and our reports are easier to trust."</p>
+              <p class="mt-5 font-extrabold text-charcoal">Grocery Owner</p>
+              <p class="text-sm text-neutral-500">Quezon City</p>
+            </article>
+            <article class="testimonial-card reveal p-6">
+              <div class="mb-5 flex gap-1 text-amber"><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i></div>
+              <p class="leading-7 text-neutral-700">"The team understood our meat shop workflow and adjusted the system around our daily operations."</p>
+              <p class="mt-5 font-extrabold text-charcoal">Meat Shop Manager</p>
+              <p class="text-sm text-neutral-500">Bulacan</p>
+            </article>
+            <article class="testimonial-card reveal p-6">
+              <div class="mb-5 flex gap-1 text-amber"><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i><i data-lucide="star" class="h-5 w-5 fill-current"></i></div>
+              <p class="leading-7 text-neutral-700">"Hardware, software, and support came from one supplier. That made the rollout much easier for our branches."</p>
+              <p class="mt-5 font-extrabold text-charcoal">Restaurant Operator</p>
+              <p class="text-sm text-neutral-500">Laguna</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="demo" class="px-4 py-20">
+        <div class="reveal mx-auto max-w-7xl overflow-hidden rounded-lg bg-charcoal p-8 text-white shadow-premium sm:p-12 lg:p-16">
+          <div class="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+            <div>
+              <p class="font-bold uppercase tracking-[0.14em] text-amber">Ready to modernize your business?</p>
+              <h2 class="mt-4 font-display text-4xl font-bold sm:text-5xl">Book a demo and see the RNZ POS workflow in action.</h2>
+              <p class="mt-5 max-w-2xl text-lg leading-8 text-white/70">
+                Tell us your store type, number of branches, and hardware needs. RNZ will recommend a practical setup.
+              </p>
+              <div class="mt-7 grid gap-3 text-sm font-bold text-white/70">
+                <span class="inline-flex items-center gap-2"><i data-lucide="check-circle-2" class="h-5 w-5 text-amber"></i> Retail, restaurant, payroll, and custom systems</span>
+                <span class="inline-flex items-center gap-2"><i data-lucide="check-circle-2" class="h-5 w-5 text-amber"></i> Saved directly to the RNZ admin request list</span>
+                <span class="inline-flex items-center gap-2"><i data-lucide="check-circle-2" class="h-5 w-5 text-amber"></i> No account needed for the customer</span>
+              </div>
+            </div>
+
+            <form id="demoForm" action="./submit-demo.php" method="post" class="rounded-lg border border-white/10 bg-white/5 p-5 sm:p-6">
+              <div id="demoSuccess" class="form-status mb-5 rounded-lg border border-amber/30 bg-amber/15 p-4 text-sm font-bold text-amber">
+                Demo request sent.
+              </div>
+              <div id="demoError" class="form-status mb-5 rounded-lg border border-red-400/30 bg-red-500/15 p-4 text-sm font-bold text-red-100">
+                Please complete the required fields and try again.
+              </div>
+
+              <div class="grid gap-4 sm:grid-cols-2">
+                <label class="grid gap-2 text-sm font-extrabold text-white/80">
+                  Name
+                  <input class="demo-field" type="text" name="name" placeholder="Customer or business name" required />
+                </label>
+                <label class="grid gap-2 text-sm font-extrabold text-white/80">
+                  Contact Number
+                  <input class="demo-field" type="text" name="contact" placeholder="+63..." required />
+                </label>
+                <label class="grid gap-2 text-sm font-extrabold text-white/80 sm:col-span-2">
+                  Location
+                  <input class="demo-field" type="text" name="location" placeholder="City / province / store location" required />
+                </label>
+                <label class="grid gap-2 text-sm font-extrabold text-white/80">
+                  Preferred System
+                  <select id="preferredPos" class="demo-field" name="preferred_pos" required>
+                    <option value="">Select system</option>
+                    <option value="Retail">Retail</option>
+                    <option value="Restaurant">Restaurant</option>
+                    <option value="Warehouse Systems">Warehouse Systems</option>
+                    <option value="Company Software">Company Software</option>
+                    <option value="Payroll System">Payroll System</option>
+                    <option value="Accounting System">Accounting System</option>
+                    <option value="Website Development">Website Development</option>
+                    <option value="Account Management System">Account Management System</option>
+                    <option value="Web Hosting">Web Hosting</option>
+                    <option value="Custom System">Custom System</option>
+                    <option value="Others">Others</option>
+                  </select>
+                </label>
+                <label id="otherSystemWrap" class="hidden gap-2 text-sm font-extrabold text-white/80">
+                  Specify
+                  <input id="otherSystem" class="demo-field" type="text" name="other_system" placeholder="Specify other system" />
+                </label>
+                <label class="grid gap-2 text-sm font-extrabold text-white/80 sm:col-span-2">
+                  Notes
+                  <textarea class="demo-field min-h-28 resize-y" name="notes" placeholder="Branch count, hardware needed, preferred schedule, or other details"></textarea>
+                </label>
+              </div>
+
+              <div class="mt-5 flex flex-col gap-3 sm:flex-row">
+                <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-7 py-4 font-extrabold text-charcoal transition hover:-translate-y-1 hover:bg-amber">
+                  Submit Demo Request
+                  <i data-lucide="send" class="h-5 w-5"></i>
+                </button>
+                <a href="admin-demo.php" class="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 px-7 py-4 font-extrabold text-white transition hover:-translate-y-1 hover:bg-white/10">
+                  Admin Requests
+                  <i data-lucide="clipboard-list" class="h-5 w-5"></i>
+                </a>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="contact" class="bg-[#101010] px-4 py-14 text-white">
+      <div class="mx-auto grid max-w-7xl gap-10 md:grid-cols-2 lg:grid-cols-[1.2fr_.8fr_.8fr_1fr]">
+        <div>
+          <div class="flex items-center gap-3">
+            <span class="brand-mark rounded-lg bg-white">
+              <img src="./new_logo_rnz_software_development_services_8Fg_icon.ico" alt="RNZ logo" class="h-8 w-8 object-contain" />
+            </span>
+            <div>
+              <p class="font-display text-2xl font-bold">RNZ</p>
+              <p class="text-xs font-bold uppercase tracking-[0.2em] text-white/45">Software Development Services</p>
+            </div>
+          </div>
+          <p class="mt-5 max-w-sm leading-7 text-white/65">
+            POS systems, hardware, cloud inventory, and custom business software for Philippine SMEs.
+          </p>
+          <div class="mt-6 flex gap-3">
+            <a href="https://www.facebook.com/RNZSoftwareDS" target="_blank" rel="noopener noreferrer" aria-label="RNZ Software Development Services Facebook page" class="grid h-10 w-10 place-items-center rounded-lg bg-white/10 transition hover:bg-ember"><i data-lucide="share-2" class="h-5 w-5"></i></a>
+            <a href="mailto:rnzsoftwaredevserv@gmail.com" aria-label="Email RNZ Software Development Services" class="grid h-10 w-10 place-items-center rounded-lg bg-white/10 transition hover:bg-ember"><i data-lucide="mail" class="h-5 w-5"></i></a>
+            <a href="tel:+639614694238" aria-label="Call RNZ Software Development Services" class="grid h-10 w-10 place-items-center rounded-lg bg-white/10 transition hover:bg-ember"><i data-lucide="phone" class="h-5 w-5"></i></a>
+          </div>
+        </div>
+        <div>
+          <h3 class="font-extrabold">Services</h3>
+          <div class="mt-5 grid gap-3 text-sm text-white/60">
+            <a href="#solutions" class="hover:text-white">Point of Sale Systems</a>
+            <a href="#hardware" class="hover:text-white">POS Hardware</a>
+            <a href="#features" class="hover:text-white">Inventory Systems</a>
+            <a href="#pricing" class="hover:text-white">Cloud POS Solutions</a>
+          </div>
+        </div>
+        <div>
+          <h3 class="font-extrabold">Quick Links</h3>
+          <div class="mt-5 grid gap-3 text-sm text-white/60">
+            <a href="#home" class="hover:text-white">Home</a>
+            <a href="#features" class="hover:text-white">Features</a>
+            <a href="#about" class="hover:text-white">About</a>
+            <a href="#demo" class="hover:text-white">Book Demo</a>
+            <a href="../" class="support-portal-button hover:text-white">Support Portal</a>
+          </div>
+        </div>
+        <div>
+          <h3 class="font-extrabold">Contact</h3>
+          <div class="mt-5 grid gap-3 text-sm leading-6 text-white/65">
+            <p>
+              Unit C, Limburg Building<br />
+              Malabanias, Angeles City 2009
+            </p>
+            <a href="https://www.facebook.com/RNZSoftwareDS" target="_blank" rel="noopener noreferrer" class="font-bold text-white transition hover:text-amber">
+              facebook.com/RNZSoftwareDS
+            </a>
+            <a href="tel:+639614694238" class="font-bold text-white transition hover:text-amber">
+              +63961-469-4238
+            </a>
+            <a href="mailto:rnzsoftwaredevserv@gmail.com" class="font-bold text-white transition hover:text-amber">
+              rnzsoftwaredevserv@gmail.com
+            </a>
+            <p>VAT Reg. TIN No.: 736-119-814-000</p>
+            <p>Accreditation No.: 21A7361198142020051311</p>
+            <p>Date Issued: 12/02/2020</p>
+          </div>
+        </div>
+      </div>
+      <div class="mx-auto mt-12 flex max-w-7xl flex-col justify-between gap-3 border-t border-white/10 pt-6 text-sm text-white/45 sm:flex-row">
+        <p>Copyright <span id="year"></span> RNZ Software Development Services. All rights reserved.</p>
+        <p>Premium POS, inventory, and business software solutions.</p>
+      </div>
+    </footer>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script>
+      const revealObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-visible");
+              revealObserver.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.14 }
+      );
+
+      document.querySelectorAll(".reveal").forEach((element, index) => {
+        element.style.transitionDelay = `${Math.min(index % 6, 5) * 55}ms`;
+        revealObserver.observe(element);
+      });
+
+      const menuButton = document.getElementById("menuButton");
+      const mobileMenu = document.getElementById("mobileMenu");
+      menuButton.addEventListener("click", () => {
+        const isOpen = mobileMenu.classList.toggle("is-open");
+        menuButton.setAttribute("aria-expanded", String(isOpen));
+      });
+
+      mobileMenu.querySelectorAll("a").forEach((link) => {
+        link.addEventListener("click", () => {
+          mobileMenu.classList.remove("is-open");
+          menuButton.setAttribute("aria-expanded", "false");
+        });
+      });
+
+      document.querySelectorAll(".support-portal-button").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          if (
+            event.defaultPrevented ||
+            event.button !== 0 ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey
+          ) {
+            return;
+          }
+
+          const href = link.getAttribute("href");
+          if (!href || href.startsWith("#")) {
+            return;
+          }
+
+          event.preventDefault();
+          link.classList.remove("is-clicked");
+          void link.offsetWidth;
+          link.classList.add("is-clicked");
+          window.setTimeout(() => {
+            window.location.href = href;
+          }, 220);
+        });
+      });
+
+      const preferredPos = document.getElementById("preferredPos");
+      const otherSystemWrap = document.getElementById("otherSystemWrap");
+      const otherSystem = document.getElementById("otherSystem");
+
+      preferredPos.addEventListener("change", () => {
+        const needsOther = preferredPos.value === "Others";
+        otherSystemWrap.classList.toggle("hidden", !needsOther);
+        otherSystemWrap.classList.toggle("grid", needsOther);
+        otherSystem.required = needsOther;
+        if (!needsOther) {
+          otherSystem.value = "";
+        }
+      });
+
+      const demoParams = new URLSearchParams(window.location.search);
+      const demoStatus = demoParams.get("demo");
+      const successMessage = document.getElementById("demoSuccess");
+      const errorMessage = document.getElementById("demoError");
+
+      if (demoStatus === "success") {
+        successMessage.classList.add("is-visible");
+        document.getElementById("demo").scrollIntoView();
+      }
+
+      if (demoStatus === "error") {
+        errorMessage.classList.add("is-visible");
+        document.getElementById("demo").scrollIntoView();
+      }
+
+      document.getElementById("year").textContent = new Date().getFullYear();
+      lucide.createIcons();
+    </script>
+  </body>
+</html>
