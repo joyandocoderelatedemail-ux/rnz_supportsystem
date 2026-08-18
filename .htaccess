@@ -3,10 +3,10 @@ DirectoryIndex index.php index.html
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    
+    RewriteBase /
+
     # If the request is not a real directory and a matching .php file exists, rewrite internally
     RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{DOCUMENT_ROOT}/$1.php -f [OR]
     RewriteCond %{REQUEST_FILENAME}.php -f
     RewriteRule ^(.*)$ $1.php [L,QSA]
 </IfModule>
