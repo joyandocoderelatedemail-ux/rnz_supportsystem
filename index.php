@@ -8,48 +8,74 @@ if (!is_logged_in()) {
     exit;
 }
 $client = get_logged_client();
-$accountnum = $client['accountnum'];
+$accountnum = (is_array($client) && isset($client['accountnum'])) ? $client['accountnum'] : '';
 
 $pdo = get_db_connection();
 
-// 1. Fetch Client Support Tickets metrics & recent items
-$stmt = $pdo->prepare("SELECT COUNT(*) AS total, 
-    SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) AS pending_cnt,
-    SUM(CASE WHEN status = 'In Progress' THEN 1 ELSE 0 END) AS in_progress_cnt,
-    SUM(CASE WHEN status = 'Resolved' THEN 1 ELSE 0 END) AS resolved_cnt
-    FROM client_support_tickets WHERE accountnum = :acct");
-$stmt->execute(array(':acct' => $accountnum));
-$ticket_stats = $stmt->fetch();
+$total_tickets = 0;
+$pending_tickets = 0;
+$in_progress_tickets = 0;
+$resolved_tickets = 0;
+$recent_tickets = array();
+$recent_technotes = array();
+$recent_workorders = array();
 
-$total_tickets = isset($ticket_stats['total']) ? intval($ticket_stats['total']) : 0;
-$pending_tickets = isset($ticket_stats['pending_cnt']) ? intval($ticket_stats['pending_cnt']) : 0;
-$in_progress_tickets = isset($ticket_stats['in_progress_cnt']) ? intval($ticket_stats['in_progress_cnt']) : 0;
-$resolved_tickets = isset($ticket_stats['resolved_cnt']) ? intval($ticket_stats['resolved_cnt']) : 0;
+try {
+    // 1. Fetch Client Support Tickets metrics & recent items
+    $stmt = $pdo->prepare("SELECT COUNT(*) AS total, 
+        SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) AS pending_cnt,
+        SUM(CASE WHEN status = 'In Progress' THEN 1 ELSE 0 END) AS in_progress_cnt,
+        SUM(CASE WHEN status = 'Resolved' THEN 1 ELSE 0 END) AS resolved_cnt
+        FROM client_support_tickets WHERE accountnum = :acct");
+    $stmt->execute(array(':acct' => $accountnum));
+    $ticket_stats = $stmt->fetch();
 
-// Fetch Recent Client Tickets (Limit 5)
-$stmt = $pdo->prepare("SELECT * FROM client_support_tickets WHERE accountnum = :acct ORDER BY id DESC LIMIT 5");
-$stmt->execute(array(':acct' => $accountnum));
-$recent_tickets = $stmt->fetchAll();
+    $total_tickets = isset($ticket_stats['total']) ? intval($ticket_stats['total']) : 0;
+    $pending_tickets = isset($ticket_stats['pending_cnt']) ? intval($ticket_stats['pending_cnt']) : 0;
+    $in_progress_tickets = isset($ticket_stats['in_progress_cnt']) ? intval($ticket_stats['in_progress_cnt']) : 0;
+    $resolved_tickets = isset($ticket_stats['resolved_cnt']) ? intval($ticket_stats['resolved_cnt']) : 0;
 
-// 2. Fetch Tech Notes history from bucket_technotes
-$stmt = $pdo->prepare("SELECT * FROM bucket_technotes WHERE accountnum = :acct ORDER BY id DESC LIMIT 4");
-$stmt->execute(array(':acct' => $accountnum));
-$recent_technotes = $stmt->fetchAll();
-
-// 3. Fetch Work Orders history from bucket_workorder
-$stmt = $pdo->prepare("SELECT * FROM bucket_workorder WHERE accountnum = :acct ORDER BY id DESC LIMIT 4");
-$stmt->execute(array(':acct' => $accountnum));
-$recent_workorders = $stmt->fetchAll();
-
-// 4. Fetch fresh client profile data for live warranty status & details
-$stmt_c_fresh = $pdo->prepare("SELECT * FROM bucket_client WHERE accountnum = :acct LIMIT 1");
-$stmt_c_fresh->execute(array(':acct' => $accountnum));
-$client_fresh = $stmt_c_fresh->fetch();
-if ($client_fresh) {
-    $client = array_merge($client, $client_fresh);
+    // Fetch Recent Client Tickets (Limit 5)
+    $stmt = $pdo->prepare("SELECT * FROM client_support_tickets WHERE accountnum = :acct ORDER BY id DESC LIMIT 5");
+    $stmt->execute(array(':acct' => $accountnum));
+    $recent_tickets = $stmt->fetchAll();
+} catch (PDOException $e) {
+    error_log("Dashboard tickets query error: " . $e->getMessage());
 }
 
-$has_active_warranty = (isset($client['warranty_status']) && $client['warranty_status'] === 'Active');
+try {
+    // 2. Fetch Tech Notes history from bucket_technotes
+    $stmt = $pdo->prepare("SELECT * FROM bucket_technotes WHERE accountnum = :acct ORDER BY id DESC LIMIT 4");
+    $stmt->execute(array(':acct' => $accountnum));
+    $recent_technotes = $stmt->fetchAll();
+} catch (PDOException $e) {
+    error_log("Dashboard technotes query error: " . $e->getMessage());
+}
+
+try {
+    // 3. Fetch Work Orders history from bucket_workorder
+    $stmt = $pdo->prepare("SELECT * FROM bucket_workorder WHERE accountnum = :acct ORDER BY id DESC LIMIT 4");
+    $stmt->execute(array(':acct' => $accountnum));
+    $recent_workorders = $stmt->fetchAll();
+} catch (PDOException $e) {
+    error_log("Dashboard workorders query error: " . $e->getMessage());
+}
+
+try {
+    // 4. Fetch fresh client profile data for live warranty status & details
+    if (!empty($accountnum)) {
+        $stmt_c_fresh = $pdo->prepare("SELECT * FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+        $stmt_c_fresh->execute(array(':acct' => $accountnum));
+        $client_fresh = $stmt_c_fresh->fetch();
+        if ($client_fresh && is_array($client)) {
+            $client = array_merge($client, $client_fresh);
+        }
+    }
+} catch (PDOException $e) {
+    error_log("Dashboard client query error: " . $e->getMessage());
+}
+
+$has_active_warranty = (is_array($client) && isset($client['warranty_status']) && $client['warranty_status'] === 'Active');
 
 $active_page = 'dashboard';
 $page_title = 'Dashboard';

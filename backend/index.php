@@ -11,29 +11,43 @@ if (!is_tech_logged_in()) {
 // Auto initialize inventory tables
 init_inventory_tables();
 
-$pdo = get_db_connection();
+$total_tickets = 0;
+$pending_tickets = 0;
+$in_progress_tickets = 0;
+$resolved_tickets = 0;
+$inv_total_items = 0;
+$inv_total_units = 0;
+$inv_low_stock = 0;
+$low_inv_items = array();
+$recent_tickets = array();
 
-// KPI Stats Queries
-$total_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets")->fetchColumn());
-$pending_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'Pending'")->fetchColumn());
-$in_progress_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'In Progress'")->fetchColumn());
-$resolved_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status IN ('Resolved', 'Closed')")->fetchColumn());
+try {
+    $pdo = get_db_connection();
 
-// Inventory Summary Metrics
-$inv_total_items = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items")->fetchColumn());
-$inv_total_units = intval($pdo->query("SELECT SUM(quantity) FROM support_inventory_items")->fetchColumn());
-$inv_low_stock = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items WHERE quantity <= min_threshold")->fetchColumn());
+    // KPI Stats Queries
+    $total_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets")->fetchColumn());
+    $pending_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'Pending'")->fetchColumn());
+    $in_progress_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'In Progress'")->fetchColumn());
+    $resolved_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status IN ('Resolved', 'Closed')")->fetchColumn());
 
-// Low Stock / Featured Hardware Items
-$stmt_low_inv = $pdo->query("SELECT * FROM support_inventory_items ORDER BY quantity ASC, min_threshold DESC LIMIT 4");
-$low_inv_items = $stmt_low_inv->fetchAll();
+    // Inventory Summary Metrics
+    $inv_total_items = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items")->fetchColumn());
+    $inv_total_units = intval($pdo->query("SELECT SUM(quantity) FROM support_inventory_items")->fetchColumn());
+    $inv_low_stock = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items WHERE quantity <= min_threshold")->fetchColumn());
 
-// Recent Incoming Tickets
-$stmt_tickets = $pdo->query("SELECT t.*, c.tradename, c.clientname 
-    FROM client_support_tickets t 
-    LEFT JOIN bucket_client c ON t.accountnum = c.accountnum 
-    ORDER BY t.created_at DESC LIMIT 8");
-$recent_tickets = $stmt_tickets->fetchAll();
+    // Low Stock / Featured Hardware Items
+    $stmt_low_inv = $pdo->query("SELECT * FROM support_inventory_items ORDER BY quantity ASC, min_threshold DESC LIMIT 4");
+    $low_inv_items = $stmt_low_inv ? $stmt_low_inv->fetchAll() : array();
+
+    // Recent Incoming Tickets
+    $stmt_tickets = $pdo->query("SELECT t.*, c.tradename, c.clientname 
+        FROM client_support_tickets t 
+        LEFT JOIN bucket_client c ON t.accountnum = c.accountnum 
+        ORDER BY t.created_at DESC LIMIT 8");
+    $recent_tickets = $stmt_tickets ? $stmt_tickets->fetchAll() : array();
+} catch (PDOException $e) {
+    error_log("Backend dashboard query error: " . $e->getMessage());
+}
 
 $active_page = 'dashboard';
 $page_title = 'Support Center Overview';

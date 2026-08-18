@@ -4,8 +4,12 @@ require_once __DIR__ . '/config.php';
 
 function init_client_portal_tables() {
     $pdo = get_db_connection();
+    if (!$pdo) {
+        return false;
+    }
     
-    // 1. Create client_support_tickets table
+    try {
+        // 1. Create client_support_tickets table
     $sql1 = "CREATE TABLE IF NOT EXISTS `client_support_tickets` (
         `id` INT(11) NOT NULL AUTO_INCREMENT,
         `ticket_number` VARCHAR(50) NOT NULL UNIQUE,
@@ -122,22 +126,90 @@ function init_client_portal_tables() {
         KEY `created_at` (`created_at`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
 
-    try {
+        // Additional legacy tables if missing
+        $sql7 = "CREATE TABLE IF NOT EXISTS `bucket_client` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT,
+            `accountnum` VARCHAR(100) NOT NULL UNIQUE,
+            `type` VARCHAR(50) DEFAULT 'Standard',
+            `clientname` VARCHAR(150) NOT NULL,
+            `tradename` VARCHAR(150) NOT NULL,
+            `address` TEXT NULL,
+            `contactnum` VARCHAR(100) NULL,
+            `emailaddress` VARCHAR(150) NULL,
+            `monthlyretainersfee` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            `outstandingbalance` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            `warranty_status` VARCHAR(50) NOT NULL DEFAULT 'Inactive',
+            `warranty_expiry` DATE NULL,
+            `warranty_notes` TEXT NULL,
+            `warranty_coverage_type` VARCHAR(50) NOT NULL DEFAULT 'Both',
+            PRIMARY KEY (`id`),
+            KEY `accountnum` (`accountnum`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
+        $sql8 = "CREATE TABLE IF NOT EXISTS `bucket_technotes` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT,
+            `accountnum` VARCHAR(100) NOT NULL,
+            `xdate` DATE NOT NULL,
+            `clientname` VARCHAR(150) NOT NULL,
+            `address` TEXT NULL,
+            `techname` VARCHAR(100) NOT NULL,
+            `reasonoftech` TEXT NOT NULL,
+            `causeoftheissue` TEXT NULL,
+            `resso` TEXT NULL,
+            `status` VARCHAR(50) NOT NULL DEFAULT 'Done',
+            PRIMARY KEY (`id`),
+            KEY `accountnum` (`accountnum`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
+        $sql9 = "CREATE TABLE IF NOT EXISTS `bucket_workorder` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT,
+            `accountnum` VARCHAR(100) NOT NULL,
+            `xdate` DATE NOT NULL,
+            `clientname` VARCHAR(150) NOT NULL,
+            `address` TEXT NULL,
+            `natureofwork` TEXT NOT NULL,
+            `amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+            `status` VARCHAR(50) NOT NULL DEFAULT 'Unpaid',
+            `ornum` VARCHAR(100) NULL,
+            PRIMARY KEY (`id`),
+            KEY `accountnum` (`accountnum`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
+        $sql10 = "CREATE TABLE IF NOT EXISTS `user` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT,
+            `user` VARCHAR(100) NOT NULL UNIQUE,
+            `pass` VARCHAR(255) NOT NULL,
+            `fname` VARCHAR(100) NULL,
+            `lname` VARCHAR(100) NULL,
+            `emailadd` VARCHAR(150) NULL,
+            `accesslevel` VARCHAR(50) NOT NULL DEFAULT 'technician',
+            PRIMARY KEY (`id`),
+            KEY `user` (`user`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
         $pdo->exec($sql1);
         $pdo->exec($sql2);
         $pdo->exec($sql3);
         $pdo->exec($sql4);
         $pdo->exec($sql5);
         $pdo->exec($sql6);
+        $pdo->exec($sql7);
+        $pdo->exec($sql8);
+        $pdo->exec($sql9);
+        $pdo->exec($sql10);
 
-        // 4. Ensure bucket_client has warranty fields
-        $check_col = $pdo->query("SHOW COLUMNS FROM `bucket_client` LIKE 'warranty_status'");
-        if ($check_col->rowCount() == 0) {
-            $pdo->exec("ALTER TABLE `bucket_client` ADD `warranty_status` VARCHAR(50) NOT NULL DEFAULT 'Inactive', ADD `warranty_expiry` DATE NULL, ADD `warranty_notes` TEXT NULL");
-        }
-        $check_cov = $pdo->query("SHOW COLUMNS FROM `bucket_client` LIKE 'warranty_coverage_type'");
-        if ($check_cov->rowCount() == 0) {
-            $pdo->exec("ALTER TABLE `bucket_client` ADD `warranty_coverage_type` VARCHAR(50) NOT NULL DEFAULT 'Both'");
+        // Ensure bucket_client has warranty fields
+        try {
+            $check_col = $pdo->query("SHOW COLUMNS FROM `bucket_client` LIKE 'warranty_status'");
+            if ($check_col && $check_col->rowCount() == 0) {
+                $pdo->exec("ALTER TABLE `bucket_client` ADD `warranty_status` VARCHAR(50) NOT NULL DEFAULT 'Inactive', ADD `warranty_expiry` DATE NULL, ADD `warranty_notes` TEXT NULL");
+            }
+            $check_cov = $pdo->query("SHOW COLUMNS FROM `bucket_client` LIKE 'warranty_coverage_type'");
+            if ($check_cov && $check_cov->rowCount() == 0) {
+                $pdo->exec("ALTER TABLE `bucket_client` ADD `warranty_coverage_type` VARCHAR(50) NOT NULL DEFAULT 'Both'");
+            }
+        } catch (PDOException $e_col) {
+            // Non-blocking
         }
         return true;
     } catch (PDOException $e) {

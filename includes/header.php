@@ -4,87 +4,96 @@ if (!isset($page_title)) {
     $page_title = 'Dashboard';
 }
 $client = get_logged_client();
-if ($client) {
-    $pdo_hdr = get_db_connection();
-    $stmt_hdr = $pdo_hdr->prepare("SELECT * FROM bucket_client WHERE accountnum = :acct LIMIT 1");
-    $stmt_hdr->execute(array(':acct' => $client['accountnum']));
-    $fresh_c = $stmt_hdr->fetch();
-    if ($fresh_c) {
-        $client = array_merge($client, $fresh_c);
+if ($client && is_array($client) && !empty($client['accountnum'])) {
+    try {
+        $pdo_hdr = get_db_connection();
+        $stmt_hdr = $pdo_hdr->prepare("SELECT * FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+        $stmt_hdr->execute(array(':acct' => $client['accountnum']));
+        $fresh_c = $stmt_hdr->fetch();
+        if ($fresh_c) {
+            $client = array_merge($client, $fresh_c);
+        }
+    } catch (PDOException $e) {
+        // Safe fallback
     }
 }
-$tradename = $client ? $client['tradename'] : 'Client Portal';
-$client_acct_hdr = $client ? $client['accountnum'] : '';
-$hdr_has_warranty = (isset($client['warranty_status']) && $client['warranty_status'] === 'Active');
+$tradename = (is_array($client) && isset($client['tradename'])) ? $client['tradename'] : 'Client Portal';
+$client_acct_hdr = (is_array($client) && isset($client['accountnum'])) ? $client['accountnum'] : '';
+$hdr_has_warranty = (is_array($client) && isset($client['warranty_status']) && $client['warranty_status'] === 'Active');
 
 // Fetch notifications for client
 $client_notifications = array();
 if (!empty($client_acct_hdr)) {
-    $pdo_hdr = get_db_connection();
-    
-    // 1. Fetch recent technician replies to client's tickets (Primary Notification)
-    $stmt_c_replies = $pdo_hdr->prepare("SELECT r.id, r.ticket_id, r.sender_name, r.message, r.created_at, t.ticket_number, t.subject 
-        FROM client_ticket_replies r 
-        INNER JOIN client_support_tickets t ON r.ticket_id = t.id 
-        WHERE t.accountnum = :acct AND r.sender_type = 'support' 
-        ORDER BY r.id DESC LIMIT 5");
-    $stmt_c_replies->execute(array(':acct' => $client_acct_hdr));
-    $c_replies = $stmt_c_replies->fetchAll();
+    try {
+        $pdo_hdr = get_db_connection();
+        
+        // 1. Fetch recent technician replies to client's tickets (Primary Notification)
+        $stmt_c_replies = $pdo_hdr->prepare("SELECT r.id, r.ticket_id, r.sender_name, r.message, r.created_at, t.ticket_number, t.subject 
+            FROM client_ticket_replies r 
+            INNER JOIN client_support_tickets t ON r.ticket_id = t.id 
+            WHERE t.accountnum = :acct AND r.sender_type = 'support' 
+            ORDER BY r.id DESC LIMIT 5");
+        $stmt_c_replies->execute(array(':acct' => $client_acct_hdr));
+        $c_replies = $stmt_c_replies->fetchAll();
 
-    foreach ($c_replies as $cr) {
-        $msg_preview = !empty($cr['message']) ? mb_strimwidth(strip_tags($cr['message']), 0, 50, '...') : 'New support reply';
-        $client_notifications[] = array(
-            'type' => 'tech_reply',
-            'key' => 'reply_' . $cr['id'],
-            'title' => 'Reply from ' . $cr['sender_name'],
-            'subtitle' => $cr['subject'] . ': "' . $msg_preview . '"',
-            'link' => 'ticket_detail.php?id=' . $cr['ticket_id'],
-            'number' => $cr['ticket_number'],
-            'date' => $cr['created_at'],
-            'badge' => 'Tech Reply'
-        );
-    }
+        foreach ($c_replies as $cr) {
+            $raw_msg = !empty($cr['message']) ? strip_tags($cr['message']) : 'New support reply';
+            $msg_preview = (strlen($raw_msg) > 50) ? substr($raw_msg, 0, 50) . '...' : $raw_msg;
+            $client_notifications[] = array(
+                'type' => 'tech_reply',
+                'key' => 'reply_' . $cr['id'],
+                'title' => 'Reply from ' . $cr['sender_name'],
+                'subtitle' => $cr['subject'] . ': "' . $msg_preview . '"',
+                'link' => 'ticket_detail.php?id=' . $cr['ticket_id'],
+                'number' => $cr['ticket_number'],
+                'date' => $cr['created_at'],
+                'badge' => 'Tech Reply'
+            );
+        }
 
-    // 2. Fetch active tickets for this client
-    $stmt_c_tickets = $pdo_hdr->prepare("SELECT id, ticket_number, subject, priority, status, created_at, updated_at 
-        FROM client_support_tickets 
-        WHERE accountnum = :acct 
-        ORDER BY updated_at DESC LIMIT 5");
-    $stmt_c_tickets->execute(array(':acct' => $client_acct_hdr));
-    $c_tickets = $stmt_c_tickets->fetchAll();
+        // 2. Fetch active tickets for this client
+        $stmt_c_tickets = $pdo_hdr->prepare("SELECT id, ticket_number, subject, priority, status, created_at, updated_at 
+            FROM client_support_tickets 
+            WHERE accountnum = :acct 
+            ORDER BY updated_at DESC LIMIT 5");
+        $stmt_c_tickets->execute(array(':acct' => $client_acct_hdr));
+        $c_tickets = $stmt_c_tickets->fetchAll();
 
-    foreach ($c_tickets as $ct) {
-        $client_notifications[] = array(
-            'type' => 'ticket',
-            'key' => 'ticket_' . $ct['id'],
-            'title' => $ct['subject'],
-            'subtitle' => 'Priority: ' . $ct['priority'] . ' | Status: ' . $ct['status'],
-            'link' => 'ticket_detail.php?id=' . $ct['id'],
-            'number' => $ct['ticket_number'],
-            'date' => $ct['updated_at'],
-            'badge' => $ct['status']
-        );
-    }
+        foreach ($c_tickets as $ct) {
+            $client_notifications[] = array(
+                'type' => 'ticket',
+                'key' => 'ticket_' . $ct['id'],
+                'title' => $ct['subject'],
+                'subtitle' => 'Priority: ' . $ct['priority'] . ' | Status: ' . $ct['status'],
+                'link' => 'ticket_detail.php?id=' . $ct['id'],
+                'number' => $ct['ticket_number'],
+                'date' => $ct['updated_at'],
+                'badge' => $ct['status']
+            );
+        }
 
-    // 3. Fetch tech service notes
-    $stmt_c_notes = $pdo_hdr->prepare("SELECT id, xdate, techname, reasonoftech, status 
-        FROM bucket_technotes 
-        WHERE accountnum = :acct 
-        ORDER BY id DESC LIMIT 3");
-    $stmt_c_notes->execute(array(':acct' => $client_acct_hdr));
-    $c_notes = $stmt_c_notes->fetchAll();
+        // 3. Fetch tech service notes
+        $stmt_c_notes = $pdo_hdr->prepare("SELECT id, xdate, techname, reasonoftech, status 
+            FROM bucket_technotes 
+            WHERE accountnum = :acct 
+            ORDER BY id DESC LIMIT 3");
+        $stmt_c_notes->execute(array(':acct' => $client_acct_hdr));
+        $c_notes = $stmt_c_notes->fetchAll();
 
-    foreach ($c_notes as $cn) {
-        $client_notifications[] = array(
-            'type' => 'technote',
-            'key' => 'note_' . $cn['id'],
-            'title' => 'Service Visit Log by ' . $cn['techname'],
-            'subtitle' => 'Reason: ' . $cn['reasonoftech'],
-            'link' => 'technotes.php',
-            'number' => 'Tech Log #' . $cn['id'],
-            'date' => $cn['xdate'],
-            'badge' => $cn['status']
-        );
+        foreach ($c_notes as $cn) {
+            $client_notifications[] = array(
+                'type' => 'technote',
+                'key' => 'note_' . $cn['id'],
+                'title' => 'Service Visit Log by ' . $cn['techname'],
+                'subtitle' => 'Reason: ' . $cn['reasonoftech'],
+                'link' => 'technotes.php',
+                'number' => 'Tech Log #' . $cn['id'],
+                'date' => $cn['xdate'],
+                'badge' => $cn['status']
+            );
+        }
+    } catch (PDOException $e_hdr) {
+        error_log("Header notifications error: " . $e_hdr->getMessage());
     }
 }
 $client_notif_count = count($client_notifications);
