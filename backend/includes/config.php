@@ -88,7 +88,7 @@ function is_tech_logged_in() {
  */
 function require_tech_login() {
     if (!is_tech_logged_in()) {
-        header("Location: login.php");
+        header("Location: ./");
         exit;
     }
 }

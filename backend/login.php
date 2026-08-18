@@ -4,7 +4,7 @@ require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 
 if (is_tech_logged_in()) {
-    header("Location: index.php");
+    header("Location: ./");
     exit;
 }
 
@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $result = login_tech($username, $password);
     if ($result['success']) {
-        header("Location: index.php");
+        header("Location: ./");
         exit;
     } else {
         $error_msg = $result['message'];
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <!-- Login Form -->
-        <form action="login.php" method="POST" class="space-y-5">
+        <form action="" method="POST" class="space-y-5">
             <div>
                 <label for="user" class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Username</label>
                 <div class="relative">

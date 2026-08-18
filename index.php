@@ -3,7 +3,10 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/db_init.php';
 
-require_login();
+if (!is_logged_in()) {
+    require_once __DIR__ . '/login.php';
+    exit;
+}
 $client = get_logged_client();
 $accountnum = $client['accountnum'];
 

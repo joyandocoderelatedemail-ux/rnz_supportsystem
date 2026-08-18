@@ -5,7 +5,7 @@ require_once __DIR__ . '/includes/auth.php';
 
 // Redirect if already logged in
 if (is_logged_in()) {
-    header("Location: index.php");
+    header("Location: ./");
     exit;
 }
 
@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $res = login_client($username, $password);
     if ($res['success']) {
-        header("Location: index.php");
+        header("Location: ./");
         exit;
     } else {
         $error_message = $res['message'];
@@ -88,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             <?php endif; ?>
 
-            <form action="login.php" method="POST" class="space-y-5">
+            <form action="" method="POST" class="space-y-5">
                 <div>
                     <label for="username" class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-2">Trade Name (User)</label>
                     <div class="relative">

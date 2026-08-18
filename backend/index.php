@@ -3,9 +3,10 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 
-require_once __DIR__ . '/includes/inventory_init.php';
-
-require_tech_login();
+if (!is_tech_logged_in()) {
+    require_once __DIR__ . '/login.php';
+    exit;
+}
 
 // Auto initialize inventory tables
 init_inventory_tables();
