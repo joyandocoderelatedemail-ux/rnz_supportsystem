@@ -59,7 +59,7 @@ function login_tech($username, $password) {
         return array('success' => true, 'message' => 'Login successful!');
     } catch (PDOException $e) {
         error_log("Tech login DB error: " . $e->getMessage());
-        return array('success' => false, 'message' => 'Database connection error. Please try again.');
+        return array('success' => false, 'message' => 'Database error: ' . $e->getMessage());
     }
 }
 

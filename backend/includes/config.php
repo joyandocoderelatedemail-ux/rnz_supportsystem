@@ -32,7 +32,7 @@ if ($is_local) {
     define('DB_NAME', 'vovoco5_rnz_supportsystem');
 } else {
     define('DB_HOST', 'localhost');
-    define('DB_USER', 'vovoco5_dswzamljoxvz');
+    define('DB_USER', 'vovoco5');
     define('DB_PASS', 'LAUj18%kbuED');
     define('DB_NAME', 'vovoco5_rnz_supportsystem');
 }

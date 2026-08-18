@@ -67,7 +67,7 @@ function login_client($username, $password) {
         return array('success' => true, 'message' => 'Login successful!');
     } catch (PDOException $e) {
         error_log("Login DB Error: " . $e->getMessage());
-        return array('success' => false, 'message' => 'Database connection error. Please try again.');
+        return array('success' => false, 'message' => 'Database error: ' . $e->getMessage());
     }
 }
 
