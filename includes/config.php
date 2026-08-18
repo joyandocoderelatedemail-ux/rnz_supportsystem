@@ -60,10 +60,10 @@ function get_db_connection() {
                     $pdo = new PDO($fallback_dsn, DB_USER, DB_PASS, $options);
                     return $pdo;
                 } catch (PDOException $e2) {
-                    die("Database Connection Error: " . $e->getMessage());
+                    throw $e2;
                 }
             }
-            die("Database Connection Error: " . $e->getMessage());
+            throw $e;
         }
     }
     return $pdo;
