@@ -530,6 +530,7 @@ $page_title = 'Hardware Inventory Hub';
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                                 <th class="py-3.5 px-6">Hardware Item & Code</th>
+                                <th class="py-3.5 px-6">Description / Remarks</th>
                                 <th class="py-3.5 px-6 text-center">In Stock / Threshold</th>
                                 <th class="py-3.5 px-6 text-right">Unit Price</th>
                                 <th class="py-3.5 px-6 text-center">Quick Adjust</th>
@@ -539,7 +540,7 @@ $page_title = 'Hardware Inventory Hub';
                         <tbody class="divide-y divide-slate-100 font-medium">
                             <?php if (empty($items)): ?>
                                 <tr>
-                                    <td colspan="5" class="py-12 text-center text-slate-400 space-y-3">
+                                    <td colspan="6" class="py-12 text-center text-slate-400 space-y-3">
                                         <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                                         </div>
@@ -569,7 +570,7 @@ $page_title = 'Hardware Inventory Hub';
                                         <!-- Item & Code -->
                                         <td class="py-4 px-6">
                                             <div class="min-w-0">
-                                                <h4 class="font-extrabold text-slate-900 text-sm truncate max-w-sm" title="<?php echo sanitize($item['name']); ?>">
+                                                <h4 class="font-extrabold text-slate-900 text-sm truncate max-w-xs" title="<?php echo sanitize($item['name']); ?>">
                                                     <?php echo sanitize($item['name']); ?>
                                                 </h4>
                                                 <div class="flex items-center space-x-2 mt-0.5">
@@ -583,6 +584,17 @@ $page_title = 'Hardware Inventory Hub';
                                                     <?php endif; ?>
                                                 </div>
                                             </div>
+                                        </td>
+
+                                        <!-- Description / Remarks -->
+                                        <td class="py-4 px-6 text-slate-600 text-xs max-w-xs">
+                                            <?php if (!empty($item['description'])): ?>
+                                                <p class="leading-relaxed text-slate-700 line-clamp-2" title="<?php echo sanitize($item['description']); ?>">
+                                                    <?php echo sanitize($item['description']); ?>
+                                                </p>
+                                            <?php else: ?>
+                                                <span class="text-slate-400 italic text-[11px]">No remarks</span>
+                                            <?php endif; ?>
                                         </td>
 
                                         <!-- Current Quantity & Threshold -->
