@@ -17,7 +17,8 @@ DirectoryIndex index.html index.php
     # Route /support to login.php
     RewriteRule ^support/?$ login.php [L,QSA]
 
-    # 1. Strip .php extension from URL in browser address bar (External Redirect)
+    # 1. Strip .php extension from URL in browser address bar (ONLY for GET/HEAD requests, NEVER POST!)
+    RewriteCond %{REQUEST_METHOD} ^(GET|HEAD)$ [NC]
     RewriteCond %{THE_REQUEST} ^[A-Z]{3,}\s/+([^?]+)\.php [NC]
     RewriteCond %1 !^index$
     RewriteCond %1 !^backend/index$

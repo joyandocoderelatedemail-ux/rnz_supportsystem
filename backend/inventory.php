@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $image_path = isset($_POST['image_path']) ? trim($_POST['image_path']) : '';
 
         if (empty($name)) {
-            header("Location: inventory.php?msg=error&err_msg=" . urlencode("Item name is required."));
+            header("Location: inventory?msg=error&err_msg=" . urlencode("Item name is required."));
             exit;
         }
 
@@ -92,10 +92,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':now' => $now
             ));
 
-            header("Location: inventory.php?msg=item_added");
+            header("Location: inventory?msg=item_added");
             exit;
         } catch (PDOException $e) {
-            header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $client_name = isset($_POST['client_name']) ? trim($_POST['client_name']) : '';
 
         if ($item_id <= 0) {
-            header("Location: inventory.php?msg=error&err_msg=" . urlencode("Invalid item selected."));
+            header("Location: inventory?msg=error&err_msg=" . urlencode("Invalid item selected."));
             exit;
         }
 
@@ -121,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $item_data = $stmt_cur->fetch();
 
             if (!$item_data) {
-                header("Location: inventory.php?msg=error&err_msg=" . urlencode("Item not found."));
+                header("Location: inventory?msg=error&err_msg=" . urlencode("Item not found."));
                 exit;
             }
 
@@ -169,10 +169,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':now' => $now
             ));
 
-            header("Location: inventory.php?msg=quantity_adjusted");
+            header("Location: inventory?msg=quantity_adjusted");
             exit;
         } catch (PDOException $e) {
-            header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }
@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $status = isset($_POST['status']) ? trim($_POST['status']) : 'Active';
 
         if ($item_id <= 0 || empty($name)) {
-            header("Location: inventory.php?msg=error&err_msg=" . urlencode("Invalid item parameters."));
+            header("Location: inventory?msg=error&err_msg=" . urlencode("Invalid item parameters."));
             exit;
         }
 
@@ -211,10 +211,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':id' => $item_id
             ));
 
-            header("Location: inventory.php?msg=item_updated");
+            header("Location: inventory?msg=item_updated");
             exit;
         } catch (PDOException $e) {
-            header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }
@@ -230,10 +230,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt_del_logs = $pdo->prepare("DELETE FROM support_inventory_logs WHERE item_id = :id");
                 $stmt_del_logs->execute(array(':id' => $item_id));
 
-                header("Location: inventory.php?msg=item_deleted");
+                header("Location: inventory?msg=item_deleted");
                 exit;
             } catch (PDOException $e) {
-                header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
+                header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
                 exit;
             }
         }
@@ -242,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // 5. Sync Portal Hardware
     elseif ($action === 'sync_portal_hardware') {
         $synced = seed_portal_hardware_inventory();
-        header("Location: inventory.php?msg=synced&count=" . $synced);
+        header("Location: inventory?msg=synced&count=" . $synced);
         exit;
     }
 }
@@ -395,7 +395,7 @@ $page_title = 'Hardware Inventory Hub';
                 <!-- Top Quick Action Buttons -->
                 <div class="flex items-center flex-wrap gap-2.5">
                     <!-- Sync / Seed Catalog Button -->
-                    <form method="POST" action="inventory.php" onsubmit="return confirm('Sync with Client Portal Hardware catalog to ensure all 15 core devices are populated?');" class="inline">
+                    <form method="POST" action="" onsubmit="return confirm('Sync with Client Portal Hardware catalog to ensure all 15 core devices are populated?');" class="inline">
                         <input type="hidden" name="action" value="sync_portal_hardware">
                         <button type="submit" class="bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-2 transition-all hover:border-slate-300">
                             <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -484,7 +484,7 @@ $page_title = 'Hardware Inventory Hub';
 
             <!-- Filters & Search Bar -->
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
-                <form method="GET" action="inventory.php" class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                <form method="GET" action="" class="grid grid-cols-1 sm:grid-cols-12 gap-3">
                     <!-- Search Input -->
                     <div class="sm:col-span-6 relative">
                         <input type="text" name="search" value="<?php echo sanitize($search); ?>" placeholder="Search by hardware name, SKU, or description..." class="w-full bg-slate-50 text-slate-800 text-xs pl-10 pr-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all placeholder-slate-400">
@@ -623,7 +623,7 @@ $page_title = 'Hardware Inventory Hub';
                                         <td class="py-4 px-6 text-center">
                                             <div class="inline-flex items-center space-x-1.5">
                                                 <!-- Quick -1 -->
-                                                <form method="POST" action="inventory.php" class="inline">
+                                                <form method="POST" action="" class="inline">
                                                     <input type="hidden" name="action" value="adjust_quantity">
                                                     <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
                                                     <input type="hidden" name="adjustment_type" value="subtract">
@@ -640,7 +640,7 @@ $page_title = 'Hardware Inventory Hub';
                                                 </button>
 
                                                 <!-- Quick +1 -->
-                                                <form method="POST" action="inventory.php" class="inline">
+                                                <form method="POST" action="" class="inline">
                                                     <input type="hidden" name="action" value="adjust_quantity">
                                                     <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
                                                     <input type="hidden" name="adjustment_type" value="add">
@@ -651,24 +651,24 @@ $page_title = 'Hardware Inventory Hub';
                                                     </button>
                                                 </form>
                                             </div>
-                                        </td>
+                                         </td>
 
-                                        <!-- Edit / Actions -->
-                                        <td class="py-4 px-6 text-right">
-                                            <div class="flex items-center justify-end space-x-1.5">
-                                                <!-- Edit Button -->
-                                                <button onclick='openEditModal(<?php echo json_encode($item); ?>)' class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors" title="Edit Item">
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                                                </button>
+                                         <!-- Edit / Actions -->
+                                         <td class="py-4 px-6 text-right">
+                                             <div class="flex items-center justify-end space-x-1.5">
+                                                 <!-- Edit Button -->
+                                                 <button onclick='openEditModal(<?php echo json_encode($item); ?>)' class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors" title="Edit Item">
+                                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                                                 </button>
 
-                                                <!-- Delete Button -->
-                                                <form method="POST" action="inventory.php" onsubmit="return confirm('Are you sure you want to delete this inventory item (<?php echo addslashes($item['name']); ?>)?');" class="inline">
-                                                    <input type="hidden" name="action" value="delete_item">
-                                                    <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
-                                                    <button type="submit" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center transition-colors" title="Delete Item">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                                                    </button>
-                                                </form>
+                                                 <!-- Delete Button -->
+                                                 <form method="POST" action="" onsubmit="return confirm('Are you sure you want to delete this inventory item (<?php echo addslashes($item['name']); ?>)?');" class="inline">
+                                                     <input type="hidden" name="action" value="delete_item">
+                                                     <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
+                                                     <button type="submit" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center transition-colors" title="Delete Item">
+                                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                                     </button>
+                                                 </form>
                                             </div>
                                         </td>
                                     </tr>
@@ -703,7 +703,7 @@ $page_title = 'Hardware Inventory Hub';
             </button>
         </div>
 
-        <form method="POST" action="inventory.php" class="space-y-4">
+        <form method="POST" action="" class="space-y-4">
             <input type="hidden" name="action" value="add_item">
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -800,7 +800,7 @@ $page_title = 'Hardware Inventory Hub';
             </button>
         </div>
 
-        <form method="POST" action="inventory.php" class="space-y-4">
+        <form method="POST" action="" class="space-y-4">
             <input type="hidden" name="action" value="adjust_quantity">
             <input type="hidden" name="item_id" id="adj_item_id" value="0">
 
@@ -907,7 +907,7 @@ $page_title = 'Hardware Inventory Hub';
             </button>
         </div>
 
-        <form method="POST" action="inventory.php" class="space-y-4">
+        <form method="POST" action="" class="space-y-4">
             <input type="hidden" name="action" value="edit_item">
             <input type="hidden" name="item_id" id="edit_item_id" value="0">
 

@@ -48,9 +48,10 @@ function init_inventory_tables() {
         $pdo->exec($sql1);
         $pdo->exec($sql2);
 
-        // Auto-seed if empty
-        $count = intval($pdo->query("SELECT COUNT(*) FROM `support_inventory_items`")->fetchColumn());
-        if ($count == 0) {
+        // Auto-seed only on initial fresh install (both items and logs are 0)
+        $items_count = intval($pdo->query("SELECT COUNT(*) FROM `support_inventory_items`")->fetchColumn());
+        $logs_count = intval($pdo->query("SELECT COUNT(*) FROM `support_inventory_logs`")->fetchColumn());
+        if ($items_count == 0 && $logs_count == 0) {
             seed_portal_hardware_inventory();
         }
         return true;
