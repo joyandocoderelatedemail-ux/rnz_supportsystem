@@ -45,7 +45,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $item_code = isset($_POST['item_code']) ? trim($_POST['item_code']) : '';
         $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 0;
         $min_threshold = isset($_POST['min_threshold']) ? intval($_POST['min_threshold']) : 5;
-        $unit_price = isset($_POST['unit_price']) ? floatval($_POST['unit_price']) : 0.00;
         $description = isset($_POST['description']) ? trim($_POST['description']) : '';
 
         if (empty($name)) {
@@ -67,14 +66,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             $stmt_in = $pdo->prepare("INSERT INTO support_inventory_items 
                 (item_code, name, category, description, image_path, quantity, min_threshold, unit_price, location, status, created_at, updated_at) 
-                VALUES (:code, :name, 'Hardware', :description, NULL, :qty, :min, :price, 'Main Storage', 'Active', :now, :now)");
+                VALUES (:code, :name, 'Hardware', :description, NULL, :qty, :min, 0.00, 'Main Storage', 'Active', :now, :now)");
             $stmt_in->execute(array(
                 ':code' => $item_code,
                 ':name' => $name,
                 ':description' => $description,
                 ':qty' => $quantity,
                 ':min' => $min_threshold,
-                ':price' => $unit_price,
                 ':now' => $now
             ));
             $item_id = $pdo->lastInsertId();
@@ -181,7 +179,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $name = isset($_POST['name']) ? trim($_POST['name']) : '';
         $item_code = isset($_POST['item_code']) ? trim($_POST['item_code']) : '';
         $min_threshold = isset($_POST['min_threshold']) ? intval($_POST['min_threshold']) : 5;
-        $unit_price = isset($_POST['unit_price']) ? floatval($_POST['unit_price']) : 0.00;
         $description = isset($_POST['description']) ? trim($_POST['description']) : '';
         $status = isset($_POST['status']) ? trim($_POST['status']) : 'Active';
 
@@ -194,13 +191,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $now = date('Y-m-d H:i:s');
             $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET 
                 item_code = :code, name = :name, min_threshold = :min, 
-                unit_price = :price, description = :description, 
+                description = :description, 
                 status = :status, updated_at = :now WHERE id = :id");
             $stmt_up->execute(array(
                 ':code' => $item_code,
                 ':name' => $name,
                 ':min' => $min_threshold,
-                ':price' => $unit_price,
                 ':description' => $description,
                 ':status' => $status,
                 ':now' => $now,
@@ -532,7 +528,6 @@ $page_title = 'Hardware Inventory Hub';
                                 <th class="py-3.5 px-6">Hardware Item & Code</th>
                                 <th class="py-3.5 px-6">Description / Remarks</th>
                                 <th class="py-3.5 px-6 text-center">In Stock / Threshold</th>
-                                <th class="py-3.5 px-6 text-right">Unit Price</th>
                                 <th class="py-3.5 px-6 text-center">Quick Adjust</th>
                                 <th class="py-3.5 px-6 text-right">Actions</th>
                             </tr>
@@ -540,7 +535,7 @@ $page_title = 'Hardware Inventory Hub';
                         <tbody class="divide-y divide-slate-100 font-medium">
                             <?php if (empty($items)): ?>
                                 <tr>
-                                    <td colspan="6" class="py-12 text-center text-slate-400 space-y-3">
+                                    <td colspan="5" class="py-12 text-center text-slate-400 space-y-3">
                                         <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                                         </div>
@@ -552,7 +547,6 @@ $page_title = 'Hardware Inventory Hub';
                                 <?php foreach ($items as $item): 
                                     $qty = intval($item['quantity']);
                                     $min = intval($item['min_threshold']);
-                                    $price = floatval($item['unit_price']);
                                     
                                     // Status Badge styling
                                     if ($qty == 0) {
@@ -607,16 +601,6 @@ $page_title = 'Hardware Inventory Hub';
                                                     <?php echo $stock_label; ?>
                                                 </span>
                                                 <span class="text-[10px] text-slate-400 font-mono mt-0.5">Min: <?php echo $min; ?></span>
-                                            </div>
-                                        </td>
-
-                                        <!-- Unit Price -->
-                                        <td class="py-4 px-6 text-right">
-                                            <div class="font-mono font-bold text-slate-900 text-sm">
-                                                ₱<?php echo number_format($price, 2); ?>
-                                            </div>
-                                            <div class="text-[10px] text-slate-400 font-mono">
-                                                Total: ₱<?php echo number_format($price * $qty, 2); ?>
                                             </div>
                                         </td>
 
@@ -715,15 +699,9 @@ $page_title = 'Hardware Inventory Hub';
                 </div>
 
                 <!-- Item SKU / Code -->
-                <div class="space-y-1">
+                <div class="sm:col-span-2 space-y-1">
                     <label class="text-xs font-bold text-slate-700">SKU / Item Code</label>
                     <input type="text" name="item_code" placeholder="e.g., HW-PRN-80 (Auto if blank)" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono uppercase">
-                </div>
-
-                <!-- Unit Price -->
-                <div class="space-y-1">
-                    <label class="text-xs font-bold text-slate-700">Unit Price (₱)</label>
-                    <input type="number" step="0.01" min="0" name="unit_price" value="0.00" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono">
                 </div>
 
                 <!-- Initial Quantity -->
@@ -896,15 +874,9 @@ $page_title = 'Hardware Inventory Hub';
                 </div>
 
                 <!-- Item SKU / Code -->
-                <div class="space-y-1">
+                <div class="sm:col-span-2 space-y-1">
                     <label class="text-xs font-bold text-slate-700">SKU / Item Code</label>
                     <input type="text" name="item_code" id="edit_item_code" required class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono uppercase">
-                </div>
-
-                <!-- Unit Price -->
-                <div class="space-y-1">
-                    <label class="text-xs font-bold text-slate-700">Unit Price (₱)</label>
-                    <input type="number" step="0.01" min="0" name="unit_price" id="edit_unit_price" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono">
                 </div>
 
                 <!-- Minimum Threshold -->
@@ -1088,7 +1060,6 @@ function openEditModal(item) {
     document.getElementById('edit_name').value = item.name || '';
     document.getElementById('edit_item_code').value = item.item_code || '';
     document.getElementById('edit_min_threshold').value = item.min_threshold || 5;
-    document.getElementById('edit_unit_price').value = item.unit_price || 0.00;
     document.getElementById('edit_status').value = item.status || 'Active';
     document.getElementById('edit_description').value = item.description || '';
 
