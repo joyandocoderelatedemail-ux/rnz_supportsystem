@@ -8,6 +8,9 @@ if (!is_tech_logged_in()) {
     exit;
 }
 
+// Check permission for dashboard or redirect to first accessible page
+require_page_access('dashboard');
+
 // Auto initialize inventory tables
 init_inventory_tables();
 

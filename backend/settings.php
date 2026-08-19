@@ -4,7 +4,8 @@ require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/inventory_init.php';
 
-require_tech_login();
+// Check access permission for Admin Settings
+require_page_access('settings');
 
 $pdo = get_db_connection();
 $tech = get_logged_tech();
@@ -12,14 +13,16 @@ $tech_id = isset($tech['id']) ? intval($tech['id']) : 0;
 $tech_username = isset($tech['user']) ? strtolower($tech['user']) : '';
 $current_access = isset($tech['accesslevel']) ? strtolower($tech['accesslevel']) : 'technician';
 
+$all_pages_catalog = get_all_backend_pages();
+
 $msg = isset($_GET['msg']) ? sanitize($_GET['msg']) : '';
 $msg_type = 'success';
 $msg_text = '';
 
 if ($msg === 'user_created') {
-    $msg_text = 'User account created successfully with assigned access level.';
+    $msg_text = 'User account and sidebar page permissions created successfully.';
 } elseif ($msg === 'user_updated') {
-    $msg_text = 'User account and permissions updated successfully.';
+    $msg_text = 'User account and sidebar access permissions updated successfully.';
 } elseif ($msg === 'user_deleted') {
     $msg_text = 'User account removed successfully.';
 } elseif ($msg === 'error') {
@@ -44,10 +47,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $contactnum = isset($_POST['contactnum']) ? trim($_POST['contactnum']) : 'N/A';
         $address = isset($_POST['address']) ? trim($_POST['address']) : 'N/A';
         $birthday = isset($_POST['birthday']) ? trim($_POST['birthday']) : 'N/A';
+        $allowed_pages = isset($_POST['allowed_pages']) && is_array($_POST['allowed_pages']) ? $_POST['allowed_pages'] : array();
 
         if (empty($fname) || empty($username) || empty($password)) {
             header("Location: settings?msg=error&err_msg=" . urlencode("First Name, Username, and Password are required."));
             exit;
+        }
+
+        // If no pages selected, default based on role
+        if (empty($allowed_pages)) {
+            $allowed_pages = get_user_allowed_pages(0, $accesslevel);
         }
 
         try {
@@ -74,6 +83,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':pass' => $password,
                 ':access' => $accesslevel
             ));
+            $new_user_id = $pdo->lastInsertId();
+
+            // Save granular sidebar page permissions
+            save_user_allowed_pages($new_user_id, $username, $allowed_pages);
 
             header("Location: settings?msg=user_created");
             exit;
@@ -95,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $contactnum = isset($_POST['contactnum']) ? trim($_POST['contactnum']) : 'N/A';
         $address = isset($_POST['address']) ? trim($_POST['address']) : 'N/A';
         $birthday = isset($_POST['birthday']) ? trim($_POST['birthday']) : 'N/A';
+        $allowed_pages = isset($_POST['allowed_pages']) && is_array($_POST['allowed_pages']) ? $_POST['allowed_pages'] : array();
 
         if ($user_id <= 0 || empty($fname) || empty($username)) {
             header("Location: settings?msg=error&err_msg=" . urlencode("User ID, First Name, and Username are required."));
@@ -146,6 +160,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ':uid' => $user_id
                 ));
             }
+
+            // Save granular sidebar page permissions
+            save_user_allowed_pages($user_id, $username, $allowed_pages);
 
             // If logged-in user modified themselves, update session
             if ($user_id === $tech_id || strtolower($username) === $tech_username) {
@@ -207,6 +224,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             $stmt_del = $pdo->prepare("DELETE FROM user WHERE id = :uid");
             $stmt_del->execute(array(':uid' => $user_id));
+
+            // Clean up custom permissions entry
+            $pdo->prepare("DELETE FROM support_user_permissions WHERE user_id = :uid")->execute(array(':uid' => $user_id));
 
             header("Location: settings?msg=user_deleted");
             exit;
@@ -270,14 +290,14 @@ function get_role_badge($level) {
 }
 
 $active_page = 'settings';
-$page_title = 'Admin Settings & User Access';
+$page_title = 'Admin Settings & Page Permissions';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Settings - User Access Levels | RNZ Support Center</title>
+    <title>Admin Settings - Sidebar Permissions & User Access | RNZ Support Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -324,8 +344,8 @@ $page_title = 'Admin Settings & User Access';
                             </svg>
                         </div>
                         <div>
-                            <h2 class="text-xl font-extrabold text-slate-900 tracking-tight">Admin Settings & User Access</h2>
-                            <p class="text-xs text-slate-500">Create system user accounts, manage credentials, and assign permission access levels.</p>
+                            <h2 class="text-xl font-extrabold text-slate-900 tracking-tight">Admin Settings & Sidebar Page Access</h2>
+                            <p class="text-xs text-slate-500">Create user accounts, set credentials, and assign exactly what sidebar pages each user can access.</p>
                         </div>
                     </div>
                 </div>
@@ -438,8 +458,8 @@ $page_title = 'Admin Settings & User Access';
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
                 <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                        <h3 class="text-lg font-extrabold text-slate-900">User Accounts Directory</h3>
-                        <p class="text-xs text-slate-500">Authorized personnel who can access Support Center functions.</p>
+                        <h3 class="text-lg font-extrabold text-slate-900">User Accounts & Sidebar Permissions</h3>
+                        <p class="text-xs text-slate-500">Assign what pages each technician or administrator can access in the navigation.</p>
                     </div>
                     <span class="text-xs text-slate-400 font-mono"><?php echo count($users_list); ?> account(s) found</span>
                 </div>
@@ -450,7 +470,8 @@ $page_title = 'Admin Settings & User Access';
                             <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                                 <th class="py-3.5 px-6">Name & Details</th>
                                 <th class="py-3.5 px-6">Username</th>
-                                <th class="py-3.5 px-6 text-center">Access Level</th>
+                                <th class="py-3.5 px-6 text-center">Access Role</th>
+                                <th class="py-3.5 px-6">Allowed Sidebar Pages</th>
                                 <th class="py-3.5 px-6">Contact / Email</th>
                                 <th class="py-3.5 px-6 text-right">Actions</th>
                             </tr>
@@ -458,7 +479,7 @@ $page_title = 'Admin Settings & User Access';
                         <tbody class="divide-y divide-slate-100 font-medium">
                             <?php if (empty($users_list)): ?>
                                 <tr>
-                                    <td colspan="5" class="py-12 text-center text-slate-400 space-y-3">
+                                    <td colspan="6" class="py-12 text-center text-slate-400 space-y-3">
                                         <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
                                         </div>
@@ -473,6 +494,7 @@ $page_title = 'Admin Settings & User Access';
                                     }
                                     $initial = strtoupper(substr($fullname, 0, 1));
                                     $is_self = ($u['id'] == $tech_id) || (strtolower($u['user']) === $tech_username);
+                                    $user_pages = get_user_allowed_pages($u['id'], $u['accesslevel']);
                                 ?>
                                     <tr class="hover:bg-slate-50/80 transition-colors">
                                         <!-- Name & Avatar -->
@@ -502,9 +524,22 @@ $page_title = 'Admin Settings & User Access';
                                             </span>
                                         </td>
 
-                                        <!-- Access Level -->
+                                        <!-- Access Level Role -->
                                         <td class="py-4 px-6 text-center">
                                             <?php echo get_role_badge($u['accesslevel']); ?>
+                                        </td>
+
+                                        <!-- Allowed Sidebar Pages -->
+                                        <td class="py-4 px-6">
+                                            <div class="flex flex-wrap gap-1 max-w-xs">
+                                                <?php foreach ($all_pages_catalog as $p_key => $p_info): 
+                                                    $has_p = in_array($p_key, $user_pages);
+                                                ?>
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold <?php echo $has_p ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-400 line-through opacity-50'; ?>" title="<?php echo $has_p ? 'Has access to ' . $p_info['name'] : 'No access'; ?>">
+                                                        <?php echo $p_info['name']; ?>
+                                                    </span>
+                                                <?php endforeach; ?>
+                                            </div>
                                         </td>
 
                                         <!-- Contact / Email -->
@@ -530,7 +565,7 @@ $page_title = 'Admin Settings & User Access';
                                         <td class="py-4 px-6 text-right">
                                             <div class="flex items-center justify-end space-x-2">
                                                 <!-- Edit Button -->
-                                                <button type="button" onclick='openEditUserModal(<?php echo json_encode($u); ?>)' class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center space-x-1.5 transition-colors" title="Edit User & Permissions">
+                                                <button type="button" onclick='openEditUserModal(<?php echo json_encode($u); ?>, <?php echo json_encode($user_pages); ?>)' class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center space-x-1.5 transition-colors" title="Edit User & Permissions">
                                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                                     <span>Edit</span>
                                                 </button>
@@ -563,7 +598,7 @@ $page_title = 'Admin Settings & User Access';
 <!-- MODAL: CREATE NEW USER ACCOUNT -->
 <!-- ========================================================================= -->
 <div id="createUserModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 sm:p-8 space-y-6 my-8 animate-in fade-in zoom-in duration-150">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 sm:p-8 space-y-6 my-8 animate-in fade-in zoom-in duration-150 max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between border-b border-slate-100 pb-4">
             <div class="flex items-center space-x-3">
                 <div class="w-10 h-10 rounded-2xl bg-[#EB3E0B] text-white flex items-center justify-center font-bold shadow-md shadow-[#EB3E0B]/20">
@@ -571,7 +606,7 @@ $page_title = 'Admin Settings & User Access';
                 </div>
                 <div>
                     <h3 class="font-extrabold text-lg text-slate-900">Create New User Account</h3>
-                    <p class="text-xs text-slate-500">Register new personnel and define their access level role.</p>
+                    <p class="text-xs text-slate-500">Register new personnel and assign sidebar page access.</p>
                 </div>
             </div>
             <button type="button" onclick="closeCreateUserModal()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100">
@@ -579,7 +614,7 @@ $page_title = 'Admin Settings & User Access';
             </button>
         </div>
 
-        <form action="" method="POST" class="space-y-4">
+        <form action="" method="POST" class="space-y-5">
             <input type="hidden" name="action" value="create_user">
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -607,17 +642,43 @@ $page_title = 'Admin Settings & User Access';
                     <input type="text" name="pass" required placeholder="Enter temporary password" autocomplete="off" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono">
                 </div>
 
-                <!-- Access Level -->
+                <!-- Access Level Role -->
                 <div class="sm:col-span-2 space-y-1">
-                    <label class="text-xs font-bold text-slate-700">Assign Access Level Role <span class="text-[#EB3E0B]">*</span></label>
-                    <select name="accesslevel" required class="w-full bg-slate-50 text-slate-900 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
+                    <label class="text-xs font-bold text-slate-700">Primary Role / Profile <span class="text-[#EB3E0B]">*</span></label>
+                    <select name="accesslevel" id="create_accesslevel" onchange="applyRolePreset('create', this.value)" required class="w-full bg-slate-50 text-slate-900 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
                         <option value="technician" selected>Support Tech (Hardware, Tickets, Diagnostic logs & Inventory)</option>
                         <option value="admin">Administrator (Full Access to Support Hub & Accounts)</option>
                         <option value="master">Super Admin / Master (Full administrative ownership & User management)</option>
                         <option value="support">Support Agent (Tickets & Communications)</option>
                         <option value="staff">Staff / Viewer (Read-only)</option>
                     </select>
-                    <p class="text-[11px] text-slate-400 mt-1">Defines what features and operations this user is allowed to perform.</p>
+                </div>
+
+                <!-- Granular Sidebar Page Permissions Checkboxes -->
+                <div class="sm:col-span-2 space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-extrabold text-slate-900">Allowed Sidebar Pages & Sections</label>
+                        <div class="flex items-center space-x-2 text-[11px]">
+                            <button type="button" onclick="setAllPages('create', true)" class="text-[#EB3E0B] hover:underline font-bold">Select All</button>
+                            <span class="text-slate-300">|</span>
+                            <button type="button" onclick="setAllPages('create', false)" class="text-slate-500 hover:underline">Clear</button>
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mb-2">Check each sidebar section that this user is permitted to see and open:</p>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <?php foreach ($all_pages_catalog as $p_key => $p_info): 
+                            $default_checked = ($p_key !== 'settings');
+                        ?>
+                            <label class="flex items-start space-x-3 p-2.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 cursor-pointer transition-colors shadow-xs">
+                                <input type="checkbox" name="allowed_pages[]" value="<?php echo $p_key; ?>" id="create_page_<?php echo $p_key; ?>" <?php echo $default_checked ? 'checked' : ''; ?> class="mt-0.5 w-4 h-4 text-[#EB3E0B] rounded border-slate-300 focus:ring-[#EB3E0B]">
+                                <div class="min-w-0">
+                                    <span class="text-xs font-bold text-slate-800 block"><?php echo $p_info['name']; ?></span>
+                                    <span class="text-[10px] text-slate-400 block leading-tight"><?php echo $p_info['desc']; ?></span>
+                                </div>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
 
                 <!-- Email Address -->
@@ -661,15 +722,15 @@ $page_title = 'Admin Settings & User Access';
 <!-- MODAL: EDIT USER ACCOUNT & ACCESS LEVEL -->
 <!-- ========================================================================= -->
 <div id="editUserModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 sm:p-8 space-y-6 my-8 animate-in fade-in zoom-in duration-150">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 sm:p-8 space-y-6 my-8 animate-in fade-in zoom-in duration-150 max-h-[90vh] overflow-y-auto">
         <div class="flex items-center justify-between border-b border-slate-100 pb-4">
             <div class="flex items-center space-x-3">
                 <div class="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-bold">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                 </div>
                 <div>
-                    <h3 class="font-extrabold text-lg text-slate-900">Edit User & Access Level</h3>
-                    <p class="text-xs text-slate-500">Update account credentials and permission levels.</p>
+                    <h3 class="font-extrabold text-lg text-slate-900">Edit User & Sidebar Access</h3>
+                    <p class="text-xs text-slate-500">Update credentials and specify allowed sidebar pages.</p>
                 </div>
             </div>
             <button type="button" onclick="closeEditUserModal()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100">
@@ -677,7 +738,7 @@ $page_title = 'Admin Settings & User Access';
             </button>
         </div>
 
-        <form action="" method="POST" class="space-y-4">
+        <form action="" method="POST" class="space-y-5">
             <input type="hidden" name="action" value="update_user">
             <input type="hidden" name="user_id" id="edit_user_id" value="">
 
@@ -706,16 +767,41 @@ $page_title = 'Admin Settings & User Access';
                     <input type="text" name="new_pass" id="edit_new_pass" placeholder="Leave blank to keep unchanged" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono">
                 </div>
 
-                <!-- Access Level -->
+                <!-- Access Level Role -->
                 <div class="sm:col-span-2 space-y-1">
-                    <label class="text-xs font-bold text-slate-700">Assign Access Level Role <span class="text-[#EB3E0B]">*</span></label>
-                    <select name="accesslevel" id="edit_accesslevel" required class="w-full bg-slate-50 text-slate-900 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
+                    <label class="text-xs font-bold text-slate-700">Primary Role / Profile <span class="text-[#EB3E0B]">*</span></label>
+                    <select name="accesslevel" id="edit_accesslevel" onchange="applyRolePreset('edit', this.value)" required class="w-full bg-slate-50 text-slate-900 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
                         <option value="technician">Support Tech (Hardware, Tickets, Diagnostic logs & Inventory)</option>
                         <option value="admin">Administrator (Full Access to Support Hub & Accounts)</option>
                         <option value="master">Super Admin / Master (Full administrative ownership & User management)</option>
                         <option value="support">Support Agent (Tickets & Communications)</option>
                         <option value="staff">Staff / Viewer (Read-only)</option>
                     </select>
+                </div>
+
+                <!-- Granular Sidebar Page Permissions Checkboxes -->
+                <div class="sm:col-span-2 space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-extrabold text-slate-900">Allowed Sidebar Pages & Sections</label>
+                        <div class="flex items-center space-x-2 text-[11px]">
+                            <button type="button" onclick="setAllPages('edit', true)" class="text-[#EB3E0B] hover:underline font-bold">Select All</button>
+                            <span class="text-slate-300">|</span>
+                            <button type="button" onclick="setAllPages('edit', false)" class="text-slate-500 hover:underline">Clear</button>
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-slate-500 mb-2">Check each sidebar section that this user is permitted to see and open:</p>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <?php foreach ($all_pages_catalog as $p_key => $p_info): ?>
+                            <label class="flex items-start space-x-3 p-2.5 rounded-xl bg-white border border-slate-200 hover:border-slate-300 cursor-pointer transition-colors shadow-xs">
+                                <input type="checkbox" name="allowed_pages[]" value="<?php echo $p_key; ?>" id="edit_page_<?php echo $p_key; ?>" class="mt-0.5 w-4 h-4 text-[#EB3E0B] rounded border-slate-300 focus:ring-[#EB3E0B]">
+                                <div class="min-w-0">
+                                    <span class="text-xs font-bold text-slate-800 block"><?php echo $p_info['name']; ?></span>
+                                    <span class="text-[10px] text-slate-400 block leading-tight"><?php echo $p_info['desc']; ?></span>
+                                </div>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
 
                 <!-- Email Address -->
@@ -756,6 +842,40 @@ $page_title = 'Admin Settings & User Access';
 </div>
 
 <script>
+var pageKeys = ['dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings'];
+
+function setAllPages(prefix, checkVal) {
+    pageKeys.forEach(function(k) {
+        var el = document.getElementById(prefix + '_page_' + k);
+        if (el) el.checked = checkVal;
+    });
+}
+
+function applyRolePreset(prefix, role) {
+    role = (role || '').toLowerCase();
+    if (role === 'master' || role === 'admin') {
+        setAllPages(prefix, true);
+    } else if (role === 'technician') {
+        setAllPages(prefix, false);
+        ['dashboard', 'tickets', 'accounts', 'inventory', 'maintenance'].forEach(function(k) {
+            var el = document.getElementById(prefix + '_page_' + k);
+            if (el) el.checked = true;
+        });
+    } else if (role === 'support') {
+        setAllPages(prefix, false);
+        ['dashboard', 'tickets', 'accounts'].forEach(function(k) {
+            var el = document.getElementById(prefix + '_page_' + k);
+            if (el) el.checked = true;
+        });
+    } else {
+        setAllPages(prefix, false);
+        ['dashboard', 'tickets'].forEach(function(k) {
+            var el = document.getElementById(prefix + '_page_' + k);
+            if (el) el.checked = true;
+        });
+    }
+}
+
 function openCreateUserModal() {
     var m = document.getElementById('createUserModal');
     if (m) {
@@ -772,7 +892,7 @@ function closeCreateUserModal() {
     }
 }
 
-function openEditUserModal(userObj) {
+function openEditUserModal(userObj, userPages) {
     if (!userObj) return;
     document.getElementById('edit_user_id').value = userObj.id || '';
     document.getElementById('edit_fname').value = userObj.fname || '';
@@ -784,11 +904,19 @@ function openEditUserModal(userObj) {
     var roleSelect = document.getElementById('edit_accesslevel');
     if (roleSelect) {
         roleSelect.value = roleVal;
-        // If exact value not matching predefined option, fallback
         if (roleSelect.selectedIndex === -1) {
             roleSelect.value = 'technician';
         }
     }
+
+    // Set page permission checkboxes
+    var allowedArr = Array.isArray(userPages) ? userPages : [];
+    pageKeys.forEach(function(k) {
+        var el = document.getElementById('edit_page_' + k);
+        if (el) {
+            el.checked = (roleVal === 'master') || allowedArr.indexOf(k) !== -1;
+        }
+    });
 
     document.getElementById('edit_emailadd').value = (userObj.emailadd === 'NA' || userObj.emailadd === 'N/A' || userObj.emailadd === 'Admin') ? '' : (userObj.emailadd || '');
     document.getElementById('edit_contactnum').value = (userObj.contactnum === 'NA' || userObj.contactnum === 'N/A' || userObj.contactnum === 'Admin') ? '' : (userObj.contactnum || '');

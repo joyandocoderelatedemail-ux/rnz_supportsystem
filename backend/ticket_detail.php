@@ -4,7 +4,7 @@ require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/../includes/hardware_data.php';
 
-require_tech_login();
+require_page_access('tickets');
 
 $tech = get_logged_tech();
 $tech_fullname = $tech['fullname'];

@@ -3,7 +3,7 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 
-require_tech_login();
+require_page_access('accounts');
 
 $pdo = get_db_connection();
 

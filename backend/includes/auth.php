@@ -64,6 +64,159 @@ function login_tech($username, $password) {
 }
 
 /**
+ * Available backend pages and metadata
+ * @return array
+ */
+function get_all_backend_pages() {
+    return array(
+        'dashboard' => array('name' => 'Dashboard', 'url' => 'index.php', 'desc' => 'Overview stats, recent tickets & activity summary'),
+        'tickets' => array('name' => 'Support Tickets', 'url' => 'tickets.php', 'desc' => 'Customer support ticket list & live reply thread'),
+        'accounts' => array('name' => 'Manage Accounts', 'url' => 'accounts.php', 'desc' => 'Client profiles, tech logs, work orders & technotes'),
+        'inventory' => array('name' => 'Hardware Inventory', 'url' => 'inventory.php', 'desc' => 'Hardware stock levels, quick adjustments & log history'),
+        'maintenance' => array('name' => 'POS Maintenance', 'url' => 'maintenance.php', 'desc' => 'Quarterly POS preventive maintenance requests'),
+        'settings' => array('name' => 'Admin Settings', 'url' => 'settings.php', 'desc' => 'User accounts management & permission level access')
+    );
+}
+
+/**
+ * Get allowed pages for a specific user ID and access level
+ * @param int $user_id
+ * @param string $accesslevel
+ * @return array array of page keys e.g. array('dashboard', 'tickets', ...)
+ */
+function get_user_allowed_pages($user_id, $accesslevel = '') {
+    $lvl = strtolower(trim($accesslevel));
+    // Super Admin / Master always has full access to all pages
+    if ($lvl === 'master') {
+        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings');
+    }
+
+    $pdo = get_db_connection();
+    if ($pdo && $user_id > 0) {
+        try {
+            $stmt = $pdo->prepare("SELECT allowed_pages FROM support_user_permissions WHERE user_id = :uid LIMIT 1");
+            $stmt->execute(array(':uid' => intval($user_id)));
+            $row = $stmt->fetch();
+            if ($row && !empty($row['allowed_pages'])) {
+                $raw_pages = explode(',', strtolower($row['allowed_pages']));
+                $clean_pages = array();
+                foreach ($raw_pages as $p) {
+                    $p = trim($p);
+                    if (!empty($p)) {
+                        $clean_pages[] = $p;
+                    }
+                }
+                return $clean_pages;
+            }
+        } catch (PDOException $e) {
+            error_log("Permission fetch error: " . $e->getMessage());
+        }
+    }
+
+    // Role-based defaults if no custom record in support_user_permissions
+    if ($lvl === 'admin') {
+        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings');
+    } elseif ($lvl === 'technician') {
+        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance');
+    } elseif ($lvl === 'support') {
+        return array('dashboard', 'tickets', 'accounts');
+    } else {
+        return array('dashboard', 'tickets');
+    }
+}
+
+/**
+ * Save user allowed pages in support_user_permissions
+ * @param int $user_id
+ * @param string $username
+ * @param array $allowed_pages
+ * @return bool
+ */
+function save_user_allowed_pages($user_id, $username, $allowed_pages) {
+    if ($user_id <= 0) return false;
+    $pdo = get_db_connection();
+    if (!$pdo) return false;
+
+    $clean_pages = array();
+    if (is_array($allowed_pages)) {
+        foreach ($allowed_pages as $p) {
+            $p = strtolower(trim($p));
+            if (!empty($p)) {
+                $clean_pages[] = $p;
+            }
+        }
+    }
+    $pages_str = implode(',', $clean_pages);
+    $now = date('Y-m-d H:i:s');
+
+    try {
+        init_inventory_tables();
+        $stmt = $pdo->prepare("INSERT INTO support_user_permissions 
+            (user_id, username, allowed_pages, created_at, updated_at) 
+            VALUES (:uid, :usr, :pages, :now1, :now2) 
+            ON DUPLICATE KEY UPDATE 
+            username = :usr_up, allowed_pages = :pages_up, updated_at = :now_up");
+        $stmt->execute(array(
+            ':uid' => $user_id,
+            ':usr' => $username,
+            ':pages' => $pages_str,
+            ':now1' => $now,
+            ':now2' => $now,
+            ':usr_up' => $username,
+            ':pages_up' => $pages_str,
+            ':now_up' => $now
+        ));
+        return true;
+    } catch (PDOException $e) {
+        error_log("Save permissions error: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Check if current logged-in technician has access to a specific page
+ * @param string $page_key ('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings')
+ * @return bool
+ */
+function user_has_page_access($page_key) {
+    $tech = get_logged_tech();
+    if (!$tech) return false;
+    $user_id = isset($tech['id']) ? intval($tech['id']) : 0;
+    $accesslevel = isset($tech['accesslevel']) ? $tech['accesslevel'] : '';
+
+    $allowed = get_user_allowed_pages($user_id, $accesslevel);
+    return in_array(strtolower(trim($page_key)), $allowed);
+}
+
+/**
+ * Require permission to access a page or redirect to first accessible page
+ * @param string $page_key
+ */
+function require_page_access($page_key) {
+    require_tech_login();
+    if (!user_has_page_access($page_key)) {
+        $tech = get_logged_tech();
+        $user_id = isset($tech['id']) ? intval($tech['id']) : 0;
+        $accesslevel = isset($tech['accesslevel']) ? $tech['accesslevel'] : '';
+        $allowed = get_user_allowed_pages($user_id, $accesslevel);
+
+        $all_pages = get_all_backend_pages();
+        $redirect_url = 'login.php';
+        if (!empty($allowed)) {
+            foreach ($allowed as $first_p) {
+                if (isset($all_pages[$first_p])) {
+                    $redirect_url = $all_pages[$first_p]['url'];
+                    break;
+                }
+            }
+        }
+        $redirect_url .= (strpos($redirect_url, '?') !== false ? '&' : '?') . 'msg=error&err_msg=' . urlencode("Access Denied: You do not have permission to access that section.");
+        header("Location: " . $redirect_url);
+        exit;
+    }
+}
+
+/**
  * Logout technician
  */
 function logout_tech() {

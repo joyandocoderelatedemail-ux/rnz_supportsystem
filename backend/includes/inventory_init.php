@@ -50,10 +50,23 @@ function init_inventory_tables() {
         PRIMARY KEY (`meta_key`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
 
+    $sql4 = "CREATE TABLE IF NOT EXISTS `support_user_permissions` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT,
+        `user_id` INT(11) NOT NULL,
+        `username` VARCHAR(100) NOT NULL,
+        `allowed_pages` TEXT NOT NULL,
+        `created_at` DATETIME NOT NULL,
+        `updated_at` DATETIME NOT NULL,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `user_id` (`user_id`),
+        KEY `username` (`username`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
     try {
         $pdo->exec($sql1);
         $pdo->exec($sql2);
         $pdo->exec($sql3);
+        $pdo->exec($sql4);
 
         // Check if initial seeding has already run once
         $seeded_stmt = $pdo->query("SELECT `meta_value` FROM `support_system_meta` WHERE `meta_key` = 'inventory_seeded' LIMIT 1");
