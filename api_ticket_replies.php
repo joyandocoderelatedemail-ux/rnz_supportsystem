@@ -43,10 +43,10 @@ if (!$ticket) {
 // -----------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'post_reply') {
     $reply_message = isset($_POST['message']) ? trim($_POST['message']) : '';
-    $photo_attachment = upload_ticket_photo('attachment');
+    $photo_attachments = upload_ticket_photos('attachments');
 
-    if (empty($reply_message) && empty($photo_attachment)) {
-        echo json_encode(array('success' => false, 'error' => 'Please enter a message or select a photo.'));
+    if (empty($reply_message) && empty($photo_attachments)) {
+        echo json_encode(array('success' => false, 'error' => 'Please enter a message or select photo(s).'));
         exit;
     }
 
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             ':tid' => $ticket_id,
             ':sname' => $tradename,
             ':msg' => $reply_message,
-            ':att' => $photo_attachment ? $photo_attachment : null,
+            ':att' => $photo_attachments ? $photo_attachments : null,
             ':c_at' => $now
         ));
         $new_reply_id = $pdo->lastInsertId();
@@ -65,6 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         // Update ticket updated_at
         $stmt_u = $pdo->prepare("UPDATE client_support_tickets SET updated_at = :now WHERE id = :id");
         $stmt_u->execute(array(':now' => $now, ':id' => $ticket_id));
+
+        $parsed_attachments = parse_ticket_attachments($photo_attachments);
 
         echo json_encode(array(
             'success' => true,
@@ -74,7 +76,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 'sender_name' => $tradename,
                 'is_client' => true,
                 'message' => $reply_message,
-                'attachment_path' => $photo_attachment ? $photo_attachment : null,
+                'attachment_path' => $photo_attachments ? $photo_attachments : null,
+                'attachments' => $parsed_attachments,
                 'formatted_date' => format_date($now),
                 'diagnostic_log' => (strpos($reply_message, '=== HARDWARE DIAGNOSTIC LOG ===') !== false) ? format_diagnostic_log_text($reply_message) : null
             )
@@ -112,6 +115,7 @@ try {
             'is_client' => $is_client,
             'message' => $msg_text,
             'attachment_path' => !empty($r['attachment_path']) ? $r['attachment_path'] : null,
+            'attachments' => parse_ticket_attachments($r['attachment_path']),
             'formatted_date' => format_date($r['created_at']),
             'diagnostic_log' => $diag_log
         );

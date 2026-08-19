@@ -135,39 +135,119 @@ function get_status_badge_class($status) {
 }
 
 /**
- * Safely upload ticket photo attachment (PNG, JPG, JPEG, WEBP, GIF)
- * @param string $file_key Name of the file input in $_FILES
+ * Safely upload ticket photo attachments (PNG, JPG, JPEG, WEBP, GIF)
+ * Supports both single file and multiple files (e.g. name="attachments[]" or name="attachment")
+ * @param string $file_key Name of the file input in $_FILES (default 'attachments')
  * @param string $subdir Target subdirectory inside uploads
- * @return string|false Relative path from project root or false
+ * @return string|false JSON-encoded array string of relative paths, or false if none
  */
-function upload_ticket_photo($file_key = 'attachment', $subdir = 'ticket_attachments') {
-    if (!isset($_FILES[$file_key]) || empty($_FILES[$file_key]['name'])) {
-        return false;
+function upload_ticket_photos($file_key = 'attachments', $subdir = 'ticket_attachments') {
+    $actual_key = $file_key;
+    if (!isset($_FILES[$actual_key]) && isset($_FILES['attachment'])) {
+        $actual_key = 'attachment';
     }
-    $file = $_FILES[$file_key];
-    if (!isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
-        return false;
-    }
-    if ($file['size'] > 15 * 1024 * 1024) {
-        return false;
-    }
-    $allowed_exts = array('jpg', 'jpeg', 'png', 'webp', 'gif');
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!in_array($ext, $allowed_exts)) {
+    if (!isset($_FILES[$actual_key])) {
         return false;
     }
 
+    $file_data = $_FILES[$actual_key];
     $upload_dir = __DIR__ . '/../uploads/' . $subdir . '/';
     if (!is_dir($upload_dir)) {
         @mkdir($upload_dir, 0777, true);
     }
 
-    $new_filename = 'photo_' . date('Ymd_His') . '_' . rand(1000, 9999) . '.' . $ext;
-    $target_file = $upload_dir . $new_filename;
+    $allowed_exts = array('jpg', 'jpeg', 'png', 'webp', 'gif');
+    $saved_paths = array();
 
-    if (move_uploaded_file($file['tmp_name'], $target_file)) {
-        return 'uploads/' . $subdir . '/' . $new_filename;
+    // Check if multiple files were uploaded (name is array)
+    if (is_array($file_data['name'])) {
+        $count = count($file_data['name']);
+        for ($i = 0; $i < $count; $i++) {
+            if (empty($file_data['name'][$i])) {
+                continue;
+            }
+            if ($file_data['error'][$i] !== UPLOAD_ERR_OK) {
+                continue;
+            }
+            if ($file_data['size'][$i] > 15 * 1024 * 1024) {
+                continue;
+            }
+            $ext = strtolower(pathinfo($file_data['name'][$i], PATHINFO_EXTENSION));
+            if (!in_array($ext, $allowed_exts)) {
+                continue;
+            }
+
+            $new_filename = 'photo_' . date('Ymd_His') . '_' . $i . '_' . rand(1000, 9999) . '.' . $ext;
+            $target_file = $upload_dir . $new_filename;
+
+            if (move_uploaded_file($file_data['tmp_name'][$i], $target_file)) {
+                $saved_paths[] = 'uploads/' . $subdir . '/' . $new_filename;
+            }
+        }
+    } else {
+        // Single file format
+        if (!empty($file_data['name']) && $file_data['error'] === UPLOAD_ERR_OK && $file_data['size'] <= 15 * 1024 * 1024) {
+            $ext = strtolower(pathinfo($file_data['name'], PATHINFO_EXTENSION));
+            if (in_array($ext, $allowed_exts)) {
+                $new_filename = 'photo_' . date('Ymd_His') . '_' . rand(1000, 9999) . '.' . $ext;
+                $target_file = $upload_dir . $new_filename;
+                if (move_uploaded_file($file_data['tmp_name'], $target_file)) {
+                    $saved_paths[] = 'uploads/' . $subdir . '/' . $new_filename;
+                }
+            }
+        }
     }
-    return false;
+
+    if (empty($saved_paths)) {
+        return false;
+    }
+
+    return json_encode($saved_paths);
+}
+
+/**
+ * Single photo upload wrapper for compatibility
+ */
+function upload_ticket_photo($file_key = 'attachment', $subdir = 'ticket_attachments') {
+    $result = upload_ticket_photos($file_key, $subdir);
+    if (!$result) return false;
+    $arr = parse_ticket_attachments($result);
+    return !empty($arr) ? $arr[0] : false;
+}
+
+/**
+ * Parse database attachment_path column into an array of file path strings
+ * @param string|null $raw_attachment JSON array string, comma-separated list, or single path
+ * @return array List of valid relative path strings
+ */
+function parse_ticket_attachments($raw_attachment) {
+    if (empty($raw_attachment)) {
+        return array();
+    }
+    $raw_attachment = trim($raw_attachment);
+    // Check if JSON array string
+    if (substr($raw_attachment, 0, 1) === '[' && substr($raw_attachment, -1) === ']') {
+        $decoded = json_decode($raw_attachment, true);
+        if (is_array($decoded)) {
+            $res = array();
+            foreach ($decoded as $item) {
+                if (!empty($item) && is_string($item)) {
+                    $res[] = trim($item);
+                }
+            }
+            return $res;
+        }
+    }
+    // Check if comma separated
+    if (strpos($raw_attachment, ',') !== false) {
+        $parts = explode(',', $raw_attachment);
+        $res = array();
+        foreach ($parts as $p) {
+            $p = trim($p);
+            if (!empty($p)) $res[] = $p;
+        }
+        return $res;
+    }
+    return array($raw_attachment);
 }
 ?>

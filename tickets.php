@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         // Generate unique ticket number
         $ticket_number = 'RNZ-' . date('Y') . '-' . rand(10000, 99999);
         $now = date('Y-m-d H:i:s');
-        $photo_attachment = upload_ticket_photo('attachment');
+        $photo_attachment = upload_ticket_photos('attachments');
 
         try {
             $stmt = $pdo->prepare("INSERT INTO client_support_tickets 

@@ -31,10 +31,10 @@ $reply_error = '';
 // Handle Reply Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'post_reply') {
     $reply_message = isset($_POST['message']) ? trim($_POST['message']) : '';
-    $photo_attachment = upload_ticket_photo('attachment');
+    $photo_attachments = upload_ticket_photos('attachments');
 
-    if (empty($reply_message) && empty($photo_attachment)) {
-        $reply_error = 'Please enter a message or attach a photo before sending.';
+    if (empty($reply_message) && empty($photo_attachments)) {
+        $reply_error = 'Please enter a message or attach photo(s) before sending.';
     } else {
         $now = date('Y-m-d H:i:s');
         $stmt_r = $pdo->prepare("INSERT INTO client_ticket_replies (ticket_id, sender_type, sender_name, message, attachment_path, created_at) VALUES (:tid, 'client', :sname, :msg, :att, :c_at)");
@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             ':tid' => $ticket_id,
             ':sname' => $client['tradename'],
             ':msg' => $reply_message,
-            ':att' => $photo_attachment ? $photo_attachment : null,
+            ':att' => $photo_attachments ? $photo_attachments : null,
             ':c_at' => $now
         ));
 
@@ -223,15 +223,22 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                 <p class="text-xs sm:text-sm text-[#430D07] leading-relaxed whitespace-pre-wrap"><?php echo sanitize($r['message']); ?></p>
                             <?php endif; ?>
 
-                            <?php if (!empty($r['attachment_path'])): ?>
+                            <?php 
+                            $att_list = parse_ticket_attachments($r['attachment_path']);
+                            if (!empty($att_list)): 
+                            ?>
                                 <div class="mt-3 pt-2 border-t <?php echo $is_client ? 'border-[#FFE8D5]' : 'border-emerald-100'; ?>">
-                                    <a href="<?php echo sanitize($r['attachment_path']); ?>" target="_blank" class="inline-block group">
-                                        <img src="<?php echo sanitize($r['attachment_path']); ?>" alt="Attachment" class="max-h-60 max-w-full rounded-2xl border <?php echo $is_client ? 'border-[#FECDAA]' : 'border-emerald-200'; ?> shadow-sm group-hover:opacity-90 transition-opacity">
-                                        <span class="inline-flex items-center space-x-1 text-[11px] font-bold <?php echo $is_client ? 'text-[#EB3E0B]' : 'text-emerald-700'; ?> mt-1.5 group-hover:underline">
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                                            <span>View Full Image</span>
-                                        </span>
-                                    </a>
+                                    <div class="flex flex-wrap gap-2.5">
+                                        <?php foreach ($att_list as $img_path): ?>
+                                            <a href="<?php echo sanitize($img_path); ?>" target="_blank" class="group relative inline-block">
+                                                <img src="<?php echo sanitize($img_path); ?>" alt="Attachment" class="h-28 w-auto max-w-[200px] object-cover rounded-2xl border <?php echo $is_client ? 'border-[#FECDAA]' : 'border-emerald-200'; ?> shadow-xs group-hover:opacity-90 group-hover:scale-[1.02] transition-all">
+                                                <span class="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5 opacity-90 group-hover:opacity-100">
+                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                                    <span>View</span>
+                                                </span>
+                                            </a>
+                                        <?php endforeach; ?>
+                                    </div>
                                 </div>
                             <?php endif; ?>
                         </div>
@@ -252,20 +259,25 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
 
                     <!-- Photo Attachment Input -->
                     <div>
-                        <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-1.5">Attach Photo / Screenshot (Optional)</label>
+                        <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-1.5">Attach Photos / Screenshots (Optional, Multiple Allowed)</label>
                         <div class="flex items-center space-x-3">
                             <label class="cursor-pointer bg-[#FFE8D5] hover:bg-[#FECDAA] text-[#430D07] border border-[#FECDAA] text-xs font-bold px-4 py-2.5 rounded-xl flex items-center space-x-2 transition-all shrink-0">
                                 <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                                 </svg>
-                                <span>Attach Photo</span>
-                                <input type="file" name="attachment" id="chatPhotoInput" accept="image/*" class="hidden" onchange="previewChatPhoto(this)">
+                                <span>Choose Photos</span>
+                                <input type="file" name="attachments[]" id="chatPhotoInput" accept="image/*" multiple class="hidden" onchange="previewChatPhotos(this)">
                             </label>
-                            <span id="chatPhotoName" class="text-xs text-[#7C2112] truncate max-w-[220px]">No photo chosen</span>
+                            <span id="chatPhotoName" class="text-xs text-[#7C2112] truncate max-w-[220px]">No photos chosen</span>
                         </div>
-                        <div id="chatPhotoPreviewBox" class="hidden mt-2.5 relative inline-block">
-                            <img id="chatPhotoImg" src="" alt="Selected Photo" class="h-20 w-auto rounded-xl object-cover border border-[#FECDAA] shadow-sm">
-                            <button type="button" onclick="clearChatPhoto()" class="absolute -top-2 -right-2 w-5 h-5 bg-rose-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md hover:bg-rose-700">&times;</button>
+                        <div id="chatPhotoPreviewBox" class="hidden mt-3 space-y-2">
+                            <div class="flex items-center justify-between">
+                                <span id="chatPhotoCount" class="text-[11px] font-bold text-[#EB3E0B]">0 photos selected</span>
+                                <button type="button" onclick="clearChatPhotos()" class="text-[11px] font-bold text-rose-600 hover:underline">Clear All</button>
+                            </div>
+                            <div id="chatPhotoGrid" class="flex flex-wrap gap-2.5 max-h-36 overflow-y-auto p-2 bg-[#FFF5ED] border border-[#FECDAA] rounded-2xl">
+                                <!-- Previews injected via JS -->
+                            </div>
                         </div>
                     </div>
 
@@ -296,25 +308,43 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
-function previewChatPhoto(input) {
-    if (input.files && input.files[0]) {
-        var file = input.files[0];
-        document.getElementById('chatPhotoName').textContent = file.name;
-        var reader = new FileReader();
-        reader.onload = function(e) {
-            document.getElementById('chatPhotoImg').src = e.target.result;
-            document.getElementById('chatPhotoPreviewBox').classList.remove('hidden');
-        };
-        reader.readAsDataURL(file);
+function previewChatPhotos(input) {
+    var previewBox = document.getElementById('chatPhotoPreviewBox');
+    var grid = document.getElementById('chatPhotoGrid');
+    var nameEl = document.getElementById('chatPhotoName');
+    var countEl = document.getElementById('chatPhotoCount');
+
+    if (!input.files || input.files.length === 0) {
+        clearChatPhotos();
+        return;
+    }
+
+    grid.innerHTML = '';
+    var total = input.files.length;
+    nameEl.textContent = total + (total === 1 ? ' photo selected' : ' photos selected');
+    if (countEl) countEl.textContent = total + (total === 1 ? ' photo selected' : ' photos selected');
+    previewBox.classList.remove('hidden');
+
+    for (var i = 0; i < total; i++) {
+        (function(file) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                var thumb = document.createElement('div');
+                thumb.className = 'relative inline-block';
+                thumb.innerHTML = '<img src="' + e.target.result + '" alt="Preview" class="h-16 w-16 rounded-xl object-cover border border-[#FECDAA] shadow-xs">';
+                grid.appendChild(thumb);
+            };
+            reader.readAsDataURL(file);
+        })(input.files[i]);
     }
 }
 
-function clearChatPhoto() {
+function clearChatPhotos() {
     var input = document.getElementById('chatPhotoInput');
     if (input) input.value = '';
-    document.getElementById('chatPhotoName').textContent = 'No photo chosen';
+    document.getElementById('chatPhotoName').textContent = 'No photos chosen';
     document.getElementById('chatPhotoPreviewBox').classList.add('hidden');
-    document.getElementById('chatPhotoImg').src = '';
+    document.getElementById('chatPhotoGrid').innerHTML = '';
 }
 
 // Function to create HTML card for a new reply
@@ -339,17 +369,32 @@ function buildReplyCard(reply) {
         contentHtml = '<p class="text-xs sm:text-sm text-[#430D07] leading-relaxed whitespace-pre-wrap">' + escapeHtml(reply.message) + '</p>';
     }
 
-    if (reply.attachment_path) {
-        var imgLinkColor = isClient ? 'text-[#EB3E0B]' : 'text-emerald-700';
+    // Attachments
+    var atts = reply.attachments || [];
+    if (!atts.length && reply.attachment_path) {
+        try {
+            var parsed = JSON.parse(reply.attachment_path);
+            if (Array.isArray(parsed)) atts = parsed;
+            else atts = [reply.attachment_path];
+        } catch(e) {
+            atts = [reply.attachment_path];
+        }
+    }
+
+    if (atts.length > 0) {
         contentHtml += '<div class="mt-3 pt-2 border-t ' + headerBorder + '">' +
-            '<a href="' + escapeHtml(reply.attachment_path) + '" target="_blank" class="inline-block group">' +
-                '<img src="' + escapeHtml(reply.attachment_path) + '" alt="Attachment" class="max-h-60 max-w-full rounded-2xl border ' + borderColor + ' shadow-sm group-hover:opacity-90 transition-opacity">' +
-                '<span class="inline-flex items-center space-x-1 text-[11px] font-bold ' + imgLinkColor + ' mt-1.5 group-hover:underline">' +
-                    '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
-                    '<span>View Full Image</span>' +
+            '<div class="flex flex-wrap gap-2.5">';
+        for (var i = 0; i < atts.length; i++) {
+            var path = escapeHtml(atts[i]);
+            contentHtml += '<a href="' + path + '" target="_blank" class="group relative inline-block">' +
+                '<img src="' + path + '" alt="Attachment" class="h-28 w-auto max-w-[200px] object-cover rounded-2xl border ' + borderColor + ' shadow-xs group-hover:opacity-90 group-hover:scale-[1.02] transition-all">' +
+                '<span class="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5 opacity-90 group-hover:opacity-100">' +
+                    '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
+                    '<span>View</span>' +
                 '</span>' +
-            '</a>' +
-        '</div>';
+            '</a>';
+        }
+        contentHtml += '</div></div>';
     }
 
     var card = document.createElement('div');
@@ -451,7 +496,7 @@ if (replyForm && replyTextarea) {
 
             if (data && data.success && data.reply) {
                 replyTextarea.value = '';
-                clearChatPhoto();
+                clearChatPhotos();
                 var container = document.getElementById('repliesThreadContainer');
                 if (!document.querySelector('.reply-card[data-reply-id="' + data.reply.id + '"]')) {
                     var card = buildReplyCard(data.reply);
