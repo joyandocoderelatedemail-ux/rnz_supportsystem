@@ -47,7 +47,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $min_threshold = isset($_POST['min_threshold']) ? intval($_POST['min_threshold']) : 5;
         $unit_price = isset($_POST['unit_price']) ? floatval($_POST['unit_price']) : 0.00;
         $description = isset($_POST['description']) ? trim($_POST['description']) : '';
-        $image_path = isset($_POST['image_path']) ? trim($_POST['image_path']) : '';
 
         if (empty($name)) {
             header("Location: inventory?msg=error&err_msg=" . urlencode("Item name is required."));
@@ -68,12 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             $stmt_in = $pdo->prepare("INSERT INTO support_inventory_items 
                 (item_code, name, category, description, image_path, quantity, min_threshold, unit_price, location, status, created_at, updated_at) 
-                VALUES (:code, :name, 'Hardware', :description, :image_path, :qty, :min, :price, 'Main Storage', 'Active', :now, :now)");
+                VALUES (:code, :name, 'Hardware', :description, NULL, :qty, :min, :price, 'Main Storage', 'Active', :now, :now)");
             $stmt_in->execute(array(
                 ':code' => $item_code,
                 ':name' => $name,
                 ':description' => $description,
-                ':image_path' => $image_path,
                 ':qty' => $quantity,
                 ':min' => $min_threshold,
                 ':price' => $unit_price,
@@ -185,7 +183,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $min_threshold = isset($_POST['min_threshold']) ? intval($_POST['min_threshold']) : 5;
         $unit_price = isset($_POST['unit_price']) ? floatval($_POST['unit_price']) : 0.00;
         $description = isset($_POST['description']) ? trim($_POST['description']) : '';
-        $image_path = isset($_POST['image_path']) ? trim($_POST['image_path']) : '';
         $status = isset($_POST['status']) ? trim($_POST['status']) : 'Active';
 
         if ($item_id <= 0 || empty($name)) {
@@ -197,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $now = date('Y-m-d H:i:s');
             $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET 
                 item_code = :code, name = :name, min_threshold = :min, 
-                unit_price = :price, description = :description, image_path = :img, 
+                unit_price = :price, description = :description, 
                 status = :status, updated_at = :now WHERE id = :id");
             $stmt_up->execute(array(
                 ':code' => $item_code,
@@ -205,7 +202,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':min' => $min_threshold,
                 ':price' => $unit_price,
                 ':description' => $description,
-                ':img' => $image_path,
                 ':status' => $status,
                 ':now' => $now,
                 ':id' => $item_id
@@ -568,30 +564,23 @@ $page_title = 'Hardware Inventory Hub';
                                         $stock_badge = 'bg-emerald-100 text-emerald-800 border-emerald-300';
                                         $stock_label = 'In Stock';
                                     }
-
-                                    $img_src = !empty($item['image_path']) ? '../' . ltrim($item['image_path'], '/') : '../hardware_photos/system_unit.jpg';
                                 ?>
                                     <tr class="hover:bg-slate-50/80 transition-colors">
                                         <!-- Item & Code -->
                                         <td class="py-4 px-6">
-                                            <div class="flex items-center space-x-3.5">
-                                                <div class="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 p-1">
-                                                    <img src="<?php echo sanitize($img_src); ?>" alt="<?php echo sanitize($item['name']); ?>" class="w-full h-full object-contain" onerror="this.src='../hardware_photos/system_unit.jpg'">
-                                                </div>
-                                                <div class="min-w-0">
-                                                    <h4 class="font-extrabold text-slate-900 text-sm truncate max-w-sm" title="<?php echo sanitize($item['name']); ?>">
-                                                        <?php echo sanitize($item['name']); ?>
-                                                    </h4>
-                                                    <div class="flex items-center space-x-2 mt-0.5">
-                                                        <span class="font-mono font-bold text-xs text-[#EB3E0B]">
-                                                            <?php echo sanitize($item['item_code']); ?>
+                                            <div class="min-w-0">
+                                                <h4 class="font-extrabold text-slate-900 text-sm truncate max-w-sm" title="<?php echo sanitize($item['name']); ?>">
+                                                    <?php echo sanitize($item['name']); ?>
+                                                </h4>
+                                                <div class="flex items-center space-x-2 mt-0.5">
+                                                    <span class="font-mono font-bold text-xs text-[#EB3E0B]">
+                                                        <?php echo sanitize($item['item_code']); ?>
+                                                    </span>
+                                                    <?php if ($item['status'] !== 'Active'): ?>
+                                                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold">
+                                                            <?php echo sanitize($item['status']); ?>
                                                         </span>
-                                                        <?php if ($item['status'] !== 'Active'): ?>
-                                                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold">
-                                                                <?php echo sanitize($item['status']); ?>
-                                                            </span>
-                                                        <?php endif; ?>
-                                                    </div>
+                                                    <?php endif; ?>
                                                 </div>
                                             </div>
                                         </td>
@@ -735,30 +724,6 @@ $page_title = 'Hardware Inventory Hub';
                 <div class="space-y-1">
                     <label class="text-xs font-bold text-slate-700">Min Alert Threshold</label>
                     <input type="number" name="min_threshold" min="0" value="3" required class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono">
-                </div>
-
-                <!-- Hardware Image Selector -->
-                <div class="sm:col-span-2 space-y-1">
-                    <label class="text-xs font-bold text-slate-700">Reference Photo / Icon</label>
-                    <select name="image_path" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none">
-                        <option value="">Default Icon</option>
-                        <option value="hardware_photos/thermal_printer.png">Thermal Printer (80mm)</option>
-                        <option value="hardware_photos/thermal_printer58mm.png">Thermal Printer (58mm)</option>
-                        <option value="hardware_photos/dot_matrix_printer.jpg">Dot Matrix Printer</option>
-                        <option value="hardware_photos/stickerprinter.webp">Sticker Printer</option>
-                        <option value="hardware_photos/barcode_scanner.jpg">Barcode Scanner</option>
-                        <option value="hardware_photos/customer_display.jpg">Customer Display</option>
-                        <option value="hardware_photos/mouse.jpg">Mouse</option>
-                        <option value="hardware_photos/keyboard.jpg">Keyboard</option>
-                        <option value="hardware_photos/monitor.png">Monitor</option>
-                        <option value="hardware_photos/cash_drawer.jpg">Cash Drawer</option>
-                        <option value="hardware_photos/rfid_reader.jpeg">RFID Reader</option>
-                        <option value="hardware_photos/system_unit.jpg">System Unit</option>
-                        <option value="hardware_photos/ups.jpg">UPS</option>
-                        <option value="hardware_photos/router.jpg">Router</option>
-                        <option value="hardware_photos/hardwarelan_cable.jpg">LAN Cable</option>
-                        <option value="hardware_photos/wifi_dongle.jpg">Wi-Fi Dongle</option>
-                    </select>
                 </div>
 
                 <!-- Description -->
@@ -946,30 +911,6 @@ $page_title = 'Hardware Inventory Hub';
                     </select>
                 </div>
 
-                <!-- Hardware Image Selector -->
-                <div class="sm:col-span-2 space-y-1">
-                    <label class="text-xs font-bold text-slate-700">Reference Photo</label>
-                    <select name="image_path" id="edit_image_path" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none">
-                        <option value="">Default Icon</option>
-                        <option value="hardware_photos/thermal_printer.png">Thermal Printer (80mm)</option>
-                        <option value="hardware_photos/thermal_printer58mm.png">Thermal Printer (58mm)</option>
-                        <option value="hardware_photos/dot_matrix_printer.jpg">Dot Matrix Printer</option>
-                        <option value="hardware_photos/stickerprinter.webp">Sticker Printer</option>
-                        <option value="hardware_photos/barcode_scanner.jpg">Barcode Scanner</option>
-                        <option value="hardware_photos/customer_display.jpg">Customer Display</option>
-                        <option value="hardware_photos/mouse.jpg">Mouse</option>
-                        <option value="hardware_photos/keyboard.jpg">Keyboard</option>
-                        <option value="hardware_photos/monitor.png">Monitor</option>
-                        <option value="hardware_photos/cash_drawer.jpg">Cash Drawer</option>
-                        <option value="hardware_photos/rfid_reader.jpeg">RFID Reader</option>
-                        <option value="hardware_photos/system_unit.jpg">System Unit</option>
-                        <option value="hardware_photos/ups.jpg">UPS</option>
-                        <option value="hardware_photos/router.jpg">Router</option>
-                        <option value="hardware_photos/hardwarelan_cable.jpg">LAN Cable</option>
-                        <option value="hardware_photos/wifi_dongle.jpg">Wi-Fi Dongle</option>
-                    </select>
-                </div>
-
                 <!-- Description -->
                 <div class="sm:col-span-2 space-y-1">
                     <label class="text-xs font-bold text-slate-700">Description / Specs</label>
@@ -1137,7 +1078,6 @@ function openEditModal(item) {
     document.getElementById('edit_min_threshold').value = item.min_threshold || 5;
     document.getElementById('edit_unit_price').value = item.unit_price || 0.00;
     document.getElementById('edit_status').value = item.status || 'Active';
-    document.getElementById('edit_image_path').value = item.image_path || '';
     document.getElementById('edit_description').value = item.description || '';
 
     var m = document.getElementById('editModal');
