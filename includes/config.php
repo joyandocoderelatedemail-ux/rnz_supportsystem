@@ -88,7 +88,7 @@ function is_logged_in() {
  */
 function require_login() {
     if (!is_logged_in()) {
-        header("Location: login.php");
+        header("Location: login");
         exit;
     }
 }
