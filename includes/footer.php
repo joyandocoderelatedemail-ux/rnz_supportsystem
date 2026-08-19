@@ -23,7 +23,7 @@
             </div>
         </div>
 
-        <form action="tickets.php" method="POST" class="space-y-4">
+        <form action="tickets" method="POST" class="space-y-4">
             <input type="hidden" name="action" value="create_ticket">
             
             <div>
@@ -41,6 +41,7 @@
                         <option value="System Maintenance">System Maintenance</option>
                         <option value="Billing & Retainer">Billing & Retainer</option>
                         <option value="General Support">General Support</option>
+                        <option value="Others">Others</option>
                     </select>
                 </div>
 
