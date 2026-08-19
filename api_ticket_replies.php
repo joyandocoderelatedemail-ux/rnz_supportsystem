@@ -43,19 +43,21 @@ if (!$ticket) {
 // -----------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'post_reply') {
     $reply_message = isset($_POST['message']) ? trim($_POST['message']) : '';
+    $photo_attachment = upload_ticket_photo('attachment');
 
-    if (empty($reply_message)) {
-        echo json_encode(array('success' => false, 'error' => 'Please enter a message before sending.'));
+    if (empty($reply_message) && empty($photo_attachment)) {
+        echo json_encode(array('success' => false, 'error' => 'Please enter a message or select a photo.'));
         exit;
     }
 
     $now = date('Y-m-d H:i:s');
     try {
-        $stmt_r = $pdo->prepare("INSERT INTO client_ticket_replies (ticket_id, sender_type, sender_name, message, created_at) VALUES (:tid, 'client', :sname, :msg, :c_at)");
+        $stmt_r = $pdo->prepare("INSERT INTO client_ticket_replies (ticket_id, sender_type, sender_name, message, attachment_path, created_at) VALUES (:tid, 'client', :sname, :msg, :att, :c_at)");
         $stmt_r->execute(array(
             ':tid' => $ticket_id,
             ':sname' => $tradename,
             ':msg' => $reply_message,
+            ':att' => $photo_attachment ? $photo_attachment : null,
             ':c_at' => $now
         ));
         $new_reply_id = $pdo->lastInsertId();
@@ -72,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 'sender_name' => $tradename,
                 'is_client' => true,
                 'message' => $reply_message,
+                'attachment_path' => $photo_attachment ? $photo_attachment : null,
                 'formatted_date' => format_date($now),
                 'diagnostic_log' => (strpos($reply_message, '=== HARDWARE DIAGNOSTIC LOG ===') !== false) ? format_diagnostic_log_text($reply_message) : null
             )
@@ -89,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 $after_id = isset($_GET['after_id']) ? intval($_GET['after_id']) : 0;
 
 try {
-    $stmt_replies = $pdo->prepare("SELECT id, ticket_id, sender_type, sender_name, message, created_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
+    $stmt_replies = $pdo->prepare("SELECT id, ticket_id, sender_type, sender_name, message, attachment_path, created_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
     $stmt_replies->execute(array(':tid' => $ticket_id, ':after_id' => $after_id));
     $raw_replies = $stmt_replies->fetchAll();
 
@@ -108,6 +111,7 @@ try {
             'sender_name' => $r['sender_name'],
             'is_client' => $is_client,
             'message' => $msg_text,
+            'attachment_path' => !empty($r['attachment_path']) ? $r['attachment_path'] : null,
             'formatted_date' => format_date($r['created_at']),
             'diagnostic_log' => $diag_log
         );

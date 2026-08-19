@@ -23,7 +23,7 @@
             </div>
         </div>
 
-        <form action="tickets" method="POST" class="space-y-4">
+        <form action="tickets" method="POST" enctype="multipart/form-data" class="space-y-4">
             <input type="hidden" name="action" value="create_ticket">
             
             <div>
@@ -58,7 +58,26 @@
 
             <div>
                 <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-1.5">Detailed Description</label>
-                <textarea name="issue_description" rows="4" required placeholder="Please describe what happened, error messages, or steps to reproduce..." class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                <textarea name="issue_description" rows="3" required placeholder="Please describe what happened, error messages, or steps to reproduce..." class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+            </div>
+
+            <!-- Photo Attachment -->
+            <div>
+                <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-1.5">Attach Photo / Screenshot (Optional)</label>
+                <div class="flex items-center space-x-3">
+                    <label class="cursor-pointer bg-[#FFE8D5] hover:bg-[#FECDAA] text-[#430D07] border border-[#FECDAA] text-xs font-bold px-4 py-2.5 rounded-xl flex items-center space-x-2 transition-all shrink-0">
+                        <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span>Choose Photo</span>
+                        <input type="file" name="attachment" id="modalTicketPhotoInput" accept="image/*" class="hidden" onchange="previewModalTicketPhoto(this)">
+                    </label>
+                    <span id="modalTicketPhotoName" class="text-xs text-[#7C2112] truncate max-w-[220px]">No photo chosen</span>
+                </div>
+                <div id="modalTicketPhotoPreviewBox" class="hidden mt-2.5 relative inline-block">
+                    <img id="modalTicketPhotoImg" src="" alt="Selected Photo" class="h-20 w-auto rounded-xl object-cover border border-[#FECDAA] shadow-sm">
+                    <button type="button" onclick="clearModalTicketPhoto()" class="absolute -top-2 -right-2 w-5 h-5 bg-rose-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md hover:bg-rose-700">&times;</button>
+                </div>
             </div>
 
             <div class="pt-2 flex items-center justify-end space-x-3">
@@ -79,6 +98,25 @@ function openNewTicketModal() {
 }
 function closeNewTicketModal() {
     document.getElementById('newTicketModal').classList.add('hidden');
+}
+function previewModalTicketPhoto(input) {
+    if (input.files && input.files[0]) {
+        var file = input.files[0];
+        document.getElementById('modalTicketPhotoName').textContent = file.name;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('modalTicketPhotoImg').src = e.target.result;
+            document.getElementById('modalTicketPhotoPreviewBox').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+}
+function clearModalTicketPhoto() {
+    var input = document.getElementById('modalTicketPhotoInput');
+    if (input) input.value = '';
+    document.getElementById('modalTicketPhotoName').textContent = 'No photo chosen';
+    document.getElementById('modalTicketPhotoPreviewBox').classList.add('hidden');
+    document.getElementById('modalTicketPhotoImg').src = '';
 }
 </script>
 </body>

@@ -23,16 +23,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($post_action === 'send_tech_reply') {
         $reply_msg = isset($_POST['reply_message']) ? trim($_POST['reply_message']) : '';
+        $photo_attachment = upload_ticket_photo('attachment');
 
-        if (!empty($reply_msg)) {
+        if (!empty($reply_msg) || !empty($photo_attachment)) {
             $stmt_rep = $pdo->prepare("INSERT INTO client_ticket_replies 
-                (ticket_id, sender_type, sender_name, message, created_at) 
-                VALUES (:tid, 'support', :sname, :msg, :c_at)");
+                (ticket_id, sender_type, sender_name, message, attachment_path, created_at) 
+                VALUES (:tid, 'support', :sname, :msg, :att, :c_at)");
 
             $stmt_rep->execute(array(
                 ':tid' => $ticket_id,
                 ':sname' => $tech_fullname,
                 ':msg' => $reply_msg,
+                ':att' => $photo_attachment ? $photo_attachment : null,
                 ':c_at' => date('Y-m-d H:i:s')
             ));
 
@@ -279,8 +281,22 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                             <summary class="cursor-pointer font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>
                                             <pre class="mt-2 p-3 rounded-2xl bg-white border border-slate-200 text-slate-800 font-mono text-xs whitespace-pre-wrap leading-relaxed"><?php echo sanitize(format_diagnostic_log_text($rep['message'])); ?></pre>
                                         </details>
-                                    <?php else: ?>
+                                    <?php elseif (!empty($rep['message'])): ?>
                                         <p class="text-slate-800 leading-relaxed font-medium whitespace-pre-wrap"><?php echo sanitize($rep['message']); ?></p>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($rep['attachment_path'])): 
+                                        $img_url = '../' . ltrim($rep['attachment_path'], '/');
+                                    ?>
+                                        <div class="mt-2.5 pt-2 border-t <?php echo $is_tech ? 'border-[#FFE8D5]' : 'border-slate-200'; ?>">
+                                            <a href="<?php echo sanitize($img_url); ?>" target="_blank" class="inline-block group">
+                                                <img src="<?php echo sanitize($img_url); ?>" alt="Attachment" class="max-h-60 max-w-full rounded-2xl border <?php echo $is_tech ? 'border-[#FECDAA]' : 'border-slate-200'; ?> shadow-sm group-hover:opacity-90 transition-opacity">
+                                                <span class="inline-flex items-center space-x-1 text-[11px] font-bold <?php echo $is_tech ? 'text-[#EB3E0B]' : 'text-blue-600'; ?> mt-1.5 group-hover:underline">
+                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                                    <span>View Full Image</span>
+                                                </span>
+                                            </a>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
                             <?php endforeach; ?>
@@ -288,16 +304,35 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
 
                         <!-- Reply Box -->
                         <div class="pt-6 border-t border-slate-100">
-                            <form id="techReplyForm" action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
+                            <form id="techReplyForm" action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
                                 <input type="hidden" name="action" value="send_tech_reply">
                                 <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
 
                                 <div>
                                     <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Send Support Reply to Client</label>
-                                    <textarea id="techReplyTextarea" name="reply_message" rows="4" required placeholder="Type your technician response or instructions here..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                                    <textarea id="techReplyTextarea" name="reply_message" rows="3" placeholder="Type your technician response or instructions here..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
                                 </div>
 
-                                <div class="flex items-center justify-between">
+                                <!-- Photo Attachment Input -->
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Attach Photo / Screenshot (Optional)</label>
+                                    <div class="flex items-center space-x-3">
+                                        <label class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center space-x-2 transition-all shrink-0">
+                                            <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                            </svg>
+                                            <span>Attach Photo</span>
+                                            <input type="file" name="attachment" id="techChatPhotoInput" accept="image/*" class="hidden" onchange="previewTechChatPhoto(this)">
+                                        </label>
+                                        <span id="techChatPhotoName" class="text-xs text-slate-500 truncate max-w-[220px]">No photo chosen</span>
+                                    </div>
+                                    <div id="techChatPhotoPreviewBox" class="hidden mt-2.5 relative inline-block">
+                                        <img id="techChatPhotoImg" src="" alt="Selected Photo" class="h-20 w-auto rounded-xl object-cover border border-slate-300 shadow-sm">
+                                        <button type="button" onclick="clearTechChatPhoto()" class="absolute -top-2 -right-2 w-5 h-5 bg-rose-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md hover:bg-rose-700">&times;</button>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center justify-between pt-2">
                                     <span class="text-[11px] text-slate-400">Replying as: <strong class="text-slate-700"><?php echo sanitize($tech_fullname); ?></strong></span>
                                     <button type="submit" id="techReplySubmitBtn" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-3 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 flex items-center space-x-2">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -407,6 +442,27 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+function previewTechChatPhoto(input) {
+    if (input.files && input.files[0]) {
+        var file = input.files[0];
+        document.getElementById('techChatPhotoName').textContent = file.name;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('techChatPhotoImg').src = e.target.result;
+            document.getElementById('techChatPhotoPreviewBox').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function clearTechChatPhoto() {
+    var input = document.getElementById('techChatPhotoInput');
+    if (input) input.value = '';
+    document.getElementById('techChatPhotoName').textContent = 'No photo chosen';
+    document.getElementById('techChatPhotoPreviewBox').classList.add('hidden');
+    document.getElementById('techChatPhotoImg').src = '';
+}
+
 function buildTechReplyCard(reply) {
     var isTech = reply.is_tech;
     var containerClass = isTech 
@@ -426,8 +482,23 @@ function buildTechReplyCard(reply) {
             '<summary class="cursor-pointer font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>' +
             '<pre class="mt-2 p-3 rounded-2xl bg-white border border-slate-200 text-slate-800 font-mono text-xs whitespace-pre-wrap leading-relaxed">' + escapeHtml(reply.diagnostic_log) + '</pre>' +
             '</details>';
-    } else {
+    } else if (reply.message) {
         contentHtml = '<p class="text-slate-800 leading-relaxed font-medium whitespace-pre-wrap">' + escapeHtml(reply.message) + '</p>';
+    }
+
+    if (reply.attachment_path) {
+        var imgUrl = '../' + reply.attachment_path.replace(/^\/+/, '');
+        var imgLinkColor = isTech ? 'text-[#EB3E0B]' : 'text-blue-600';
+        var borderClr = isTech ? 'border-[#FECDAA]' : 'border-slate-200';
+        contentHtml += '<div class="mt-2.5 pt-2 border-t ' + borderClr + '">' +
+            '<a href="' + escapeHtml(imgUrl) + '" target="_blank" class="inline-block group">' +
+                '<img src="' + escapeHtml(imgUrl) + '" alt="Attachment" class="max-h-60 max-w-full rounded-2xl border ' + borderClr + ' shadow-sm group-hover:opacity-90 transition-opacity">' +
+                '<span class="inline-flex items-center space-x-1 text-[11px] font-bold ' + imgLinkColor + ' mt-1.5 group-hover:underline">' +
+                    '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
+                    '<span>View Full Image</span>' +
+                '</span>' +
+            '</a>' +
+        '</div>';
     }
 
     var card = document.createElement('div');
@@ -480,7 +551,10 @@ if (techReplyForm && techReplyTextarea) {
     techReplyForm.addEventListener('submit', function(e) {
         e.preventDefault();
         var msg = techReplyTextarea.value.trim();
-        if (!msg) return;
+        var fileInput = document.getElementById('techChatPhotoInput');
+        var hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+
+        if (!msg && !hasFile) return;
 
         isTechSubmitting = true;
         techReplySubmitBtn.disabled = true;
@@ -500,6 +574,7 @@ if (techReplyForm && techReplyTextarea) {
 
             if (data && data.success && data.reply) {
                 techReplyTextarea.value = '';
+                clearTechChatPhoto();
                 var container = document.getElementById('backendRepliesContainer');
                 if (!document.querySelector('.tech-reply-card[data-reply-id="' + data.reply.id + '"]')) {
                     var card = buildTechReplyCard(data.reply);

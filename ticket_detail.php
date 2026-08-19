@@ -31,16 +31,18 @@ $reply_error = '';
 // Handle Reply Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'post_reply') {
     $reply_message = isset($_POST['message']) ? trim($_POST['message']) : '';
+    $photo_attachment = upload_ticket_photo('attachment');
 
-    if (empty($reply_message)) {
-        $reply_error = 'Please enter a message before sending.';
+    if (empty($reply_message) && empty($photo_attachment)) {
+        $reply_error = 'Please enter a message or attach a photo before sending.';
     } else {
         $now = date('Y-m-d H:i:s');
-        $stmt_r = $pdo->prepare("INSERT INTO client_ticket_replies (ticket_id, sender_type, sender_name, message, created_at) VALUES (:tid, 'client', :sname, :msg, :c_at)");
+        $stmt_r = $pdo->prepare("INSERT INTO client_ticket_replies (ticket_id, sender_type, sender_name, message, attachment_path, created_at) VALUES (:tid, 'client', :sname, :msg, :att, :c_at)");
         $stmt_r->execute(array(
             ':tid' => $ticket_id,
             ':sname' => $client['tradename'],
             ':msg' => $reply_message,
+            ':att' => $photo_attachment ? $photo_attachment : null,
             ':c_at' => $now
         ));
 
@@ -220,6 +222,18 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                             <?php else: ?>
                                 <p class="text-xs sm:text-sm text-[#430D07] leading-relaxed whitespace-pre-wrap"><?php echo sanitize($r['message']); ?></p>
                             <?php endif; ?>
+
+                            <?php if (!empty($r['attachment_path'])): ?>
+                                <div class="mt-3 pt-2 border-t <?php echo $is_client ? 'border-[#FFE8D5]' : 'border-emerald-100'; ?>">
+                                    <a href="<?php echo sanitize($r['attachment_path']); ?>" target="_blank" class="inline-block group">
+                                        <img src="<?php echo sanitize($r['attachment_path']); ?>" alt="Attachment" class="max-h-60 max-w-full rounded-2xl border <?php echo $is_client ? 'border-[#FECDAA]' : 'border-emerald-200'; ?> shadow-sm group-hover:opacity-90 transition-opacity">
+                                        <span class="inline-flex items-center space-x-1 text-[11px] font-bold <?php echo $is_client ? 'text-[#EB3E0B]' : 'text-emerald-700'; ?> mt-1.5 group-hover:underline">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                                            <span>View Full Image</span>
+                                        </span>
+                                    </a>
+                                </div>
+                            <?php endif; ?>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -227,16 +241,35 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
 
             <!-- Reply Input Box -->
             <div class="bg-white/90 rounded-3xl p-6 border border-[#FECDAA] shadow-sm">
-                <form id="replyForm" action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
+                <form id="replyForm" action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
                     <input type="hidden" name="action" value="post_reply">
                     <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
                     
                     <div>
                         <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-2">Send Reply or Update</label>
-                        <textarea id="replyTextarea" name="message" rows="3" required placeholder="Type your message here to update technical support..." class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                        <textarea id="replyTextarea" name="message" rows="3" placeholder="Type your message here to update technical support..." class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
                     </div>
 
-                    <div class="flex items-center justify-between">
+                    <!-- Photo Attachment Input -->
+                    <div>
+                        <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-1.5">Attach Photo / Screenshot (Optional)</label>
+                        <div class="flex items-center space-x-3">
+                            <label class="cursor-pointer bg-[#FFE8D5] hover:bg-[#FECDAA] text-[#430D07] border border-[#FECDAA] text-xs font-bold px-4 py-2.5 rounded-xl flex items-center space-x-2 transition-all shrink-0">
+                                <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                </svg>
+                                <span>Attach Photo</span>
+                                <input type="file" name="attachment" id="chatPhotoInput" accept="image/*" class="hidden" onchange="previewChatPhoto(this)">
+                            </label>
+                            <span id="chatPhotoName" class="text-xs text-[#7C2112] truncate max-w-[220px]">No photo chosen</span>
+                        </div>
+                        <div id="chatPhotoPreviewBox" class="hidden mt-2.5 relative inline-block">
+                            <img id="chatPhotoImg" src="" alt="Selected Photo" class="h-20 w-auto rounded-xl object-cover border border-[#FECDAA] shadow-sm">
+                            <button type="button" onclick="clearChatPhoto()" class="absolute -top-2 -right-2 w-5 h-5 bg-rose-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md hover:bg-rose-700">&times;</button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between pt-2">
                         <span id="replySendingStatus" class="text-xs text-[#7C2112] font-semibold hidden">Sending message...</span>
                         <button type="submit" id="replySubmitBtn" class="ml-auto bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 flex items-center space-x-2">
                             <span>Post Reply</span>
@@ -263,6 +296,27 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+function previewChatPhoto(input) {
+    if (input.files && input.files[0]) {
+        var file = input.files[0];
+        document.getElementById('chatPhotoName').textContent = file.name;
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('chatPhotoImg').src = e.target.result;
+            document.getElementById('chatPhotoPreviewBox').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function clearChatPhoto() {
+    var input = document.getElementById('chatPhotoInput');
+    if (input) input.value = '';
+    document.getElementById('chatPhotoName').textContent = 'No photo chosen';
+    document.getElementById('chatPhotoPreviewBox').classList.add('hidden');
+    document.getElementById('chatPhotoImg').src = '';
+}
+
 // Function to create HTML card for a new reply
 function buildReplyCard(reply) {
     var isClient = reply.is_client;
@@ -281,8 +335,21 @@ function buildReplyCard(reply) {
             '<summary class="cursor-pointer font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>' +
             '<pre class="mt-2 p-3 rounded-2xl bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] font-mono text-xs whitespace-pre-wrap leading-relaxed">' + escapeHtml(reply.diagnostic_log) + '</pre>' +
             '</details>';
-    } else {
+    } else if (reply.message) {
         contentHtml = '<p class="text-xs sm:text-sm text-[#430D07] leading-relaxed whitespace-pre-wrap">' + escapeHtml(reply.message) + '</p>';
+    }
+
+    if (reply.attachment_path) {
+        var imgLinkColor = isClient ? 'text-[#EB3E0B]' : 'text-emerald-700';
+        contentHtml += '<div class="mt-3 pt-2 border-t ' + headerBorder + '">' +
+            '<a href="' + escapeHtml(reply.attachment_path) + '" target="_blank" class="inline-block group">' +
+                '<img src="' + escapeHtml(reply.attachment_path) + '" alt="Attachment" class="max-h-60 max-w-full rounded-2xl border ' + borderColor + ' shadow-sm group-hover:opacity-90 transition-opacity">' +
+                '<span class="inline-flex items-center space-x-1 text-[11px] font-bold ' + imgLinkColor + ' mt-1.5 group-hover:underline">' +
+                    '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
+                    '<span>View Full Image</span>' +
+                '</span>' +
+            '</a>' +
+        '</div>';
     }
 
     var card = document.createElement('div');
@@ -312,7 +379,6 @@ function pollReplies() {
                 if (data.replies && data.replies.length > 0) {
                     var container = document.getElementById('repliesThreadContainer');
                     data.replies.forEach(function(r) {
-                        // Check if reply card already exists
                         if (!document.querySelector('.reply-card[data-reply-id="' + r.id + '"]')) {
                             var card = buildReplyCard(r);
                             container.appendChild(card);
@@ -360,7 +426,10 @@ if (replyForm && replyTextarea) {
     replyForm.addEventListener('submit', function(e) {
         e.preventDefault();
         var msg = replyTextarea.value.trim();
-        if (!msg) return;
+        var fileInput = document.getElementById('chatPhotoInput');
+        var hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+
+        if (!msg && !hasFile) return;
 
         isSubmitting = true;
         replySubmitBtn.disabled = true;
@@ -382,6 +451,7 @@ if (replyForm && replyTextarea) {
 
             if (data && data.success && data.reply) {
                 replyTextarea.value = '';
+                clearChatPhoto();
                 var container = document.getElementById('repliesThreadContainer');
                 if (!document.querySelector('.reply-card[data-reply-id="' + data.reply.id + '"]')) {
                     var card = buildReplyCard(data.reply);
@@ -401,7 +471,6 @@ if (replyForm && replyTextarea) {
             replySubmitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
             if (replySendingStatus) replySendingStatus.classList.add('hidden');
             console.error('Submit error:', err);
-            // Fallback to normal form submit if network fails
             replyForm.submit();
         });
     });

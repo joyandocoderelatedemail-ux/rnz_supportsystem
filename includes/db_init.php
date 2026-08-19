@@ -20,6 +20,7 @@ function init_client_portal_tables() {
         `category` VARCHAR(100) NOT NULL DEFAULT 'General Support',
         `priority` VARCHAR(50) NOT NULL DEFAULT 'Medium',
         `issue_description` TEXT NOT NULL,
+        `attachment_path` VARCHAR(255) NULL,
         `status` VARCHAR(50) NOT NULL DEFAULT 'Pending',
         `assigned_tech` VARCHAR(100) NOT NULL DEFAULT 'Unassigned',
         `created_at` DATETIME NOT NULL,
@@ -36,6 +37,7 @@ function init_client_portal_tables() {
         `sender_type` VARCHAR(20) NOT NULL,
         `sender_name` VARCHAR(100) NOT NULL,
         `message` TEXT NOT NULL,
+        `attachment_path` VARCHAR(255) NULL,
         `created_at` DATETIME NOT NULL,
         PRIMARY KEY (`id`),
         KEY `ticket_id` (`ticket_id`)
@@ -207,6 +209,16 @@ function init_client_portal_tables() {
             $check_cov = $pdo->query("SHOW COLUMNS FROM `bucket_client` LIKE 'warranty_coverage_type'");
             if ($check_cov && $check_cov->rowCount() == 0) {
                 $pdo->exec("ALTER TABLE `bucket_client` ADD `warranty_coverage_type` VARCHAR(50) NOT NULL DEFAULT 'Both'");
+            }
+
+            // Ensure ticket & reply tables have attachment_path
+            $check_t_att = $pdo->query("SHOW COLUMNS FROM `client_support_tickets` LIKE 'attachment_path'");
+            if ($check_t_att && $check_t_att->rowCount() == 0) {
+                $pdo->exec("ALTER TABLE `client_support_tickets` ADD `attachment_path` VARCHAR(255) NULL AFTER `issue_description`");
+            }
+            $check_r_att = $pdo->query("SHOW COLUMNS FROM `client_ticket_replies` LIKE 'attachment_path'");
+            if ($check_r_att && $check_r_att->rowCount() == 0) {
+                $pdo->exec("ALTER TABLE `client_ticket_replies` ADD `attachment_path` VARCHAR(255) NULL AFTER `message`");
             }
         } catch (PDOException $e_col) {
             // Non-blocking

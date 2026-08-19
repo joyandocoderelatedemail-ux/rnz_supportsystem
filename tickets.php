@@ -25,11 +25,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         // Generate unique ticket number
         $ticket_number = 'RNZ-' . date('Y') . '-' . rand(10000, 99999);
         $now = date('Y-m-d H:i:s');
+        $photo_attachment = upload_ticket_photo('attachment');
 
         try {
             $stmt = $pdo->prepare("INSERT INTO client_support_tickets 
-                (ticket_number, accountnum, clientname, tradename, subject, category, priority, issue_description, status, assigned_tech, created_at, updated_at) 
-                VALUES (:num, :acct, :cname, :tname, :subj, :cat, :prio, :desc, 'Pending', 'Unassigned', :c_at, :u_at)");
+                (ticket_number, accountnum, clientname, tradename, subject, category, priority, issue_description, attachment_path, status, assigned_tech, created_at, updated_at) 
+                VALUES (:num, :acct, :cname, :tname, :subj, :cat, :prio, :desc, :att, 'Pending', 'Unassigned', :c_at, :u_at)");
             
             $stmt->execute(array(
                 ':num' => $ticket_number,
@@ -40,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ':cat' => $category,
                 ':prio' => $priority,
                 ':desc' => $issue_description,
+                ':att' => $photo_attachment ? $photo_attachment : null,
                 ':c_at' => $now,
                 ':u_at' => $now
             ));
@@ -48,12 +50,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
             // Insert initial reply log
             $stmt2 = $pdo->prepare("INSERT INTO client_ticket_replies 
-                (ticket_id, sender_type, sender_name, message, created_at) 
-                VALUES (:tid, 'client', :sname, :msg, :c_at)");
+                (ticket_id, sender_type, sender_name, message, attachment_path, created_at) 
+                VALUES (:tid, 'client', :sname, :msg, :att, :c_at)");
             $stmt2->execute(array(
                 ':tid' => $new_ticket_id,
                 ':sname' => $client['tradename'],
                 ':msg' => $issue_description,
+                ':att' => $photo_attachment ? $photo_attachment : null,
                 ':c_at' => $now
             ));
 

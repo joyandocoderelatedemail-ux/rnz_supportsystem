@@ -133,4 +133,41 @@ function get_status_badge_class($status) {
     }
     return 'bg-slate-50 text-slate-700 border-slate-200';
 }
+
+/**
+ * Safely upload ticket photo attachment (PNG, JPG, JPEG, WEBP, GIF)
+ * @param string $file_key Name of the file input in $_FILES
+ * @param string $subdir Target subdirectory inside uploads
+ * @return string|false Relative path from project root or false
+ */
+function upload_ticket_photo($file_key = 'attachment', $subdir = 'ticket_attachments') {
+    if (!isset($_FILES[$file_key]) || empty($_FILES[$file_key]['name'])) {
+        return false;
+    }
+    $file = $_FILES[$file_key];
+    if (!isset($file['error']) || $file['error'] !== UPLOAD_ERR_OK) {
+        return false;
+    }
+    if ($file['size'] > 15 * 1024 * 1024) {
+        return false;
+    }
+    $allowed_exts = array('jpg', 'jpeg', 'png', 'webp', 'gif');
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowed_exts)) {
+        return false;
+    }
+
+    $upload_dir = __DIR__ . '/../../uploads/' . $subdir . '/';
+    if (!is_dir($upload_dir)) {
+        @mkdir($upload_dir, 0777, true);
+    }
+
+    $new_filename = 'photo_' . date('Ymd_His') . '_' . rand(1000, 9999) . '.' . $ext;
+    $target_file = $upload_dir . $new_filename;
+
+    if (move_uploaded_file($file['tmp_name'], $target_file)) {
+        return 'uploads/' . $subdir . '/' . $new_filename;
+    }
+    return false;
+}
 ?>
