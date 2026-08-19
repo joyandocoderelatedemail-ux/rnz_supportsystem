@@ -16,5 +16,9 @@ $RECYCLE.BIN/
 graphify-out/
 node_modules/
 .npm-cache/
+*.mp4
+videos/
+RNZWEBSITE/videos/
+**/caferesto.sql
 RNZWEBSITE/IMAGES/caferesto.sql
-RNZWEBSITE/videos/*.mp4
+IMAGES/caferesto.sql

@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $res = login_client($username, $password);
     if ($res['success']) {
-        header("Location: ./");
+        header("Location: index.php");
         exit;
     } else {
         $error_message = $res['message'];

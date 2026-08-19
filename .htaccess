@@ -1,9 +1,11 @@
-# Directory Index
-DirectoryIndex index.php index.html
+# Directory Index - Landing page first
+DirectoryIndex index.html index.php
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
-    RewriteBase /
+
+    # Route /support to login.php
+    RewriteRule ^support/?$ login.php [L,QSA]
 
     # If the request is not a real directory and a matching .php file exists, rewrite internally
     RewriteCond %{REQUEST_FILENAME} !-d
