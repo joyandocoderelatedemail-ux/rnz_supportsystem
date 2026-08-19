@@ -44,15 +44,24 @@ function init_inventory_tables() {
         KEY `created_at` (`created_at`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
 
+    $sql3 = "CREATE TABLE IF NOT EXISTS `support_system_meta` (
+        `meta_key` VARCHAR(50) NOT NULL UNIQUE,
+        `meta_value` VARCHAR(255) NOT NULL,
+        PRIMARY KEY (`meta_key`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
     try {
         $pdo->exec($sql1);
         $pdo->exec($sql2);
+        $pdo->exec($sql3);
 
-        // Auto-seed only on initial fresh install (both items and logs are 0)
-        $items_count = intval($pdo->query("SELECT COUNT(*) FROM `support_inventory_items`")->fetchColumn());
-        $logs_count = intval($pdo->query("SELECT COUNT(*) FROM `support_inventory_logs`")->fetchColumn());
-        if ($items_count == 0 && $logs_count == 0) {
+        // Check if initial seeding has already run once
+        $seeded_stmt = $pdo->query("SELECT `meta_value` FROM `support_system_meta` WHERE `meta_key` = 'inventory_seeded' LIMIT 1");
+        $is_seeded = $seeded_stmt ? $seeded_stmt->fetchColumn() : false;
+        if (!$is_seeded) {
+            // First install only: seed catalog and mark as seeded
             seed_portal_hardware_inventory();
+            $pdo->exec("INSERT INTO `support_system_meta` (`meta_key`, `meta_value`) VALUES ('inventory_seeded', '1') ON DUPLICATE KEY UPDATE `meta_value` = '1'");
         }
         return true;
     } catch (PDOException $e) {
