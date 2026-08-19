@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $stmt_u = $pdo->prepare("UPDATE client_support_tickets SET updated_at = :now WHERE id = :id");
         $stmt_u->execute(array(':now' => $now, ':id' => $ticket_id));
 
-        header("Location: ticket_detail.php?id=" . $ticket_id);
+        header("Location: ticket_detail?id=" . $ticket_id);
         exit;
     }
 }
@@ -69,6 +69,13 @@ if (empty($replies)) {
             'created_at' => $ticket['created_at']
         )
     );
+}
+
+$max_reply_id = 0;
+foreach ($replies as $r) {
+    if (isset($r['id']) && intval($r['id']) > $max_reply_id) {
+        $max_reply_id = intval($r['id']);
+    }
 }
 
 $active_page = 'tickets';
@@ -149,7 +156,7 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                     </div>
 
                     <div class="flex items-center space-x-3 shrink-0">
-                        <span class="inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold border <?php echo get_status_badge_class($ticket['status']); ?>">
+                        <span id="ticketStatusBadge" class="inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold border <?php echo get_status_badge_class($ticket['status']); ?>">
                             <?php echo sanitize($ticket['status']); ?>
                         </span>
                     </div>
@@ -167,63 +174,73 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                     </div>
                     <div>
                         <span class="block text-[#7C2112] font-medium">Assigned Tech</span>
-                        <span class="font-bold text-[#430D07]"><?php echo sanitize($ticket['assigned_tech']); ?></span>
+                        <span id="ticketAssignedTech" class="font-bold text-[#430D07]"><?php echo sanitize($ticket['assigned_tech']); ?></span>
                     </div>
                     <div>
                         <span class="block text-[#7C2112] font-medium">Last Updated</span>
-                        <span class="font-bold text-[#430D07]"><?php echo format_date($ticket['updated_at']); ?></span>
+                        <span id="ticketLastUpdated" class="font-bold text-[#430D07]"><?php echo format_date($ticket['updated_at']); ?></span>
                     </div>
                 </div>
             </div>
 
             <!-- Conversation Thread -->
             <div class="space-y-4">
-                <h3 class="text-base font-extrabold text-[#430D07] px-2">Ticket Communication Thread</h3>
-
-                <?php foreach ($replies as $r): 
-                    $is_client = ($r['sender_type'] === 'client');
-                ?>
-                    <div class="bg-white/90 rounded-3xl p-6 border <?php echo $is_client ? 'border-[#FECDAA]' : 'border-emerald-200'; ?> shadow-sm space-y-3">
-                        <div class="flex items-center justify-between border-b <?php echo $is_client ? 'border-[#FFE8D5]' : 'border-emerald-100'; ?> pb-3">
-                            <div class="flex items-center space-x-2.5">
-                                <div class="w-7 h-7 rounded-full <?php echo $is_client ? 'bg-[#EB3E0B] text-white' : 'bg-emerald-600 text-white'; ?> font-bold text-xs flex items-center justify-center">
-                                    <?php echo strtoupper(substr($r['sender_name'], 0, 1)); ?>
-                                </div>
-                                <span class="text-xs font-bold text-[#430D07]"><?php echo sanitize($r['sender_name']); ?></span>
-                                <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold <?php echo $is_client ? 'bg-[#FFE8D5] text-[#EB3E0B]' : 'bg-emerald-50 text-emerald-700'; ?>">
-                                    <?php echo $is_client ? 'Client' : 'Support Tech'; ?>
-                                </span>
-                            </div>
-                            <span class="text-[11px] text-[#9A2512] font-mono"><?php echo format_date($r['created_at']); ?></span>
-                        </div>
-                        <?php if (strpos($r['message'], '=== HARDWARE DIAGNOSTIC LOG ===') !== false): ?>
-                            <p class="text-xs sm:text-sm text-[#430D07] font-extrabold">This client is requesting assistance</p>
-                            <details class="mt-1 text-xs">
-                                <summary class="cursor-pointer font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>
-                                <pre class="mt-2 p-3 rounded-2xl bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] font-mono text-xs whitespace-pre-wrap leading-relaxed"><?php echo sanitize(format_diagnostic_log_text($r['message'])); ?></pre>
-                            </details>
-                        <?php else: ?>
-                            <p class="text-xs sm:text-sm text-[#430D07] leading-relaxed whitespace-pre-wrap">
-                                <?php echo sanitize($r['message']); ?>
-                            </p>
-                        <?php endif; ?>
+                <div class="flex items-center justify-between px-2">
+                    <h3 class="text-base font-extrabold text-[#430D07]">Ticket Communication Thread</h3>
+                    <div class="flex items-center space-x-2 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>Live Sync Active</span>
                     </div>
-                <?php endforeach; ?>
+                </div>
+
+                <div id="repliesThreadContainer" class="space-y-4">
+                    <?php foreach ($replies as $r): 
+                        $is_client = ($r['sender_type'] === 'client');
+                        $r_id = isset($r['id']) ? intval($r['id']) : 0;
+                    ?>
+                        <div class="reply-card bg-white/90 rounded-3xl p-6 border <?php echo $is_client ? 'border-[#FECDAA]' : 'border-emerald-200'; ?> shadow-sm space-y-3" data-reply-id="<?php echo $r_id; ?>">
+                            <div class="flex items-center justify-between border-b <?php echo $is_client ? 'border-[#FFE8D5]' : 'border-emerald-100'; ?> pb-3">
+                                <div class="flex items-center space-x-2.5">
+                                    <div class="w-7 h-7 rounded-full <?php echo $is_client ? 'bg-[#EB3E0B] text-white' : 'bg-emerald-600 text-white'; ?> font-bold text-xs flex items-center justify-center">
+                                        <?php echo strtoupper(substr($r['sender_name'], 0, 1)); ?>
+                                    </div>
+                                    <span class="text-xs font-bold text-[#430D07]"><?php echo sanitize($r['sender_name']); ?></span>
+                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold <?php echo $is_client ? 'bg-[#FFE8D5] text-[#EB3E0B]' : 'bg-emerald-50 text-emerald-700'; ?>">
+                                        <?php echo $is_client ? 'Client' : 'Support Tech'; ?>
+                                    </span>
+                                </div>
+                                <span class="text-[11px] text-[#9A2512] font-mono"><?php echo format_date($r['created_at']); ?></span>
+                            </div>
+                            <?php if (strpos($r['message'], '=== HARDWARE DIAGNOSTIC LOG ===') !== false): ?>
+                                <p class="text-xs sm:text-sm text-[#430D07] font-extrabold">This client is requesting assistance</p>
+                                <details class="mt-1 text-xs">
+                                    <summary class="cursor-pointer font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>
+                                    <pre class="mt-2 p-3 rounded-2xl bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] font-mono text-xs whitespace-pre-wrap leading-relaxed"><?php echo sanitize(format_diagnostic_log_text($r['message'])); ?></pre>
+                                </details>
+                            <?php else: ?>
+                                <p class="text-xs sm:text-sm text-[#430D07] leading-relaxed whitespace-pre-wrap"><?php echo sanitize($r['message']); ?></p>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
             </div>
 
             <!-- Reply Input Box -->
             <div class="bg-white/90 rounded-3xl p-6 border border-[#FECDAA] shadow-sm">
-                <form action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
+                <form id="replyForm" action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
                     <input type="hidden" name="action" value="post_reply">
+                    <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
                     
                     <div>
                         <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-2">Send Reply or Update</label>
-                        <textarea name="message" rows="3" required placeholder="Type your message here to update technical support..." class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                        <textarea id="replyTextarea" name="message" rows="3" required placeholder="Type your message here to update technical support..." class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
                     </div>
 
-                    <div class="flex justify-end">
-                        <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95">
-                            Post Reply
+                    <div class="flex items-center justify-between">
+                        <span id="replySendingStatus" class="text-xs text-[#7C2112] font-semibold hidden">Sending message...</span>
+                        <button type="submit" id="replySubmitBtn" class="ml-auto bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 flex items-center space-x-2">
+                            <span>Post Reply</span>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                         </button>
                     </div>
                 </form>
@@ -232,5 +249,163 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
         </main>
     </div>
 </div>
+
+<script>
+var currentTicketId = <?php echo intval($ticket_id); ?>;
+var lastReplyId = <?php echo intval($max_reply_id); ?>;
+var isSubmitting = false;
+
+// Function to escape HTML
+function escapeHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+// Function to create HTML card for a new reply
+function buildReplyCard(reply) {
+    var isClient = reply.is_client;
+    var borderColor = isClient ? 'border-[#FECDAA]' : 'border-emerald-200';
+    var headerBorder = isClient ? 'border-[#FFE8D5]' : 'border-emerald-100';
+    var avatarBg = isClient ? 'bg-[#EB3E0B] text-white' : 'bg-emerald-600 text-white';
+    var roleBadge = isClient 
+        ? '<span class="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-[#FFE8D5] text-[#EB3E0B]">Client</span>'
+        : '<span class="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700">Support Tech</span>';
+    var firstLetter = (reply.sender_name || 'U').charAt(0).toUpperCase();
+
+    var contentHtml = '';
+    if (reply.diagnostic_log) {
+        contentHtml = '<p class="text-xs sm:text-sm text-[#430D07] font-extrabold">This client is requesting assistance</p>' +
+            '<details class="mt-1 text-xs">' +
+            '<summary class="cursor-pointer font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>' +
+            '<pre class="mt-2 p-3 rounded-2xl bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] font-mono text-xs whitespace-pre-wrap leading-relaxed">' + escapeHtml(reply.diagnostic_log) + '</pre>' +
+            '</details>';
+    } else {
+        contentHtml = '<p class="text-xs sm:text-sm text-[#430D07] leading-relaxed whitespace-pre-wrap">' + escapeHtml(reply.message) + '</p>';
+    }
+
+    var card = document.createElement('div');
+    card.className = 'reply-card bg-white/90 rounded-3xl p-6 border ' + borderColor + ' shadow-sm space-y-3 animate-in fade-in zoom-in-95 duration-200';
+    card.setAttribute('data-reply-id', reply.id);
+    card.innerHTML = 
+        '<div class="flex items-center justify-between border-b ' + headerBorder + ' pb-3">' +
+            '<div class="flex items-center space-x-2.5">' +
+                '<div class="w-7 h-7 rounded-full ' + avatarBg + ' font-bold text-xs flex items-center justify-center">' + firstLetter + '</div>' +
+                '<span class="text-xs font-bold text-[#430D07]">' + escapeHtml(reply.sender_name) + '</span>' +
+                roleBadge +
+            '</div>' +
+            '<span class="text-[11px] text-[#9A2512] font-mono">' + escapeHtml(reply.formatted_date) + '</span>' +
+        '</div>' + contentHtml;
+    
+    return card;
+}
+
+// Function to poll new replies
+function pollReplies() {
+    if (isSubmitting) return;
+
+    fetch('api_ticket_replies.php?id=' + currentTicketId + '&after_id=' + lastReplyId)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data && data.success) {
+                if (data.replies && data.replies.length > 0) {
+                    var container = document.getElementById('repliesThreadContainer');
+                    data.replies.forEach(function(r) {
+                        // Check if reply card already exists
+                        if (!document.querySelector('.reply-card[data-reply-id="' + r.id + '"]')) {
+                            var card = buildReplyCard(r);
+                            container.appendChild(card);
+                            if (r.id > lastReplyId) {
+                                lastReplyId = r.id;
+                            }
+                        }
+                    });
+                }
+                // Live update status badge if changed
+                if (data.ticket_status) {
+                    var badge = document.getElementById('ticketStatusBadge');
+                    if (badge) {
+                        badge.textContent = data.ticket_status;
+                        if (data.status_badge_class) {
+                            badge.className = 'inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold border ' + data.status_badge_class;
+                        }
+                    }
+                }
+                if (data.assigned_tech) {
+                    var techEl = document.getElementById('ticketAssignedTech');
+                    if (techEl) techEl.textContent = data.assigned_tech;
+                }
+                if (data.last_updated) {
+                    var upEl = document.getElementById('ticketLastUpdated');
+                    if (upEl) upEl.textContent = data.last_updated;
+                }
+            }
+        })
+        .catch(function(err) {
+            console.warn('Chat poll error:', err);
+        });
+}
+
+// Start polling every 3 seconds
+var chatPollInterval = setInterval(pollReplies, 3000);
+
+// AJAX Form Submit for instant message sending without refresh
+var replyForm = document.getElementById('replyForm');
+var replyTextarea = document.getElementById('replyTextarea');
+var replySubmitBtn = document.getElementById('replySubmitBtn');
+var replySendingStatus = document.getElementById('replySendingStatus');
+
+if (replyForm && replyTextarea) {
+    replyForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var msg = replyTextarea.value.trim();
+        if (!msg) return;
+
+        isSubmitting = true;
+        replySubmitBtn.disabled = true;
+        replySubmitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        if (replySendingStatus) replySendingStatus.classList.remove('hidden');
+
+        var formData = new FormData(replyForm);
+
+        fetch('api_ticket_replies.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            isSubmitting = false;
+            replySubmitBtn.disabled = false;
+            replySubmitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            if (replySendingStatus) replySendingStatus.classList.add('hidden');
+
+            if (data && data.success && data.reply) {
+                replyTextarea.value = '';
+                var container = document.getElementById('repliesThreadContainer');
+                if (!document.querySelector('.reply-card[data-reply-id="' + data.reply.id + '"]')) {
+                    var card = buildReplyCard(data.reply);
+                    container.appendChild(card);
+                    if (data.reply.id > lastReplyId) {
+                        lastReplyId = data.reply.id;
+                    }
+                    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            } else {
+                alert((data && data.error) ? data.error : 'Failed to send reply. Please try again.');
+            }
+        })
+        .catch(function(err) {
+            isSubmitting = false;
+            replySubmitBtn.disabled = false;
+            replySubmitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            if (replySendingStatus) replySendingStatus.classList.add('hidden');
+            console.error('Submit error:', err);
+            // Fallback to normal form submit if network fails
+            replyForm.submit();
+        });
+    });
+}
+</script>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

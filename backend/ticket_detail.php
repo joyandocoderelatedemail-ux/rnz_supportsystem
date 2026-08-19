@@ -37,10 +37,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ));
 
             // Auto update status to In Progress if currently Pending
-            $pdo->prepare("UPDATE client_support_tickets SET status = 'In Progress' WHERE id = :tid AND status = 'Pending'")
-                ->execute(array(':tid' => $ticket_id));
+            $pdo->prepare("UPDATE client_support_tickets SET status = 'In Progress', updated_at = :now WHERE id = :tid AND status = 'Pending'")
+                ->execute(array(':now' => date('Y-m-d H:i:s'), ':tid' => $ticket_id));
 
-            header("Location: ticket_detail.php?id=" . $ticket_id);
+            header("Location: ticket_detail?id=" . $ticket_id);
             exit;
         }
 
@@ -49,15 +49,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $new_tech = isset($_POST['assigned_tech']) ? trim($_POST['assigned_tech']) : '';
 
         if (!empty($new_status)) {
-            $stmt_up = $pdo->prepare("UPDATE client_support_tickets SET status = :status, assigned_tech = :tech WHERE id = :tid");
+            $stmt_up = $pdo->prepare("UPDATE client_support_tickets SET status = :status, assigned_tech = :tech, updated_at = :now WHERE id = :tid");
             $stmt_up->execute(array(
                 ':status' => $new_status,
                 ':tech' => $new_tech,
+                ':now' => date('Y-m-d H:i:s'),
                 ':tid' => $ticket_id
             ));
         }
 
-        header("Location: ticket_detail.php?id=" . $ticket_id . "&saved=1");
+        header("Location: ticket_detail?id=" . $ticket_id . "&saved=1");
         exit;
     }
 }
@@ -71,7 +72,7 @@ $stmt_t->execute(array(':tid' => $ticket_id));
 $ticket = $stmt_t->fetch();
 
 if (!$ticket) {
-    header("Location: tickets.php");
+    header("Location: tickets");
     exit;
 }
 
@@ -93,6 +94,13 @@ if (empty($replies)) {
             'created_at' => $ticket['created_at']
         )
     );
+}
+
+$max_reply_id = 0;
+foreach ($replies as $r) {
+    if (isset($r['id']) && intval($r['id']) > $max_reply_id) {
+        $max_reply_id = intval($r['id']);
+    }
 }
 
 // Fetch Technicians list
@@ -237,16 +245,23 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
 
                     <!-- Conversation Thread -->
                     <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
-                        <h3 class="text-base font-extrabold text-slate-900 border-b border-slate-100 pb-4">
-                            Support Conversation & Reply Thread
-                        </h3>
+                        <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+                            <h3 class="text-base font-extrabold text-slate-900">
+                                Support Conversation & Reply Thread
+                            </h3>
+                            <div class="flex items-center space-x-2 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span>Live Chat Sync</span>
+                            </div>
+                        </div>
 
-                        <div class="space-y-4">
+                        <div id="backendRepliesContainer" class="space-y-4">
                             <!-- Replies -->
                             <?php foreach ($replies as $rep): 
                                 $is_tech = ($rep['sender_type'] === 'support');
+                                $r_id = isset($rep['id']) ? intval($rep['id']) : 0;
                             ?>
-                                <div class="p-4 sm:p-5 rounded-2xl text-xs space-y-2 <?php echo $is_tech ? 'bg-[#FFF5ED] border border-[#FECDAA] ml-4 sm:ml-8' : 'bg-slate-50 border border-slate-200 mr-4 sm:mr-8'; ?>">
+                                <div class="tech-reply-card p-4 sm:p-5 rounded-2xl text-xs space-y-2 <?php echo $is_tech ? 'bg-[#FFF5ED] border border-[#FECDAA] ml-4 sm:ml-8' : 'bg-slate-50 border border-slate-200 mr-4 sm:mr-8'; ?>" data-reply-id="<?php echo $r_id; ?>">
                                     <div class="flex items-center justify-between">
                                         <span class="font-bold flex items-center gap-1.5 <?php echo $is_tech ? 'text-[#EB3E0B]' : 'text-slate-900'; ?>">
                                             <?php if ($is_tech): ?>
@@ -273,17 +288,18 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
 
                         <!-- Reply Box -->
                         <div class="pt-6 border-t border-slate-100">
-                            <form action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
+                            <form id="techReplyForm" action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
                                 <input type="hidden" name="action" value="send_tech_reply">
+                                <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
 
                                 <div>
                                     <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Send Support Reply to Client</label>
-                                    <textarea name="reply_message" rows="4" required placeholder="Type your technician response or instructions here..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                                    <textarea id="techReplyTextarea" name="reply_message" rows="4" required placeholder="Type your technician response or instructions here..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
                                 </div>
 
                                 <div class="flex items-center justify-between">
                                     <span class="text-[11px] text-slate-400">Replying as: <strong class="text-slate-700"><?php echo sanitize($tech_fullname); ?></strong></span>
-                                    <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-3 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 flex items-center space-x-2">
+                                    <button type="submit" id="techReplySubmitBtn" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-3 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 flex items-center space-x-2">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
                                         </svg>
@@ -305,7 +321,7 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                             Management & Actions
                         </h3>
 
-                        <form action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
+                        <form action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
                             <input type="hidden" name="action" value="update_ticket_status">
 
                             <div>
@@ -378,5 +394,134 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
         </main>
     </div>
 </div>
+
+<script>
+var currentTicketId = <?php echo intval($ticket_id); ?>;
+var lastReplyId = <?php echo intval($max_reply_id); ?>;
+var isTechSubmitting = false;
+
+function escapeHtml(str) {
+    if (!str) return '';
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function buildTechReplyCard(reply) {
+    var isTech = reply.is_tech;
+    var containerClass = isTech 
+        ? 'tech-reply-card p-4 sm:p-5 rounded-2xl text-xs space-y-2 bg-[#FFF5ED] border border-[#FECDAA] ml-4 sm:ml-8 animate-in fade-in zoom-in-95 duration-200'
+        : 'tech-reply-card p-4 sm:p-5 rounded-2xl text-xs space-y-2 bg-slate-50 border border-slate-200 mr-4 sm:mr-8 animate-in fade-in zoom-in-95 duration-200';
+    
+    var senderNameColor = isTech ? 'text-[#EB3E0B]' : 'text-slate-900';
+    var senderLabel = isTech ? '(RNZ Support Tech)' : '(Client)';
+    var techIcon = isTech 
+        ? '<svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>'
+        : '';
+
+    var contentHtml = '';
+    if (reply.diagnostic_log) {
+        contentHtml = '<p class="font-extrabold text-slate-900 text-xs sm:text-sm">This client is requesting assistance</p>' +
+            '<details class="mt-1 text-xs">' +
+            '<summary class="cursor-pointer font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>' +
+            '<pre class="mt-2 p-3 rounded-2xl bg-white border border-slate-200 text-slate-800 font-mono text-xs whitespace-pre-wrap leading-relaxed">' + escapeHtml(reply.diagnostic_log) + '</pre>' +
+            '</details>';
+    } else {
+        contentHtml = '<p class="text-slate-800 leading-relaxed font-medium whitespace-pre-wrap">' + escapeHtml(reply.message) + '</p>';
+    }
+
+    var card = document.createElement('div');
+    card.className = containerClass;
+    card.setAttribute('data-reply-id', reply.id);
+    card.innerHTML = 
+        '<div class="flex items-center justify-between">' +
+            '<span class="font-bold flex items-center gap-1.5 ' + senderNameColor + '">' +
+                techIcon + escapeHtml(reply.sender_name) + ' ' + senderLabel +
+            '</span>' +
+            '<span class="text-slate-400">' + escapeHtml(reply.formatted_date) + '</span>' +
+        '</div>' + contentHtml;
+
+    return card;
+}
+
+function pollTechReplies() {
+    if (isTechSubmitting) return;
+
+    fetch('api_ticket_replies.php?id=' + currentTicketId + '&after_id=' + lastReplyId)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data && data.success && data.replies && data.replies.length > 0) {
+                var container = document.getElementById('backendRepliesContainer');
+                data.replies.forEach(function(r) {
+                    if (!document.querySelector('.tech-reply-card[data-reply-id="' + r.id + '"]')) {
+                        var card = buildTechReplyCard(r);
+                        container.appendChild(card);
+                        if (r.id > lastReplyId) {
+                            lastReplyId = r.id;
+                        }
+                    }
+                });
+            }
+        })
+        .catch(function(err) {
+            console.warn('Tech chat poll error:', err);
+        });
+}
+
+// Start polling every 3 seconds
+var techChatPollInterval = setInterval(pollTechReplies, 3000);
+
+// AJAX Form Submit for Support Tech
+var techReplyForm = document.getElementById('techReplyForm');
+var techReplyTextarea = document.getElementById('techReplyTextarea');
+var techReplySubmitBtn = document.getElementById('techReplySubmitBtn');
+
+if (techReplyForm && techReplyTextarea) {
+    techReplyForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var msg = techReplyTextarea.value.trim();
+        if (!msg) return;
+
+        isTechSubmitting = true;
+        techReplySubmitBtn.disabled = true;
+        techReplySubmitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+        var formData = new FormData(techReplyForm);
+
+        fetch('api_ticket_replies.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            isTechSubmitting = false;
+            techReplySubmitBtn.disabled = false;
+            techReplySubmitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+            if (data && data.success && data.reply) {
+                techReplyTextarea.value = '';
+                var container = document.getElementById('backendRepliesContainer');
+                if (!document.querySelector('.tech-reply-card[data-reply-id="' + data.reply.id + '"]')) {
+                    var card = buildTechReplyCard(data.reply);
+                    container.appendChild(card);
+                    if (data.reply.id > lastReplyId) {
+                        lastReplyId = data.reply.id;
+                    }
+                    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            } else {
+                alert((data && data.error) ? data.error : 'Failed to send response.');
+            }
+        })
+        .catch(function(err) {
+            isTechSubmitting = false;
+            techReplySubmitBtn.disabled = false;
+            techReplySubmitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            console.error('Submit error:', err);
+            techReplyForm.submit();
+        });
+    });
+}
+</script>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>
