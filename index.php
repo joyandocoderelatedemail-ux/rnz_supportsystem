@@ -4,6 +4,11 @@ require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/db_init.php';
 
 if (!is_logged_in()) {
+    // Serve RNZ Landing Website to public visitors
+    if (file_exists(__DIR__ . '/index.html')) {
+        readfile(__DIR__ . '/index.html');
+        exit;
+    }
     require_once __DIR__ . '/login.php';
     exit;
 }
