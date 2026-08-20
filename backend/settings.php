@@ -4,6 +4,9 @@ require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/inventory_init.php';
 
+// Initialize permissions and tables
+init_inventory_tables();
+
 // Check access permission for Admin Settings
 require_page_access('settings');
 

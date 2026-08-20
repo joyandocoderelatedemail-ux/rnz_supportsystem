@@ -227,6 +227,17 @@ function get_logged_tech_access_tier() {
 }
 
 /**
+ * Get current logged in technician's security access code
+ * @return string
+ */
+function get_logged_tech_access_code() {
+    $tech = get_logged_tech();
+    if (!$tech) return '1234';
+    $uid = isset($tech['id']) ? intval($tech['id']) : 0;
+    return get_user_access_code($uid);
+}
+
+/**
  * Verify access code for current action
  * @param int $user_id
  * @param string $input_code
