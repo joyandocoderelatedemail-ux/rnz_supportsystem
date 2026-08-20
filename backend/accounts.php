@@ -461,44 +461,50 @@ $page_title = 'Manage Accounts';
 
                         <!-- Action Buttons Group (Warranty & Profile) -->
                         <div class="flex items-center flex-wrap gap-2.5 self-start md:self-center">
-                            <!-- Pull Out Hardware Item Button -->
-                            <a href="inventory.php?pullout_client=<?php echo urlencode($selected_client['accountnum']); ?>" 
-                               class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm shadow-amber-500/25 transition-all active:scale-95 flex items-center space-x-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-                                </svg>
-                                <span>Pull Out Item</span>
-                            </a>
+                            <?php if ($my_tier >= 2): ?>
+                                <!-- Pull Out Hardware Item Button -->
+                                <a href="inventory.php?pullout_client=<?php echo urlencode($selected_client['accountnum']); ?>" 
+                                   class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm shadow-amber-500/25 transition-all active:scale-95 flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                    </svg>
+                                    <span>Pull Out Item</span>
+                                </a>
 
-                            <!-- Set / Edit Warranty Button -->
-                            <button onclick="openWarrantyModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-                                </svg>
-                                <span><?php echo $has_warranty ? 'Edit Warranty' : 'Set Warranty'; ?></span>
-                            </button>
+                                <!-- Set / Edit Warranty Button -->
+                                <button onclick="openWarrantyModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                    </svg>
+                                    <span><?php echo $has_warranty ? 'Edit Warranty' : 'Set Warranty'; ?></span>
+                                </button>
 
-                            <?php if ($has_warranty): ?>
-                                <!-- Remove Warranty Button -->
-                                <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>" method="POST" onsubmit="return confirm('Are you sure you want to remove the active warranty from this account?');" class="inline">
-                                    <input type="hidden" name="action" value="remove_client_warranty">
-                                    <input type="hidden" name="accountnum" value="<?php echo sanitize($selected_client['accountnum']); ?>">
-                                    <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs sm:text-sm px-4 py-3 rounded-full transition-all flex items-center space-x-1.5">
-                                        <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                        </svg>
-                                        <span>Remove Warranty</span>
-                                    </button>
-                                </form>
+                                <?php if ($has_warranty): ?>
+                                    <!-- Remove Warranty Button -->
+                                    <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>" method="POST" onsubmit="return confirm('Are you sure you want to remove the active warranty from this account?');" class="inline">
+                                        <input type="hidden" name="action" value="remove_client_warranty">
+                                        <input type="hidden" name="accountnum" value="<?php echo sanitize($selected_client['accountnum']); ?>">
+                                        <button type="submit" class="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs sm:text-sm px-4 py-3 rounded-full transition-all flex items-center space-x-1.5">
+                                            <svg class="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                            </svg>
+                                            <span>Remove Warranty</span>
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
+
+                                <!-- Edit Account Profile Button -->
+                                <button onclick="openEditAccountModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                    </svg>
+                                    <span>Edit Profile</span>
+                                </button>
+                            <?php else: ?>
+                                <span class="inline-flex items-center px-4 py-2.5 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                                    🔒 View Only Account
+                                </span>
                             <?php endif; ?>
-
-                            <!-- Edit Account Profile Button -->
-                            <button onclick="openEditAccountModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                </svg>
-                                <span>Edit Profile</span>
-                            </button>
                         </div>
                     </div>
 
@@ -729,6 +735,7 @@ $page_title = 'Manage Accounts';
                                     <h3 class="text-base font-extrabold text-slate-900">Work Orders & Billing History</h3>
                                     <p class="text-xs text-slate-500">Service statements, supplies, hardware repairs, and billing for Account #<?php echo sanitize($client_acct); ?></p>
                                 </div>
+                                <?php if ($my_tier >= 2): ?>
                                 <button onclick="openCreateWorkOrderModal('<?php echo addslashes($client_acct); ?>', '<?php echo addslashes(!empty($selected_client['tradename']) ? $selected_client['tradename'] : $selected_client['clientname']); ?>', '<?php echo addslashes($selected_client['address']); ?>')" 
                                         class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-4 py-2 rounded-full shadow-sm flex items-center space-x-1.5 transition-all active:scale-95">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -736,6 +743,7 @@ $page_title = 'Manage Accounts';
                                     </svg>
                                     <span>Create Work Order</span>
                                 </button>
+                                <?php endif; ?>
                             </div>
 
                             <div class="overflow-x-auto">
@@ -753,7 +761,7 @@ $page_title = 'Manage Accounts';
                                     <tbody class="divide-y divide-slate-100 font-medium">
                                         <?php if (empty($work_orders)): ?>
                                             <tr>
-                                                <td colspan="6" class="py-8 text-center text-slate-400">No work orders recorded for this account. Click "Create Work Order" to add one.</td>
+                                                <td colspan="6" class="py-8 text-center text-slate-400">No work orders recorded for this account.</td>
                                             </tr>
                                         <?php else: ?>
                                             <?php foreach ($work_orders as $wo): 
@@ -773,26 +781,30 @@ $page_title = 'Manage Accounts';
                                                         </span>
                                                     </td>
                                                     <td class="py-3 px-4 text-right">
-                                                        <div class="flex items-center justify-end space-x-1.5">
-                                                            <button data-wo="<?php echo htmlspecialchars(json_encode($wo), ENT_QUOTES, 'UTF-8'); ?>"
-                                                                    onclick="openEditWorkOrderModal(this)" 
-                                                                    class="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Edit Work Order">
-                                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                                                </svg>
-                                                            </button>
-
-                                                            <form method="POST" action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=orders" onsubmit="return confirm('Are you sure you want to delete Work Order #WO-<?php echo $wo['id']; ?>?');" class="inline">
-                                                                <input type="hidden" name="action" value="delete_workorder">
-                                                                <input type="hidden" name="wo_id" value="<?php echo $wo['id']; ?>">
-                                                                <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
-                                                                <button type="submit" class="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-colors" title="Delete Work Order">
+                                                        <?php if ($my_tier >= 2): ?>
+                                                            <div class="flex items-center justify-end space-x-1.5">
+                                                                <button data-wo="<?php echo htmlspecialchars(json_encode($wo), ENT_QUOTES, 'UTF-8'); ?>"
+                                                                        onclick="openEditWorkOrderModal(this)" 
+                                                                        class="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Edit Work Order">
                                                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                                                     </svg>
                                                                 </button>
-                                                            </form>
-                                                        </div>
+
+                                                                <form method="POST" action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=orders" onsubmit="return confirm('Are you sure you want to delete Work Order #WO-<?php echo $wo['id']; ?>?');" class="inline">
+                                                                    <input type="hidden" name="action" value="delete_workorder">
+                                                                    <input type="hidden" name="wo_id" value="<?php echo $wo['id']; ?>">
+                                                                    <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                                                                    <button type="submit" class="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-colors" title="Delete Work Order">
+                                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                                        </svg>
+                                                                    </button>
+                                                                </form>
+                                                            </div>
+                                                        <?php else: ?>
+                                                            <span class="text-[10px] font-bold text-slate-400">View Only</span>
+                                                        <?php endif; ?>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -810,6 +822,7 @@ $page_title = 'Manage Accounts';
                                     <h3 class="text-base font-extrabold text-slate-900">Hardware Pull-Outs & Deployments</h3>
                                     <p class="text-xs text-slate-500">Equipment retrieval, warranty exchange, diagnostics, and stock deployments for Account #<?php echo sanitize($client_acct); ?></p>
                                 </div>
+                                <?php if ($my_tier >= 2): ?>
                                 <a href="inventory.php?pullout_client=<?php echo urlencode($client_acct); ?>" 
                                    class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs px-4 py-2.5 rounded-full shadow-sm shadow-amber-500/25 flex items-center space-x-1.5 transition-all active:scale-95 self-start sm:self-auto">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -817,6 +830,7 @@ $page_title = 'Manage Accounts';
                                     </svg>
                                     <span>Record New Pull-Out</span>
                                 </a>
+                                <?php endif; ?>
                             </div>
 
                             <div class="overflow-x-auto">

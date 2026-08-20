@@ -471,6 +471,8 @@ $portal_catalog = get_portal_hardware_catalog();
 $preset_pullout_client = isset($_GET['pullout_client']) ? sanitize($_GET['pullout_client']) : '';
 $preset_pullout_item = isset($_GET['pullout_item']) ? intval($_GET['pullout_item']) : 0;
 
+$my_tier = get_logged_tech_access_tier();
+
 $active_page = 'inventory';
 $page_title = 'Hardware Inventory Hub';
 ?>
@@ -554,7 +556,8 @@ $page_title = 'Hardware Inventory Hub';
 
                 <!-- Top Quick Action Buttons -->
                 <div class="flex items-center flex-wrap gap-2.5">
-                    <!-- Sync / Seed Catalog Button -->
+                    <!-- Sync / Seed Catalog Button (Tier 2 & 3 only) -->
+                    <?php if ($my_tier >= 2): ?>
                     <form method="POST" action="" onsubmit="return confirm('Sync with Client Portal Hardware catalog to ensure all 15 core devices are populated?');" class="inline">
                         <input type="hidden" name="action" value="sync_portal_hardware">
                         <button type="submit" class="bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-2 transition-all hover:border-slate-300">
@@ -564,8 +567,9 @@ $page_title = 'Hardware Inventory Hub';
                             <span>Sync Portal Hardware</span>
                         </button>
                     </form>
+                    <?php endif; ?>
 
-                    <!-- View Movement Log Button -->
+                    <!-- View Movement Log Button (All tiers including Level 1 can view history) -->
                     <button onclick="openMovementLogModal()" class="bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-2 transition-all hover:border-slate-300">
                         <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -573,21 +577,25 @@ $page_title = 'Hardware Inventory Hub';
                         <span>Stock Movement History</span>
                     </button>
 
-                    <!-- Pull Out Items Button -->
+                    <!-- Pull Out Items Button (Tier 2 & 3 only) -->
+                    <?php if ($my_tier >= 2): ?>
                     <button onclick="openPullOutModal()" class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl shadow-sm shadow-amber-500/30 flex items-center space-x-2 transition-all active:scale-95">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
                         </svg>
                         <span>Pull Out Items</span>
                     </button>
+                    <?php endif; ?>
 
-                    <!-- Add New Item Button -->
+                    <!-- Add New Item Button (Tier 2 & 3 only) -->
+                    <?php if ($my_tier >= 2): ?>
                     <button onclick="openAddItemModal()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-2xl shadow-sm shadow-[#EB3E0B]/30 flex items-center space-x-2 transition-all active:scale-95">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
                         </svg>
                         <span>Add New Item</span>
                     </button>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -782,60 +790,68 @@ $page_title = 'Hardware Inventory Hub';
 
                                         <!-- Quick Adjust (+1 / -1 buttons) -->
                                         <td class="py-4 px-6 text-center">
-                                            <div class="inline-flex items-center space-x-1.5">
-                                                <!-- Quick -1 -->
-                                                <form method="POST" action="" class="inline">
-                                                    <input type="hidden" name="action" value="adjust_quantity">
-                                                    <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
-                                                    <input type="hidden" name="adjustment_type" value="subtract">
-                                                    <input type="hidden" name="amount" value="1">
-                                                    <input type="hidden" name="reason" value="Quick -1 Stock Out">
-                                                    <button type="submit" <?php echo ($qty <= 0) ? 'disabled' : ''; ?> class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 font-bold flex items-center justify-center transition-colors disabled:opacity-40" title="Quick Subtract 1">
-                                                        -
+                                            <?php if ($my_tier >= 2): ?>
+                                                <div class="inline-flex items-center space-x-1.5">
+                                                    <!-- Quick -1 -->
+                                                    <form method="POST" action="" class="inline">
+                                                        <input type="hidden" name="action" value="adjust_quantity">
+                                                        <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
+                                                        <input type="hidden" name="adjustment_type" value="subtract">
+                                                        <input type="hidden" name="amount" value="1">
+                                                        <input type="hidden" name="reason" value="Quick -1 Stock Out">
+                                                        <button type="submit" <?php echo ($qty <= 0) ? 'disabled' : ''; ?> class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 font-bold flex items-center justify-center transition-colors disabled:opacity-40" title="Quick Subtract 1">
+                                                            -
+                                                        </button>
+                                                    </form>
+
+                                                    <!-- Open Detailed Adjust Modal -->
+                                                    <button onclick='openAdjustModal(<?php echo htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8'); ?>)' class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white font-bold text-[11px] transition-colors" title="Adjust Stock Quantity">
+                                                        Adjust
                                                     </button>
-                                                </form>
 
-                                                <!-- Open Detailed Adjust Modal -->
-                                                <button onclick='openAdjustModal(<?php echo htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8'); ?>)' class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white font-bold text-[11px] transition-colors" title="Adjust Stock Quantity">
-                                                    Adjust
-                                                </button>
-
-                                                <!-- Open Pull Out Modal for this item -->
-                                                <button onclick='openPullOutModalForItem(<?php echo htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8'); ?>)' class="px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-500 text-amber-800 hover:text-white border border-amber-200 font-bold text-[11px] transition-colors" title="Pull Out this Hardware Item">
-                                                    Pull Out
-                                                </button>
-
-                                                <!-- Quick +1 -->
-                                                <form method="POST" action="" class="inline">
-                                                    <input type="hidden" name="action" value="adjust_quantity">
-                                                    <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
-                                                    <input type="hidden" name="adjustment_type" value="add">
-                                                    <input type="hidden" name="amount" value="1">
-                                                    <input type="hidden" name="reason" value="Quick +1 Stock In">
-                                                    <button type="submit" class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 font-bold flex items-center justify-center transition-colors" title="Quick Add 1">
-                                                        +
+                                                    <!-- Open Pull Out Modal for this item -->
+                                                    <button onclick='openPullOutModalForItem(<?php echo htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8'); ?>)' class="px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-500 text-amber-800 hover:text-white border border-amber-200 font-bold text-[11px] transition-colors" title="Pull Out this Hardware Item">
+                                                        Pull Out
                                                     </button>
-                                                </form>
-                                            </div>
+
+                                                    <!-- Quick +1 -->
+                                                    <form method="POST" action="" class="inline">
+                                                        <input type="hidden" name="action" value="adjust_quantity">
+                                                        <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
+                                                        <input type="hidden" name="adjustment_type" value="add">
+                                                        <input type="hidden" name="amount" value="1">
+                                                        <input type="hidden" name="reason" value="Quick +1 Stock In">
+                                                        <button type="submit" class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 font-bold flex items-center justify-center transition-colors" title="Quick Add 1">
+                                                            +
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            <?php else: ?>
+                                                <span class="text-xs font-semibold text-slate-400">View Only</span>
+                                            <?php endif; ?>
                                          </td>
 
                                          <!-- Edit / Actions -->
                                          <td class="py-4 px-6 text-right">
-                                             <div class="flex items-center justify-end space-x-1.5">
-                                                 <!-- Edit Button -->
-                                                 <button onclick='openEditModal(<?php echo json_encode($item); ?>)' class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors" title="Edit Item">
-                                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                                                 </button>
-
-                                                 <!-- Delete Button -->
-                                                 <form method="POST" action="" onsubmit="return confirm('Are you sure you want to delete this inventory item (<?php echo addslashes($item['name']); ?>)?');" class="inline">
-                                                     <input type="hidden" name="action" value="delete_item">
-                                                     <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
-                                                     <button type="submit" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center transition-colors" title="Delete Item">
-                                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                             <?php if ($my_tier >= 2): ?>
+                                                 <div class="flex items-center justify-end space-x-1.5">
+                                                     <!-- Edit Button -->
+                                                     <button onclick='openEditModal(<?php echo json_encode($item); ?>)' class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors" title="Edit Item">
+                                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                                      </button>
-                                                 </form>
-                                            </div>
+
+                                                     <!-- Delete Button -->
+                                                     <form method="POST" action="" onsubmit="return confirm('Are you sure you want to delete this inventory item (<?php echo addslashes($item['name']); ?>)?');" class="inline">
+                                                         <input type="hidden" name="action" value="delete_item">
+                                                         <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
+                                                         <button type="submit" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center transition-colors" title="Delete Item">
+                                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                                         </button>
+                                                     </form>
+                                                 </div>
+                                             <?php else: ?>
+                                                 <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">🔒 View Only</span>
+                                             <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
