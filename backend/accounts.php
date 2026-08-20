@@ -208,6 +208,8 @@ $hw_logs = array();
 $tech_notes = array();
 $work_orders = array();
 
+$client_pullouts = array();
+
 if ($selected_client) {
     // 1. Hardware Logs for this account
     $stmt_hw = $pdo->prepare("SELECT * FROM hardware_troubleshooting_logs WHERE accountnum = :acct ORDER BY created_at DESC");
@@ -223,6 +225,15 @@ if ($selected_client) {
     $stmt_wo = $pdo->prepare("SELECT * FROM bucket_workorder WHERE accountnum = :acct ORDER BY id DESC");
     $stmt_wo->execute(array(':acct' => $client_acct));
     $work_orders = $stmt_wo->fetchAll();
+
+    // 4. Hardware Pull-Outs for this account
+    $stmt_pullouts = $pdo->prepare("SELECT l.*, i.name as item_name, i.item_code 
+        FROM support_inventory_logs l 
+        LEFT JOIN support_inventory_items i ON l.item_id = i.id 
+        WHERE l.accountnum = :acct AND (l.change_type LIKE '%Pull Out%' OR l.change_type LIKE '%Pull-Out%') 
+        ORDER BY l.created_at DESC");
+    $stmt_pullouts->execute(array(':acct' => $client_acct));
+    $client_pullouts = $stmt_pullouts->fetchAll();
 }
 
 // Fetch ALL client accounts for instant autocomplete dropdown
@@ -437,6 +448,15 @@ $page_title = 'Manage Accounts';
 
                         <!-- Action Buttons Group (Warranty & Profile) -->
                         <div class="flex items-center flex-wrap gap-2.5 self-start md:self-center">
+                            <!-- Pull Out Hardware Item Button -->
+                            <a href="inventory.php?pullout_client=<?php echo urlencode($selected_client['accountnum']); ?>" 
+                               class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm shadow-amber-500/25 transition-all active:scale-95 flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                </svg>
+                                <span>Pull Out Item</span>
+                            </a>
+
                             <!-- Set / Edit Warranty Button -->
                             <button onclick="openWarrantyModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -532,7 +552,7 @@ $page_title = 'Manage Accounts';
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
                             </svg>
-                            <span>Hardware Diagnostic Logs (<?php echo count($hw_logs); ?>)</span>
+                            <span>Diagnostic Logs (<?php echo count($hw_logs); ?>)</span>
                         </a>
 
                         <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=notes" 
@@ -549,6 +569,14 @@ $page_title = 'Manage Accounts';
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                             </svg>
                             <span>Work Orders (<?php echo count($work_orders); ?>)</span>
+                        </a>
+
+                        <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=pullouts" 
+                           class="px-5 py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 shrink-0 <?php echo ($active_tab === 'pullouts') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                            </svg>
+                            <span>Hardware Pull-Outs (<?php echo count($client_pullouts); ?>)</span>
                         </a>
                     </div>
 
@@ -639,9 +667,21 @@ $page_title = 'Manage Accounts';
                                                 $st_badge = get_status_badge_class($tn['status']);
                                             ?>
                                                 <tr class="hover:bg-slate-50/80 transition-colors">
-                                                    <td class="py-3 px-4 space-y-0.5">
-                                                        <div class="font-mono text-slate-400">#<?php echo $tn['id']; ?></div>
-                                                        <div class="font-bold text-slate-800"><?php echo sanitize($tn['xdate']); ?></div>
+                                                    <td class="py-3 px-4 space-y-1">
+                                                        <div class="flex items-center space-x-2">
+                                                            <span class="font-mono text-slate-400">#<?php echo $tn['id']; ?></span>
+                                                            <span class="font-bold text-slate-800"><?php echo sanitize($tn['xdate']); ?></span>
+                                                        </div>
+                                                        <?php if (strpos($tn['reasonoftech'], '[Hardware Pull-Out]') !== false): ?>
+                                                            <div>
+                                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                                                    🔄 Hardware Pull-Out
+                                                                </span>
+                                                                <span class="text-xs text-slate-700 font-semibold ml-1"><?php echo sanitize($tn['reasonoftech']); ?></span>
+                                                            </div>
+                                                        <?php elseif (!empty($tn['reasonoftech'])): ?>
+                                                            <p class="text-xs text-slate-700 truncate max-w-xs"><?php echo sanitize($tn['reasonoftech']); ?></p>
+                                                        <?php endif; ?>
                                                     </td>
                                                     <td class="py-3 px-4 font-bold text-[#EB3E0B]"><?php echo sanitize($tn['techname']); ?></td>
                                                     <td class="py-3 px-4">
@@ -740,6 +780,76 @@ $page_title = 'Manage Accounts';
                                                                 </button>
                                                             </form>
                                                         </div>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    <!-- TAB 4: HARDWARE PULL-OUTS & DEPLOYMENTS -->
+                    <?php elseif ($active_tab === 'pullouts'): ?>
+                        <div class="space-y-4">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <h3 class="text-base font-extrabold text-slate-900">Hardware Pull-Outs & Deployments</h3>
+                                    <p class="text-xs text-slate-500">Equipment retrieval, warranty exchange, diagnostics, and stock deployments for Account #<?php echo sanitize($client_acct); ?></p>
+                                </div>
+                                <a href="inventory.php?pullout_client=<?php echo urlencode($client_acct); ?>" 
+                                   class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs px-4 py-2.5 rounded-full shadow-sm shadow-amber-500/25 flex items-center space-x-1.5 transition-all active:scale-95 self-start sm:self-auto">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                                    </svg>
+                                    <span>Record New Pull-Out</span>
+                                </a>
+                            </div>
+
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                                            <th class="py-3 px-4">Date / Time</th>
+                                            <th class="py-3 px-4">Hardware Item</th>
+                                            <th class="py-3 px-4 text-center">Movement Type</th>
+                                            <th class="py-3 px-4 text-center">Quantity</th>
+                                            <th class="py-3 px-4">Technician</th>
+                                            <th class="py-3 px-4">Reason & Diagnostic Remarks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 font-medium">
+                                        <?php if (empty($client_pullouts)): ?>
+                                            <tr>
+                                                <td colspan="6" class="py-8 text-center text-slate-400">
+                                                    No hardware pull-outs or equipment movements recorded for this account.
+                                                </td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($client_pullouts as $po): ?>
+                                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                                    <td class="py-3 px-4 text-slate-500 whitespace-nowrap font-mono">
+                                                        <?php echo format_date($po['created_at']); ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 font-bold text-slate-900">
+                                                        <?php echo sanitize(!empty($po['item_name']) ? $po['item_name'] : 'Hardware Item'); ?>
+                                                        <?php if (!empty($po['item_code'])): ?>
+                                                            <span class="block text-[10px] font-mono text-[#EB3E0B]"><?php echo sanitize($po['item_code']); ?></span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-center">
+                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                                            <?php echo sanitize($po['change_type']); ?>
+                                                        </span>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-center font-mono font-bold text-slate-800">
+                                                        <?php echo abs(intval($po['quantity_change'])) > 0 ? abs(intval($po['quantity_change'])) : '1'; ?> unit(s)
+                                                    </td>
+                                                    <td class="py-3 px-4 font-semibold text-slate-800">
+                                                        <?php echo sanitize($po['tech_name']); ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-slate-600 max-w-sm">
+                                                        <span class="text-xs font-medium text-slate-800 block"><?php echo sanitize($po['notes']); ?></span>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>

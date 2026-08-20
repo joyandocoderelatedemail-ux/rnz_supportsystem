@@ -21,6 +21,10 @@ if ($msg === 'item_added') {
     $msg_text = 'Hardware item successfully added to inventory.';
 } elseif ($msg === 'quantity_adjusted') {
     $msg_text = 'Stock quantity successfully updated and logged in movement audit.';
+} elseif ($msg === 'pullout_success') {
+    $item_name = isset($_GET['item']) ? sanitize($_GET['item']) : 'Hardware Item';
+    $client_name = isset($_GET['client']) ? sanitize($_GET['client']) : 'Client';
+    $msg_text = 'Hardware Pull-Out recorded successfully! Processed ' . $item_name . ' for ' . $client_name . ' and automatically updated stock & client service notes.';
 } elseif ($msg === 'item_updated') {
     $msg_text = 'Item details successfully updated.';
 } elseif ($msg === 'item_deleted') {
@@ -39,7 +43,169 @@ if ($msg === 'item_added') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
 
-    // 1. Add New Item
+    // 1. Pull Out Item (Hardware Pull-out from client or to client with auto service note)
+    if ($action === 'pull_out_item') {
+        $my_tier = get_logged_tech_access_tier();
+        if ($my_tier === 1) {
+            header("Location: inventory?msg=error&err_msg=" . urlencode("Access Denied: Level 1 (View Only) accounts cannot perform hardware pull outs."));
+            exit;
+        }
+        if ($my_tier === 2) {
+            $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+            $uid = $tech ? intval($tech['id']) : 0;
+            if (!verify_user_access_code($uid, $action_code)) {
+                header("Location: inventory?msg=error&err_msg=" . urlencode("Access Denied: Invalid Security Access Code. Level 2 accounts require a valid access code to confirm pull outs."));
+                exit;
+            }
+        }
+
+        $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
+        $pullout_direction = isset($_POST['pullout_direction']) ? trim($_POST['pullout_direction']) : 'from_client';
+        $amount = isset($_POST['amount']) ? intval($_POST['amount']) : 1;
+        if ($amount < 1) $amount = 1;
+        $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+        $client_name = isset($_POST['client_name']) ? trim($_POST['client_name']) : '';
+        $address = isset($_POST['address']) ? trim($_POST['address']) : '';
+        $reason = isset($_POST['reason']) ? trim($_POST['reason']) : 'Defective Unit / Pull-out for Diagnostics';
+        $custom_notes = isset($_POST['notes']) ? trim($_POST['notes']) : '';
+        $serial_number = isset($_POST['serial_number']) ? trim($_POST['serial_number']) : '';
+        $condition_status = isset($_POST['condition_status']) ? trim($_POST['condition_status']) : 'Defective / For Diagnostics';
+        $restock_item = isset($_POST['restock_item']) ? intval($_POST['restock_item']) : 0;
+        $auto_technote = isset($_POST['auto_technote']) ? intval($_POST['auto_technote']) : 1;
+
+        if ($item_id <= 0) {
+            header("Location: inventory?msg=error&err_msg=" . urlencode("Please select a valid hardware item."));
+            exit;
+        }
+        if (empty($accountnum)) {
+            header("Location: inventory?msg=error&err_msg=" . urlencode("Please select or specify the client account for this pull out."));
+            exit;
+        }
+
+        try {
+            $stmt_cur = $pdo->prepare("SELECT id, item_code, name, quantity FROM support_inventory_items WHERE id = :id LIMIT 1");
+            $stmt_cur->execute(array(':id' => $item_id));
+            $item_data = $stmt_cur->fetch();
+
+            if (!$item_data) {
+                header("Location: inventory?msg=error&err_msg=" . urlencode("Hardware item not found in inventory."));
+                exit;
+            }
+
+            $prev_qty = intval($item_data['quantity']);
+            $new_qty = $prev_qty;
+            $qty_change = 0;
+            $now = date('Y-m-d H:i:s');
+            $today = date('Y-m-d');
+
+            // Look up client details from bucket_client if needed
+            $stmt_c = $pdo->prepare("SELECT tradename, clientname, address FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+            $stmt_c->execute(array(':acct' => $accountnum));
+            $c_row = $stmt_c->fetch();
+            if ($c_row) {
+                if (empty($client_name)) {
+                    $client_name = !empty($c_row['tradename']) ? $c_row['tradename'] : $c_row['clientname'];
+                }
+                if (empty($address)) {
+                    $address = $c_row['address'];
+                }
+            }
+            if (empty($client_name)) {
+                $client_name = 'Account #' . $accountnum;
+            }
+
+            if ($pullout_direction === 'to_client') {
+                $qty_change = -$amount;
+                $new_qty = max(0, $prev_qty - $amount);
+                $change_label = 'Pull Out (To Client)';
+                $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET quantity = :qty, updated_at = :now WHERE id = :id");
+                $stmt_up->execute(array(':qty' => $new_qty, ':now' => $now, ':id' => $item_id));
+            } else {
+                $change_label = 'Pull Out (From Client)';
+                if ($restock_item === 1) {
+                    $qty_change = $amount;
+                    $new_qty = $prev_qty + $amount;
+                    $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET quantity = :qty, updated_at = :now WHERE id = :id");
+                    $stmt_up->execute(array(':qty' => $new_qty, ':now' => $now, ':id' => $item_id));
+                } else {
+                    $qty_change = 0;
+                }
+            }
+
+            // Build compiled notes for inventory movement log
+            $log_notes_parts = array();
+            $log_notes_parts[] = "Reason: " . $reason;
+            if (!empty($serial_number)) {
+                $log_notes_parts[] = "S/N: " . $serial_number;
+            }
+            if (!empty($condition_status)) {
+                $log_notes_parts[] = "Condition: " . $condition_status;
+            }
+            if (!empty($custom_notes)) {
+                $log_notes_parts[] = "Notes: " . $custom_notes;
+            }
+            $compiled_notes = implode(' | ', $log_notes_parts);
+
+            // 1. Insert Inventory Movement Log
+            $stmt_log = $pdo->prepare("INSERT INTO support_inventory_logs 
+                (item_id, tech_name, change_type, quantity_change, previous_quantity, new_quantity, accountnum, client_name, notes, created_at) 
+                VALUES (:item_id, :tech, :type, :change, :prev, :new, :acct, :client, :notes, :now)");
+            $stmt_log->execute(array(
+                ':item_id' => $item_id,
+                ':tech' => $tech_name,
+                ':type' => $change_label,
+                ':change' => $qty_change,
+                ':prev' => $prev_qty,
+                ':new' => $new_qty,
+                ':acct' => $accountnum,
+                ':client' => $client_name,
+                ':notes' => $compiled_notes,
+                ':now' => $now
+            ));
+
+            // 2. Automatically insert into bucket_technotes (Client Service Notes)
+            if ($auto_technote === 1) {
+                $tech_reason = "[Hardware Pull-Out] " . $item_data['item_code'] . " - " . $item_data['name'] . " (Qty: " . $amount . ")";
+                $tech_cause = "Pull-Out Reason: " . $reason;
+                $tech_resso_parts = array();
+                $tech_resso_parts[] = ($pullout_direction === 'to_client') ? "Hardware deployed / released to client by " . $tech_name . "." : "Hardware pulled out from client by " . $tech_name . ".";
+                if (!empty($serial_number)) {
+                    $tech_resso_parts[] = "Serial Number: " . $serial_number . ".";
+                }
+                if (!empty($condition_status)) {
+                    $tech_resso_parts[] = "Condition: " . $condition_status . ".";
+                }
+                if (!empty($custom_notes)) {
+                    $tech_resso_parts[] = "Remarks: " . $custom_notes;
+                }
+                $tech_resso = implode(" ", $tech_resso_parts);
+                $tech_status = (strpos(strtolower($condition_status), 'defective') !== false || strpos(strtolower($reason), 'defective') !== false || strpos(strtolower($reason), 'repair') !== false) ? 'For Repair' : 'Completed';
+
+                $stmt_tn = $pdo->prepare("INSERT INTO bucket_technotes 
+                    (accountnum, xdate, clientname, address, techname, reasonoftech, causeoftheissue, resso, status) 
+                    VALUES (:acct, :xdate, :cname, :addr, :tname, :reason, :cause, :resso, :status)");
+                $stmt_tn->execute(array(
+                    ':acct' => $accountnum,
+                    ':xdate' => $today,
+                    ':cname' => $client_name,
+                    ':addr' => !empty($address) ? $address : 'N/A',
+                    ':tname' => $tech_name,
+                    ':reason' => $tech_reason,
+                    ':cause' => $tech_cause,
+                    ':resso' => $tech_resso,
+                    ':status' => $tech_status
+                ));
+            }
+
+            header("Location: inventory?msg=pullout_success&item=" . urlencode($item_data['name']) . "&client=" . urlencode($client_name));
+            exit;
+        } catch (PDOException $e) {
+            header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
+            exit;
+        }
+    }
+
+    // 2. Add New Item
     if ($action === 'add_item') {
         $name = isset($_POST['name']) ? trim($_POST['name']) : '';
         $item_code = isset($_POST['item_code']) ? trim($_POST['item_code']) : '';
@@ -290,18 +456,25 @@ $out_of_stock_count = intval($pdo->query("SELECT COUNT(*) FROM support_inventory
 $total_val_row = $pdo->query("SELECT SUM(quantity * unit_price) FROM support_inventory_items")->fetchColumn();
 $total_inventory_value = floatval($total_val_row ? $total_val_row : 0);
 
-// Fetch Clients for Tagging in Adjustments
-$stmt_clients = $pdo->query("SELECT accountnum, tradename, clientname FROM bucket_client ORDER BY tradename ASC LIMIT 100");
-$clients_list = $stmt_clients->fetchAll();
+// Fetch all inventory items for quick dropdown selection in Pull Out Modal
+$stmt_all_inv = $pdo->query("SELECT id, item_code, name, quantity, min_threshold, status FROM support_inventory_items WHERE status = 'Active' ORDER BY name ASC");
+$all_inventory_items = $stmt_all_inv ? $stmt_all_inv->fetchAll() : array();
 
-// Fetch Recent 15 Inventory Movement Logs
+// Fetch Clients for Tagging in Pull-outs and Adjustments
+$stmt_clients = $pdo->query("SELECT accountnum, tradename, clientname, address FROM bucket_client ORDER BY tradename ASC");
+$clients_list = $stmt_clients ? $stmt_clients->fetchAll() : array();
+
+// Fetch Recent 25 Inventory Movement Logs
 $stmt_recent_logs = $pdo->query("SELECT l.*, i.name as item_name, i.item_code, i.image_path 
     FROM support_inventory_logs l 
     LEFT JOIN support_inventory_items i ON l.item_id = i.id 
-    ORDER BY l.created_at DESC LIMIT 15");
+    ORDER BY l.created_at DESC LIMIT 25");
 $recent_logs = $stmt_recent_logs->fetchAll();
 
 $portal_catalog = get_portal_hardware_catalog();
+
+$preset_pullout_client = isset($_GET['pullout_client']) ? sanitize($_GET['pullout_client']) : '';
+$preset_pullout_item = isset($_GET['pullout_item']) ? intval($_GET['pullout_item']) : 0;
 
 $active_page = 'inventory';
 $page_title = 'Hardware Inventory Hub';
@@ -403,6 +576,14 @@ $page_title = 'Hardware Inventory Hub';
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
                         <span>Stock Movement History</span>
+                    </button>
+
+                    <!-- Pull Out Items Button -->
+                    <button onclick="openPullOutModal()" class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs sm:text-sm px-4 py-2.5 rounded-2xl shadow-sm shadow-amber-500/30 flex items-center space-x-2 transition-all active:scale-95">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                        </svg>
+                        <span>Pull Out Items</span>
                     </button>
 
                     <!-- Add New Item Button -->
@@ -620,8 +801,13 @@ $page_title = 'Hardware Inventory Hub';
                                                 </form>
 
                                                 <!-- Open Detailed Adjust Modal -->
-                                                <button onclick='openAdjustModal(<?php echo json_encode($item); ?>)' class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white font-bold text-[11px] transition-colors" title="Adjust Stock Quantity">
+                                                <button onclick='openAdjustModal(<?php echo htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8'); ?>)' class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white font-bold text-[11px] transition-colors" title="Adjust Stock Quantity">
                                                     Adjust
+                                                </button>
+
+                                                <!-- Open Pull Out Modal for this item -->
+                                                <button onclick='openPullOutModalForItem(<?php echo htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8'); ?>)' class="px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-500 text-amber-800 hover:text-white border border-amber-200 font-bold text-[11px] transition-colors" title="Pull Out this Hardware Item">
+                                                    Pull Out
                                                 </button>
 
                                                 <!-- Quick +1 -->
@@ -665,6 +851,176 @@ $page_title = 'Hardware Inventory Hub';
             </div>
 
         </main>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODAL: PULL OUT HARDWARE ITEM -->
+<!-- ========================================================================= -->
+<div id="pullOutModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 sm:p-8 space-y-6 my-8 animate-in fade-in zoom-in duration-150">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-md shadow-amber-500/25">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                    </svg>
+                </div>
+                <div>
+                    <h3 class="font-extrabold text-lg text-slate-900">Pull Out Hardware Item</h3>
+                    <p class="text-xs text-slate-500">Record hardware retrieval or deployment & sync with client service history.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closePullOutModal()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <form method="POST" action="" class="space-y-4">
+            <input type="hidden" name="action" value="pull_out_item">
+
+            <!-- 1. Pull Out Direction Toggle -->
+            <div class="space-y-1.5">
+                <label class="text-xs font-bold text-slate-700">Pull-Out Type / Movement Direction <span class="text-[#EB3E0B]">*</span></label>
+                <div class="grid grid-cols-2 gap-2.5">
+                    <label class="border-2 border-slate-200 rounded-2xl p-3 flex items-center space-x-3 cursor-pointer has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50/50 has-[:checked]:text-amber-950 transition-all">
+                        <input type="radio" name="pullout_direction" value="from_client" checked onchange="togglePulloutDirection(this.value)" class="text-amber-600 focus:ring-0">
+                        <div>
+                            <span class="block text-xs font-bold text-slate-900">🔄 From Client to Office</span>
+                            <span class="block text-[10px] text-slate-500">Defective, repair, warranty pull-out</span>
+                        </div>
+                    </label>
+                    <label class="border-2 border-slate-200 rounded-2xl p-3 flex items-center space-x-3 cursor-pointer has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50/50 has-[:checked]:text-emerald-950 transition-all">
+                        <input type="radio" name="pullout_direction" value="to_client" onchange="togglePulloutDirection(this.value)" class="text-emerald-600 focus:ring-0">
+                        <div>
+                            <span class="block text-xs font-bold text-slate-900">📦 Deploy to Client</span>
+                            <span class="block text-[10px] text-slate-500">Release & deduct from warehouse</span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 2. Hardware Item Selector -->
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-700">Hardware Item <span class="text-[#EB3E0B]">*</span></label>
+                <select name="item_id" id="pullout_item_id" required onchange="updatePullOutItem(this)" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-semibold">
+                    <option value="">-- Choose Hardware Item --</option>
+                    <?php foreach ($all_inventory_items as $inv_item): ?>
+                        <option value="<?php echo $inv_item['id']; ?>" data-name="<?php echo sanitize($inv_item['name']); ?>" data-code="<?php echo sanitize($inv_item['item_code']); ?>" data-qty="<?php echo $inv_item['quantity']; ?>">
+                            <?php echo sanitize($inv_item['name'] . ' (' . $inv_item['item_code'] . ') — Stock: ' . $inv_item['quantity'] . ' units'); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <div id="pullout_item_info" class="hidden text-[11px] font-mono text-slate-500 pt-1 flex items-center justify-between">
+                    <span>Selected: <strong id="pullout_item_name_text" class="text-slate-800 font-sans"></strong></span>
+                    <span>In Stock: <strong id="pullout_item_qty_text" class="text-amber-700"></strong> units</span>
+                </div>
+            </div>
+
+            <!-- 3. Client Selection -->
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-700">To / From Which Client Account <span class="text-[#EB3E0B]">*</span></label>
+                <select name="accountnum" id="pullout_accountnum" required onchange="updatePullOutClient(this)" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-semibold">
+                    <option value="">-- Choose Client Account --</option>
+                    <?php foreach ($clients_list as $c): 
+                        $display_title = !empty($c['tradename']) ? $c['tradename'] : $c['clientname'];
+                    ?>
+                        <option value="<?php echo sanitize($c['accountnum']); ?>" 
+                                data-tradename="<?php echo sanitize($display_title); ?>"
+                                data-address="<?php echo sanitize(isset($c['address']) ? $c['address'] : ''); ?>">
+                            <?php echo sanitize($display_title . ' (Account #' . $c['accountnum'] . ')'); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="hidden" name="client_name" id="pullout_client_name" value="">
+                <input type="hidden" name="address" id="pullout_client_address" value="">
+            </div>
+
+            <!-- 4. Quantity and Serial Number Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-700">Quantity <span class="text-[#EB3E0B]">*</span></label>
+                    <input type="number" name="amount" id="pullout_amount" min="1" value="1" required class="w-full bg-slate-50 text-slate-800 text-sm font-extrabold px-4 py-2.5 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-mono">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-700">Serial Number / Tracking #</label>
+                    <input type="text" name="serial_number" placeholder="e.g., SN-99482104" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-2.5 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-mono">
+                </div>
+            </div>
+
+            <!-- 5. Reason for Pull-Out -->
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-700">Reason for Pull-Out <span class="text-[#EB3E0B]">*</span></label>
+                <select name="reason" required class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-medium">
+                    <option value="Defective Unit / Pull-out for Diagnostics & Repair">Defective Unit / Pull-out for Diagnostics & Repair</option>
+                    <option value="Warranty Replacement / Unit Exchange">Warranty Replacement / Unit Exchange</option>
+                    <option value="Hardware Upgrade / Migration to New POS Model">Hardware Upgrade / Migration to New POS Model</option>
+                    <option value="Store Closure / Subscription Termination">Store Closure / Subscription Termination</option>
+                    <option value="Retrieval of Demo / Backup / Loaner Unit">Retrieval of Demo / Backup / Loaner Unit</option>
+                    <option value="Preventive Maintenance Bench Testing">Preventive Maintenance Bench Testing</option>
+                    <option value="Customer Sale / Deployment Release">Customer Sale / Deployment Release</option>
+                    <option value="Other">Other / Custom Reason</option>
+                </select>
+            </div>
+
+            <!-- 6. Item Condition / Diagnostic Status -->
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-700">Item Condition / Hardware Status</label>
+                <select name="condition_status" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-2.5 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-medium">
+                    <option value="Defective / Needs Repair">Defective / Needs Repair</option>
+                    <option value="Good / Functional (Working Unit)">Good / Functional (Working Unit)</option>
+                    <option value="Damaged / Beyond Repair (Scrap)">Damaged / Beyond Repair (Scrap)</option>
+                    <option value="For Diagnostic / Bench Testing">For Diagnostic / Bench Testing</option>
+                </select>
+            </div>
+
+            <!-- 7. Restock Option (Only if from client) -->
+            <div id="restock_option_box" class="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-1">
+                <label class="flex items-center space-x-2.5 cursor-pointer text-xs font-bold text-amber-900">
+                    <input type="checkbox" name="restock_item" value="1" class="rounded text-amber-600 focus:ring-0">
+                    <span>Add pulled-out unit back to available warehouse inventory stock (+Qty)</span>
+                </label>
+                <p class="text-[10px] text-amber-700 ml-6">Check this if the item is functional/repaired and ready for immediate deployment.</p>
+            </div>
+
+            <!-- 8. Auto Sync to Client Service Notes -->
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">
+                <label class="flex items-center space-x-2.5 cursor-pointer text-xs font-bold text-slate-800">
+                    <input type="checkbox" name="auto_technote" value="1" checked class="rounded text-[#EB3E0B] focus:ring-0">
+                    <span>Automatically create a Technical Service Note in Client Account (<code class="text-[10px] font-mono text-[#EB3E0B]">bucket_technotes</code>)</span>
+                </label>
+                <p class="text-[10px] text-slate-500 ml-6">Automatically creates a full log in the client's history with reason, technician, and hardware specifications.</p>
+            </div>
+
+            <!-- 9. Additional Notes / Diagnostics Remarks -->
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-700">Remarks / Diagnostic Notes / Ticket Reference</label>
+                <textarea name="notes" rows="2" placeholder="e.g., Client reported paper feed jam; bringing unit to office for roller gear replacement. Ticket # RNZ-2026-0012" class="w-full bg-slate-50 text-slate-800 text-xs p-3 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none"></textarea>
+            </div>
+
+            <!-- 10. Level 2 Access Code Prompt (if needed) -->
+            <?php 
+                $my_tier = get_logged_tech_access_tier();
+                if ($my_tier === 2): 
+            ?>
+                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                        <span>Security Access Code Required (Level 2 Account)</span>
+                    </label>
+                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                </div>
+            <?php endif; ?>
+
+            <div class="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
+                <button type="button" onclick="closePullOutModal()" class="px-5 py-2.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-colors">
+                    Cancel
+                </button>
+                <button type="submit" class="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold text-xs hover:from-amber-600 hover:to-amber-700 shadow-md shadow-amber-500/30 transition-all">
+                    Confirm & Record Pull-Out
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -976,8 +1332,20 @@ $page_title = 'Hardware Inventory Hub';
                                     <span class="block text-[10px] font-mono text-slate-400"><?php echo sanitize($log['item_code']); ?></span>
                                 </td>
                                 <td class="py-3 px-4 text-center">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                                        <?php echo sanitize($log['change_type']); ?>
+                                    <?php 
+                                        $type_str = sanitize($log['change_type']);
+                                        if (strpos(strtolower($log['change_type']), 'pull out') !== false || strpos(strtolower($log['change_type']), 'pull-out') !== false) {
+                                            $t_badge = 'bg-amber-100 text-amber-900 border border-amber-300 font-bold';
+                                        } elseif ($chg > 0) {
+                                            $t_badge = 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold';
+                                        } elseif ($chg < 0) {
+                                            $t_badge = 'bg-rose-100 text-rose-800 border border-rose-300 font-bold';
+                                        } else {
+                                            $t_badge = 'bg-slate-100 text-slate-700 border border-slate-200 font-bold';
+                                        }
+                                    ?>
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] <?php echo $t_badge; ?>">
+                                        <?php echo $type_str; ?>
                                     </span>
                                 </td>
                                 <td class="py-3 px-4 text-center">
@@ -1011,6 +1379,75 @@ $page_title = 'Hardware Inventory Hub';
 </div>
 
 <script>
+// Pull Out Modal Handlers
+function openPullOutModal(presetItemId, presetAcct) {
+    if (presetItemId) {
+        var selItem = document.getElementById('pullout_item_id');
+        if (selItem) {
+            selItem.value = presetItemId;
+            updatePullOutItem(selItem);
+        }
+    }
+    if (presetAcct) {
+        var selClient = document.getElementById('pullout_accountnum');
+        if (selClient) {
+            selClient.value = presetAcct;
+            updatePullOutClient(selClient);
+        }
+    }
+    var m = document.getElementById('pullOutModal');
+    if (m) {
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+    }
+}
+
+function openPullOutModalForItem(item) {
+    if (!item) return;
+    openPullOutModal(item.id, null);
+}
+
+function closePullOutModal() {
+    var m = document.getElementById('pullOutModal');
+    if (m) {
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+    }
+}
+
+function togglePulloutDirection(val) {
+    var restockBox = document.getElementById('restock_option_box');
+    if (restockBox) {
+        if (val === 'to_client') {
+            restockBox.classList.add('hidden');
+        } else {
+            restockBox.classList.remove('hidden');
+        }
+    }
+}
+
+function updatePullOutItem(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    var infoBox = document.getElementById('pullout_item_info');
+    if (opt && opt.value) {
+        var name = opt.getAttribute('data-name') || '';
+        var qty = opt.getAttribute('data-qty') || '0';
+        document.getElementById('pullout_item_name_text').textContent = name;
+        document.getElementById('pullout_item_qty_text').textContent = qty;
+        if (infoBox) infoBox.classList.remove('hidden');
+    } else {
+        if (infoBox) infoBox.classList.add('hidden');
+    }
+}
+
+function updatePullOutClient(sel) {
+    var opt = sel.options[sel.selectedIndex];
+    var tradename = opt ? (opt.getAttribute('data-tradename') || '') : '';
+    var address = opt ? (opt.getAttribute('data-address') || '') : '';
+    document.getElementById('pullout_client_name').value = tradename;
+    document.getElementById('pullout_client_address').value = address;
+}
+
 // Modal Handlers
 function openAddItemModal() {
     var m = document.getElementById('addItemModal');
@@ -1092,9 +1529,19 @@ function closeMovementLogModal() {
     }
 }
 
+// Auto open modal if URL params present
+window.addEventListener('DOMContentLoaded', function() {
+    var presetClient = '<?php echo addslashes($preset_pullout_client); ?>';
+    var presetItem = '<?php echo intval($preset_pullout_item); ?>';
+    if (presetClient !== '' || parseInt(presetItem) > 0) {
+        openPullOutModal(parseInt(presetItem) > 0 ? presetItem : null, presetClient !== '' ? presetClient : null);
+    }
+});
+
 // Close modals on escape key
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+        closePullOutModal();
         closeAddItemModal();
         closeAdjustModal();
         closeEditModal();
