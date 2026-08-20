@@ -9,31 +9,36 @@ $pdo = get_db_connection();
 
 // Handle quick assign or status update POST requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    $ticket_id = isset($_POST['ticket_id']) ? intval($_POST['ticket_id']) : 0;
-    
-    if ($_POST['action'] === 'quick_update_ticket' && $ticket_id > 0) {
-        $new_status = isset($_POST['status']) ? trim($_POST['status']) : '';
-        $new_tech = isset($_POST['assigned_tech']) ? trim($_POST['assigned_tech']) : '';
+    $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+    $perm_check = check_tech_action_permission($action_code);
 
-        $sql_parts = array();
-        $params = array(':id' => $ticket_id);
+    if ($perm_check['allowed']) {
+        $ticket_id = isset($_POST['ticket_id']) ? intval($_POST['ticket_id']) : 0;
+        
+        if ($_POST['action'] === 'quick_update_ticket' && $ticket_id > 0) {
+            $new_status = isset($_POST['status']) ? trim($_POST['status']) : '';
+            $new_tech = isset($_POST['assigned_tech']) ? trim($_POST['assigned_tech']) : '';
 
-        if (!empty($new_status)) {
-            $sql_parts[] = "status = :status";
-            $params[':status'] = $new_status;
-        }
-        if (!empty($new_tech)) {
-            $sql_parts[] = "assigned_tech = :tech";
-            $params[':tech'] = $new_tech;
-        }
+            $sql_parts = array();
+            $params = array(':id' => $ticket_id);
 
-        if (!empty($sql_parts)) {
-            $stmt_up = $pdo->prepare("UPDATE client_support_tickets SET " . implode(", ", $sql_parts) . " WHERE id = :id");
-            $stmt_up->execute($params);
+            if (!empty($new_status)) {
+                $sql_parts[] = "status = :status";
+                $params[':status'] = $new_status;
+            }
+            if (!empty($new_tech)) {
+                $sql_parts[] = "assigned_tech = :tech";
+                $params[':tech'] = $new_tech;
+            }
+
+            if (!empty($sql_parts)) {
+                $stmt_up = $pdo->prepare("UPDATE client_support_tickets SET " . implode(", ", $sql_parts) . " WHERE id = :id");
+                $stmt_up->execute($params);
+            }
         }
-        header("Location: tickets.php");
-        exit;
     }
+    header("Location: tickets.php");
+    exit;
 }
 
 // Fetch technicians list from user table

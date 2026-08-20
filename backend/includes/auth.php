@@ -139,18 +139,31 @@ function get_user_allowed_pages($user_id, $accesslevel = '') {
  */
 function get_user_permission_data($user_id, $accesslevel = '') {
     $lvl = strtolower(trim($accesslevel));
-    $default_pages = get_user_allowed_pages($user_id, $accesslevel);
     
-    // Determine default tier based on role:
+    $pdo = get_db_connection();
+    if (empty($lvl) && $pdo && $user_id > 0) {
+        try {
+            $stmt_u = $pdo->prepare("SELECT accesslevel FROM user WHERE id = :uid LIMIT 1");
+            $stmt_u->execute(array(':uid' => intval($user_id)));
+            $db_lvl = $stmt_u->fetchColumn();
+            if ($db_lvl) {
+                $lvl = strtolower(trim($db_lvl));
+            }
+        } catch (PDOException $e) {}
+    }
+
+    $default_pages = get_user_allowed_pages($user_id, $lvl);
+    
+    // Determine default tier based on role / accesslevel string:
     // Tier 1: View only
     // Tier 2: Edit with access code
     // Tier 3: Direct edit (no access code needed)
     $default_tier = 3;
-    if ($lvl === 'ojt' || $lvl === 'staff' || $lvl === 'support') {
+    if ($lvl === '1' || $lvl === 'level 1' || strpos($lvl, '1') !== false || $lvl === 'ojt' || $lvl === 'staff' || $lvl === 'support' || strpos($lvl, 'view') !== false) {
         $default_tier = 1;
-    } elseif ($lvl === 'junior programmer' || $lvl === 'junior_programmer' || $lvl === 'tech support' || $lvl === 'technician') {
+    } elseif ($lvl === '2' || $lvl === 'level 2' || strpos($lvl, '2') !== false || $lvl === 'junior programmer' || $lvl === 'junior_programmer' || $lvl === 'tech support' || $lvl === 'technician') {
         $default_tier = 2;
-    } elseif ($lvl === 'master' || $lvl === 'admin' || $lvl === 'administrator' || $lvl === 'senior programmer' || $lvl === 'senior_programmer') {
+    } elseif ($lvl === '3' || $lvl === 'level 3' || strpos($lvl, '3') !== false || $lvl === 'master' || $lvl === 'admin' || $lvl === 'administrator' || $lvl === 'senior programmer' || $lvl === 'senior_programmer') {
         $default_tier = 3;
     }
 
@@ -160,7 +173,6 @@ function get_user_permission_data($user_id, $accesslevel = '') {
         'access_code' => '1234'
     );
 
-    $pdo = get_db_connection();
     if ($pdo && $user_id > 0) {
         try {
             $stmt = $pdo->prepare("SELECT allowed_pages, access_tier, access_code FROM support_user_permissions WHERE user_id = :uid LIMIT 1");
@@ -261,6 +273,31 @@ function verify_user_access_code($user_id, $input_code) {
         }
     }
     return false;
+}
+
+/**
+ * Check if the currently logged-in technician is authorized to perform write/edit actions.
+ * Enforces Level 1 (View Only) block, and Level 2 (Security Code) verification.
+ * 
+ * @param string $action_code Optional input access code from $_POST
+ * @return array array('allowed' => bool, 'message' => string)
+ */
+function check_tech_action_permission($action_code = '') {
+    $tech = get_logged_tech();
+    if (!$tech) {
+        return array('allowed' => false, 'message' => 'Please log in to perform this action.');
+    }
+    $tier = get_logged_tech_access_tier();
+    if ($tier === 1) {
+        return array('allowed' => false, 'message' => 'Access Denied: Level 1 (View Only) accounts are not permitted to create, edit, or delete records.');
+    }
+    if ($tier === 2) {
+        $uid = isset($tech['id']) ? intval($tech['id']) : 0;
+        if (!verify_user_access_code($uid, $action_code)) {
+            return array('allowed' => false, 'message' => 'Access Denied: Invalid Security Access Code. Level 2 accounts require a valid access code to confirm changes.');
+        }
+    }
+    return array('allowed' => true, 'message' => '');
 }
 
 /**

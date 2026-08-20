@@ -19,6 +19,13 @@ if ($ticket_id <= 0) {
 
 // Handle Form Submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+    $perm_check = check_tech_action_permission($action_code);
+    if (!$perm_check['allowed']) {
+        header("Location: ticket_detail?id=" . $ticket_id . "&err=" . urlencode($perm_check['message']));
+        exit;
+    }
+
     $post_action = isset($_POST['action']) ? trim($_POST['action']) : '';
 
     if ($post_action === 'send_tech_reply') {

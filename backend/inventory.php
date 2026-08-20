@@ -43,21 +43,16 @@ if ($msg === 'item_added') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
 
+    // Enforce Level 1 (View Only) block and Level 2 (Security Code) across ALL inventory actions
+    $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+    $perm_check = check_tech_action_permission($action_code);
+    if (!$perm_check['allowed']) {
+        header("Location: inventory?msg=error&err_msg=" . urlencode($perm_check['message']));
+        exit;
+    }
+
     // 1. Pull Out Item (Hardware Pull-out from client or to client with auto service note)
     if ($action === 'pull_out_item') {
-        $my_tier = get_logged_tech_access_tier();
-        if ($my_tier === 1) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode("Access Denied: Level 1 (View Only) accounts cannot perform hardware pull outs."));
-            exit;
-        }
-        if ($my_tier === 2) {
-            $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
-            $uid = $tech ? intval($tech['id']) : 0;
-            if (!verify_user_access_code($uid, $action_code)) {
-                header("Location: inventory?msg=error&err_msg=" . urlencode("Access Denied: Invalid Security Access Code. Level 2 accounts require a valid access code to confirm pull outs."));
-                exit;
-            }
-        }
 
         $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
         $pullout_direction = isset($_POST['pullout_direction']) ? trim($_POST['pullout_direction']) : 'from_client';
@@ -998,11 +993,16 @@ $page_title = 'Hardware Inventory Hub';
                 <textarea name="notes" rows="2" placeholder="e.g., Client reported paper feed jam; bringing unit to office for roller gear replacement. Ticket # RNZ-2026-0012" class="w-full bg-slate-50 text-slate-800 text-xs p-3 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none"></textarea>
             </div>
 
-            <!-- 10. Level 2 Access Code Prompt (if needed) -->
+            <!-- Access Level Tier Banner & Input -->
             <?php 
                 $my_tier = get_logged_tech_access_tier();
-                if ($my_tier === 2): 
+                if ($my_tier === 1): 
             ?>
+                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot pull out items.</span>
+                </div>
+            <?php elseif ($my_tier === 2): ?>
                 <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
                     <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
                         <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
@@ -1016,9 +1016,15 @@ $page_title = 'Hardware Inventory Hub';
                 <button type="button" onclick="closePullOutModal()" class="px-5 py-2.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-colors">
                     Cancel
                 </button>
-                <button type="submit" class="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold text-xs hover:from-amber-600 hover:to-amber-700 shadow-md shadow-amber-500/30 transition-all">
-                    Confirm & Record Pull-Out
-                </button>
+                <?php if ($my_tier === 1): ?>
+                    <button type="button" disabled class="px-6 py-2.5 rounded-2xl bg-slate-300 text-slate-500 font-bold text-xs cursor-not-allowed">
+                        🔒 View Only
+                    </button>
+                <?php else: ?>
+                    <button type="submit" class="px-6 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold text-xs hover:from-amber-600 hover:to-amber-700 shadow-md shadow-amber-500/30 transition-all">
+                        Confirm & Record Pull-Out
+                    </button>
+                <?php endif; ?>
             </div>
         </form>
     </div>
@@ -1079,13 +1085,35 @@ $page_title = 'Hardware Inventory Hub';
                 </div>
             </div>
 
+            <!-- Access Level Tier Banner & Input -->
+            <?php if ($my_tier === 1): ?>
+                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot create new items.</span>
+                </div>
+            <?php elseif ($my_tier === 2): ?>
+                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                        <span>Security Access Code Required (Level 2 Account)</span>
+                    </label>
+                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                </div>
+            <?php endif; ?>
+
             <div class="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
                 <button type="button" onclick="closeAddItemModal()" class="px-5 py-2.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-colors">
                     Cancel
                 </button>
-                <button type="submit" class="px-6 py-2.5 rounded-2xl bg-[#EB3E0B] text-white font-bold text-xs hover:bg-[#C32C0B] shadow-sm shadow-[#EB3E0B]/30 transition-all">
-                    Save Hardware Item
-                </button>
+                <?php if ($my_tier === 1): ?>
+                    <button type="button" disabled class="px-6 py-2.5 rounded-2xl bg-slate-300 text-slate-500 font-bold text-xs cursor-not-allowed">
+                        🔒 View Only
+                    </button>
+                <?php else: ?>
+                    <button type="submit" class="px-6 py-2.5 rounded-2xl bg-[#EB3E0B] text-white font-bold text-xs hover:bg-[#C32C0B] shadow-sm shadow-[#EB3E0B]/30 transition-all">
+                        Save Hardware Item
+                    </button>
+                <?php endif; ?>
             </div>
         </form>
     </div>
@@ -1186,13 +1214,35 @@ $page_title = 'Hardware Inventory Hub';
                 <input type="text" name="notes" placeholder="e.g., Ticket # RNZ-2026-00045, PO # 8841" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none">
             </div>
 
+            <!-- Access Level Tier Banner & Input -->
+            <?php if ($my_tier === 1): ?>
+                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot adjust stock.</span>
+                </div>
+            <?php elseif ($my_tier === 2): ?>
+                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                        <span>Security Access Code Required (Level 2 Account)</span>
+                    </label>
+                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                </div>
+            <?php endif; ?>
+
             <div class="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
                 <button type="button" onclick="closeAdjustModal()" class="px-5 py-2.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-colors">
                     Cancel
                 </button>
-                <button type="submit" class="px-6 py-2.5 rounded-2xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 shadow-sm shadow-blue-600/30 transition-all">
-                    Apply Stock Adjustment
-                </button>
+                <?php if ($my_tier === 1): ?>
+                    <button type="button" disabled class="px-6 py-2.5 rounded-2xl bg-slate-300 text-slate-500 font-bold text-xs cursor-not-allowed">
+                        🔒 View Only
+                    </button>
+                <?php else: ?>
+                    <button type="submit" class="px-6 py-2.5 rounded-2xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 shadow-sm shadow-blue-600/30 transition-all">
+                        Apply Stock Adjustment
+                    </button>
+                <?php endif; ?>
             </div>
         </form>
     </div>
@@ -1258,13 +1308,35 @@ $page_title = 'Hardware Inventory Hub';
                 </div>
             </div>
 
+            <!-- Access Level Tier Banner & Input -->
+            <?php if ($my_tier === 1): ?>
+                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot edit item details.</span>
+                </div>
+            <?php elseif ($my_tier === 2): ?>
+                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                        <span>Security Access Code Required (Level 2 Account)</span>
+                    </label>
+                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                </div>
+            <?php endif; ?>
+
             <div class="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
                 <button type="button" onclick="closeEditModal()" class="px-5 py-2.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-colors">
                     Cancel
                 </button>
-                <button type="submit" class="px-6 py-2.5 rounded-2xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-all">
-                    Update Details
-                </button>
+                <?php if ($my_tier === 1): ?>
+                    <button type="button" disabled class="px-6 py-2.5 rounded-2xl bg-slate-300 text-slate-500 font-bold text-xs cursor-not-allowed">
+                        🔒 View Only
+                    </button>
+                <?php else: ?>
+                    <button type="submit" class="px-6 py-2.5 rounded-2xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-all">
+                        Update Details
+                    </button>
+                <?php endif; ?>
             </div>
         </form>
     </div>

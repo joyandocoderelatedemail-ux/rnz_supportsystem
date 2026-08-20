@@ -11,168 +11,179 @@ $pdo = get_db_connection();
 $update_msg = '';
 $update_error = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_client_profile') {
-    $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
-    $tradename = isset($_POST['tradename']) ? trim($_POST['tradename']) : '';
-    $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
-    $contactnum = isset($_POST['contactnum']) ? trim($_POST['contactnum']) : '';
-    $emailaddress = isset($_POST['emailaddress']) ? trim($_POST['emailaddress']) : '';
-    $address = isset($_POST['address']) ? trim($_POST['address']) : '';
-    $type = isset($_POST['type']) ? trim($_POST['type']) : '';
-    $monthlyretainersfee = isset($_POST['monthlyretainersfee']) ? trim($_POST['monthlyretainersfee']) : '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+    $perm_check = check_tech_action_permission($action_code);
+    
+    if (!$perm_check['allowed']) {
+        $update_error = $perm_check['message'];
+    } else {
+        $action = $_POST['action'];
 
-    if (!empty($accountnum)) {
-        try {
-            $stmt_up = $pdo->prepare("UPDATE bucket_client 
-                SET tradename = :tname, 
-                    clientname = :cname, 
-                    contactnum = :contact, 
-                    emailaddress = :email, 
-                    address = :addr, 
-                    type = :type, 
-                    monthlyretainersfee = :fee 
-                WHERE accountnum = :acct");
+        if ($action === 'update_client_profile') {
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $tradename = isset($_POST['tradename']) ? trim($_POST['tradename']) : '';
+            $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
+            $contactnum = isset($_POST['contactnum']) ? trim($_POST['contactnum']) : '';
+            $emailaddress = isset($_POST['emailaddress']) ? trim($_POST['emailaddress']) : '';
+            $address = isset($_POST['address']) ? trim($_POST['address']) : '';
+            $type = isset($_POST['type']) ? trim($_POST['type']) : '';
+            $monthlyretainersfee = isset($_POST['monthlyretainersfee']) ? trim($_POST['monthlyretainersfee']) : '';
 
-            $stmt_up->execute(array(
-                ':tname' => $tradename,
-                ':cname' => $clientname,
-                ':contact' => $contactnum,
-                ':email' => $emailaddress,
-                ':addr' => $address,
-                ':type' => $type,
-                ':fee' => $monthlyretainersfee,
-                ':acct' => $accountnum
-            ));
+            if (!empty($accountnum)) {
+                try {
+                    $stmt_up = $pdo->prepare("UPDATE bucket_client 
+                        SET tradename = :tname, 
+                            clientname = :cname, 
+                            contactnum = :contact, 
+                            emailaddress = :email, 
+                            address = :addr, 
+                            type = :type, 
+                            monthlyretainersfee = :fee 
+                        WHERE accountnum = :acct");
 
-            $update_msg = "Client Account #$accountnum profile updated successfully!";
-        } catch (PDOException $e) {
-            $update_error = "Error updating account: " . $e->getMessage();
-        }
-    }
-} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_client_warranty') {
-    $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
-    $warranty_status = isset($_POST['warranty_status']) ? trim($_POST['warranty_status']) : 'Inactive';
-    $warranty_coverage_type = isset($_POST['warranty_coverage_type']) ? trim($_POST['warranty_coverage_type']) : 'Both';
-    $warranty_expiry = isset($_POST['warranty_expiry']) && !empty($_POST['warranty_expiry']) ? trim($_POST['warranty_expiry']) : null;
-    $warranty_notes = isset($_POST['warranty_notes']) ? trim($_POST['warranty_notes']) : '';
+                    $stmt_up->execute(array(
+                        ':tname' => $tradename,
+                        ':cname' => $clientname,
+                        ':contact' => $contactnum,
+                        ':email' => $emailaddress,
+                        ':addr' => $address,
+                        ':type' => $type,
+                        ':fee' => $monthlyretainersfee,
+                        ':acct' => $accountnum
+                    ));
 
-    if (!empty($accountnum)) {
-        try {
-            $stmt_w = $pdo->prepare("UPDATE bucket_client 
-                SET warranty_status = :status, 
-                    warranty_coverage_type = :cov_type, 
-                    warranty_expiry = :expiry, 
-                    warranty_notes = :notes 
-                WHERE accountnum = :acct");
-
-            $stmt_w->execute(array(
-                ':status' => $warranty_status,
-                ':cov_type' => $warranty_coverage_type,
-                ':expiry' => $warranty_expiry,
-                ':notes' => $warranty_notes,
-                ':acct' => $accountnum
-            ));
-
-            $update_msg = ($warranty_status === 'Active') 
-                ? "Active Warranty ($warranty_coverage_type) granted to Account #$accountnum successfully!" 
-                : "Warranty status set to Inactive for Account #$accountnum.";
-        } catch (PDOException $e) {
-            $update_error = "Error updating warranty: " . $e->getMessage();
-        }
-    }
-} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'remove_client_warranty') {
-    $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
-    if (!empty($accountnum)) {
-        try {
-            $stmt_w = $pdo->prepare("UPDATE bucket_client 
-                SET warranty_status = 'Inactive', 
-                    warranty_expiry = NULL, 
-                    warranty_notes = NULL 
-                WHERE accountnum = :acct");
-            $stmt_w->execute(array(':acct' => $accountnum));
-            $update_msg = "Active warranty removed for Account #$accountnum.";
-        } catch (PDOException $e) {
-            $update_error = "Error removing warranty: " . $e->getMessage();
-        }
-    }
-} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create_workorder') {
-    $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
-    $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
-    $address = isset($_POST['address']) ? trim($_POST['address']) : '';
-    $xdate = isset($_POST['xdate']) && !empty($_POST['xdate']) ? trim($_POST['xdate']) : date('Y-m-d');
-    $natureofwork = isset($_POST['natureofwork']) ? trim($_POST['natureofwork']) : '';
-    $amount = isset($_POST['amount']) ? trim($_POST['amount']) : '0';
-    $status = isset($_POST['status']) ? trim($_POST['status']) : 'paid';
-    $ornum = isset($_POST['ornum']) ? trim($_POST['ornum']) : '';
-
-    if (!empty($accountnum) && !empty($natureofwork)) {
-        try {
-            if (empty($clientname) || empty($address)) {
-                $stmt_c = $pdo->prepare("SELECT tradename, clientname, address FROM bucket_client WHERE accountnum = :acct LIMIT 1");
-                $stmt_c->execute(array(':acct' => $accountnum));
-                $c_row = $stmt_c->fetch();
-                if ($c_row) {
-                    if (empty($clientname)) $clientname = !empty($c_row['tradename']) ? $c_row['tradename'] : $c_row['clientname'];
-                    if (empty($address)) $address = $c_row['address'];
+                    $update_msg = "Client Account #$accountnum profile updated successfully!";
+                } catch (PDOException $e) {
+                    $update_error = "Error updating account: " . $e->getMessage();
                 }
             }
+        } elseif ($action === 'update_client_warranty') {
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $warranty_status = isset($_POST['warranty_status']) ? trim($_POST['warranty_status']) : 'Inactive';
+            $warranty_coverage_type = isset($_POST['warranty_coverage_type']) ? trim($_POST['warranty_coverage_type']) : 'Both';
+            $warranty_expiry = isset($_POST['warranty_expiry']) && !empty($_POST['warranty_expiry']) ? trim($_POST['warranty_expiry']) : null;
+            $warranty_notes = isset($_POST['warranty_notes']) ? trim($_POST['warranty_notes']) : '';
 
-            $stmt_wo = $pdo->prepare("INSERT INTO bucket_workorder 
-                (accountnum, xdate, clientname, address, natureofwork, amount, status, ornum) 
-                VALUES (:acct, :xdate, :cname, :addr, :nature, :amount, :status, :ornum)");
-            $stmt_wo->execute(array(
-                ':acct' => $accountnum,
-                ':xdate' => $xdate,
-                ':cname' => $clientname,
-                ':addr' => $address,
-                ':nature' => $natureofwork,
-                ':amount' => $amount,
-                ':status' => $status,
-                ':ornum' => $ornum
-            ));
+            if (!empty($accountnum)) {
+                try {
+                    $stmt_w = $pdo->prepare("UPDATE bucket_client 
+                        SET warranty_status = :status, 
+                            warranty_coverage_type = :cov_type, 
+                            warranty_expiry = :expiry, 
+                            warranty_notes = :notes 
+                        WHERE accountnum = :acct");
 
-            $update_msg = "Work order created and recorded successfully!";
-        } catch (PDOException $e) {
-            $update_error = "Error creating work order: " . $e->getMessage();
-        }
-    } else {
-        $update_error = "Account Number and Nature of Work are required.";
-    }
-} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_workorder') {
-    $wo_id = isset($_POST['wo_id']) ? intval($_POST['wo_id']) : 0;
-    $xdate = isset($_POST['xdate']) ? trim($_POST['xdate']) : date('Y-m-d');
-    $natureofwork = isset($_POST['natureofwork']) ? trim($_POST['natureofwork']) : '';
-    $amount = isset($_POST['amount']) ? trim($_POST['amount']) : '0';
-    $status = isset($_POST['status']) ? trim($_POST['status']) : 'paid';
-    $ornum = isset($_POST['ornum']) ? trim($_POST['ornum']) : '';
+                    $stmt_w->execute(array(
+                        ':status' => $warranty_status,
+                        ':cov_type' => $warranty_coverage_type,
+                        ':expiry' => $warranty_expiry,
+                        ':notes' => $warranty_notes,
+                        ':acct' => $accountnum
+                    ));
 
-    if ($wo_id > 0 && !empty($natureofwork)) {
-        try {
-            $stmt_up = $pdo->prepare("UPDATE bucket_workorder 
-                SET xdate = :xdate, natureofwork = :nature, amount = :amount, status = :status, ornum = :ornum 
-                WHERE id = :id");
-            $stmt_up->execute(array(
-                ':xdate' => $xdate,
-                ':nature' => $natureofwork,
-                ':amount' => $amount,
-                ':status' => $status,
-                ':ornum' => $ornum,
-                ':id' => $wo_id
-            ));
-            $update_msg = "Work Order #WO-$wo_id updated successfully!";
-        } catch (PDOException $e) {
-            $update_error = "Error updating work order: " . $e->getMessage();
-        }
-    }
-} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_workorder') {
-    $wo_id = isset($_POST['wo_id']) ? intval($_POST['wo_id']) : 0;
-    if ($wo_id > 0) {
-        try {
-            $stmt_del = $pdo->prepare("DELETE FROM bucket_workorder WHERE id = :id");
-            $stmt_del->execute(array(':id' => $wo_id));
-            $update_msg = "Work Order #WO-$wo_id deleted successfully.";
-        } catch (PDOException $e) {
-            $update_error = "Error deleting work order: " . $e->getMessage();
+                    $update_msg = ($warranty_status === 'Active') 
+                        ? "Active Warranty ($warranty_coverage_type) granted to Account #$accountnum successfully!" 
+                        : "Warranty status set to Inactive for Account #$accountnum.";
+                } catch (PDOException $e) {
+                    $update_error = "Error updating warranty: " . $e->getMessage();
+                }
+            }
+        } elseif ($action === 'remove_client_warranty') {
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            if (!empty($accountnum)) {
+                try {
+                    $stmt_w = $pdo->prepare("UPDATE bucket_client 
+                        SET warranty_status = 'Inactive', 
+                            warranty_expiry = NULL, 
+                            warranty_notes = NULL 
+                        WHERE accountnum = :acct");
+                    $stmt_w->execute(array(':acct' => $accountnum));
+                    $update_msg = "Active warranty removed for Account #$accountnum.";
+                } catch (PDOException $e) {
+                    $update_error = "Error removing warranty: " . $e->getMessage();
+                }
+            }
+        } elseif ($action === 'create_workorder') {
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
+            $address = isset($_POST['address']) ? trim($_POST['address']) : '';
+            $xdate = isset($_POST['xdate']) && !empty($_POST['xdate']) ? trim($_POST['xdate']) : date('Y-m-d');
+            $natureofwork = isset($_POST['natureofwork']) ? trim($_POST['natureofwork']) : '';
+            $amount = isset($_POST['amount']) ? trim($_POST['amount']) : '0';
+            $status = isset($_POST['status']) ? trim($_POST['status']) : 'paid';
+            $ornum = isset($_POST['ornum']) ? trim($_POST['ornum']) : '';
+
+            if (!empty($accountnum) && !empty($natureofwork)) {
+                try {
+                    if (empty($clientname) || empty($address)) {
+                        $stmt_c = $pdo->prepare("SELECT tradename, clientname, address FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+                        $stmt_c->execute(array(':acct' => $accountnum));
+                        $c_row = $stmt_c->fetch();
+                        if ($c_row) {
+                            if (empty($clientname)) $clientname = !empty($c_row['tradename']) ? $c_row['tradename'] : $c_row['clientname'];
+                            if (empty($address)) $address = $c_row['address'];
+                        }
+                    }
+
+                    $stmt_wo = $pdo->prepare("INSERT INTO bucket_workorder 
+                        (accountnum, xdate, clientname, address, natureofwork, amount, status, ornum) 
+                        VALUES (:acct, :xdate, :cname, :addr, :nature, :amount, :status, :ornum)");
+                    $stmt_wo->execute(array(
+                        ':acct' => $accountnum,
+                        ':xdate' => $xdate,
+                        ':cname' => $clientname,
+                        ':addr' => $address,
+                        ':nature' => $natureofwork,
+                        ':amount' => $amount,
+                        ':status' => $status,
+                        ':ornum' => $ornum
+                    ));
+
+                    $update_msg = "Work order created and recorded successfully!";
+                } catch (PDOException $e) {
+                    $update_error = "Error creating work order: " . $e->getMessage();
+                }
+            } else {
+                $update_error = "Account Number and Nature of Work are required.";
+            }
+        } elseif ($action === 'update_workorder') {
+            $wo_id = isset($_POST['wo_id']) ? intval($_POST['wo_id']) : 0;
+            $xdate = isset($_POST['xdate']) ? trim($_POST['xdate']) : date('Y-m-d');
+            $natureofwork = isset($_POST['natureofwork']) ? trim($_POST['natureofwork']) : '';
+            $amount = isset($_POST['amount']) ? trim($_POST['amount']) : '0';
+            $status = isset($_POST['status']) ? trim($_POST['status']) : 'paid';
+            $ornum = isset($_POST['ornum']) ? trim($_POST['ornum']) : '';
+
+            if ($wo_id > 0 && !empty($natureofwork)) {
+                try {
+                    $stmt_up = $pdo->prepare("UPDATE bucket_workorder 
+                        SET xdate = :xdate, natureofwork = :nature, amount = :amount, status = :status, ornum = :ornum 
+                        WHERE id = :id");
+                    $stmt_up->execute(array(
+                        ':xdate' => $xdate,
+                        ':nature' => $natureofwork,
+                        ':amount' => $amount,
+                        ':status' => $status,
+                        ':ornum' => $ornum,
+                        ':id' => $wo_id
+                    ));
+                    $update_msg = "Work Order #WO-$wo_id updated successfully!";
+                } catch (PDOException $e) {
+                    $update_error = "Error updating work order: " . $e->getMessage();
+                }
+            }
+        } elseif ($action === 'delete_workorder') {
+            $wo_id = isset($_POST['wo_id']) ? intval($_POST['wo_id']) : 0;
+            if ($wo_id > 0) {
+                try {
+                    $stmt_del = $pdo->prepare("DELETE FROM bucket_workorder WHERE id = :id");
+                    $stmt_del->execute(array(':id' => $wo_id));
+                    $update_msg = "Work Order #WO-$wo_id deleted successfully.";
+                } catch (PDOException $e) {
+                    $update_error = "Error deleting work order: " . $e->getMessage();
+                }
+            }
         }
     }
 }
@@ -239,6 +250,8 @@ if ($selected_client) {
 // Fetch ALL client accounts for instant autocomplete dropdown
 $stmt_all_accts = $pdo->query("SELECT accountnum, tradename, clientname FROM bucket_client ORDER BY tradename ASC");
 $all_accounts_list = $stmt_all_accts->fetchAll();
+
+$my_tier = get_logged_tech_access_tier();
 
 $active_page = 'accounts';
 $page_title = 'Manage Accounts';
@@ -929,13 +942,35 @@ $page_title = 'Manage Accounts';
                                 </div>
                             </div>
 
+                            <!-- Access Level Tier Banner & Input -->
+                            <?php if ($my_tier === 1): ?>
+                                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot modify client profiles.</span>
+                                </div>
+                            <?php elseif ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
                             <div class="pt-4 flex items-center justify-end space-x-3 border-t border-slate-100">
                                 <button type="button" onclick="closeEditAccountModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
                                     Cancel
                                 </button>
-                                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
-                                    Save Account Profile
-                                </button>
+                                <?php if ($my_tier === 1): ?>
+                                    <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
+                                        🔒 View Only
+                                    </button>
+                                <?php else: ?>
+                                    <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                                        Save Account Profile
+                                    </button>
+                                <?php endif; ?>
                             </div>
                         </form>
                     </div>
@@ -1007,14 +1042,39 @@ $page_title = 'Manage Accounts';
                                 <textarea name="warranty_notes" rows="3" placeholder="e.g., Full POS Hardware, Thermal Printer, and Maintenance Coverage" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all font-medium"><?php echo !empty($selected_client['warranty_notes']) ? sanitize($selected_client['warranty_notes']) : ''; ?></textarea>
                             </div>
 
+                            <!-- Access Level Tier Banner & Input -->
+                            <?php if ($my_tier === 1): ?>
+                                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot modify warranties.</span>
+                                </div>
+                            <?php elseif ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
                             <div class="pt-2 flex justify-end space-x-3">
                                 <button type="button" onclick="closeWarrantyModal()" class="px-5 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-100 transition-colors">
                                     Cancel
                                 </button>
-                                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
-                                    Save Warranty Settings
-                                </button>
+                                <?php if ($my_tier === 1): ?>
+                                    <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
+                                        🔒 View Only
+                                    </button>
+                                <?php else: ?>
+                                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                                        Save Warranty Settings
+                                    </button>
+                                <?php endif; ?>
                             </div>
+                        </form>
+                    </div>
+                </div>
                         </form>
                     </div>
                 </div>
@@ -1179,13 +1239,35 @@ $page_title = 'Manage Accounts';
                                 </div>
                             </div>
 
+                            <!-- Access Level Tier Banner & Input -->
+                            <?php if ($my_tier === 1): ?>
+                                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot create work orders.</span>
+                                </div>
+                            <?php elseif ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
                             <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
                                 <button type="button" onclick="closeCreateWorkOrderModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
                                     Cancel
                                 </button>
-                                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/30 transition-all active:scale-95">
-                                    Save Work Order
-                                </button>
+                                <?php if ($my_tier === 1): ?>
+                                    <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
+                                        🔒 View Only
+                                    </button>
+                                <?php else: ?>
+                                    <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/30 transition-all active:scale-95">
+                                        Save Work Order
+                                    </button>
+                                <?php endif; ?>
                             </div>
                         </form>
                     </div>
@@ -1250,14 +1332,39 @@ $page_title = 'Manage Accounts';
                                 </div>
                             </div>
 
+                            <!-- Access Level Tier Banner & Input -->
+                            <?php if ($my_tier === 1): ?>
+                                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot modify work orders.</span>
+                                </div>
+                            <?php elseif ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
                             <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
                                 <button type="button" onclick="closeEditWorkOrderModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
                                     Cancel
                                 </button>
-                                <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all">
-                                    Update Work Order
-                                </button>
+                                <?php if ($my_tier === 1): ?>
+                                    <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
+                                        🔒 View Only
+                                    </button>
+                                <?php else: ?>
+                                    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all">
+                                        Update Work Order
+                                    </button>
+                                <?php endif; ?>
                             </div>
+                        </form>
+                    </div>
+                </div>
                         </form>
                     </div>
                 </div>

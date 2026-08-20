@@ -17,23 +17,30 @@ if (isset($_GET['updated']) && $_GET['updated'] === '1') {
 
 // Handle Form Submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action = isset($_POST['action']) ? trim($_POST['action']) : '';
+    $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+    $perm_check = check_tech_action_permission($action_code);
 
-    if ($action === 'update_maintenance_status') {
-        $req_id     = isset($_POST['request_id']) ? intval($_POST['request_id']) : 0;
-        $new_status = isset($_POST['new_status']) ? trim($_POST['new_status']) : '';
+    if (!$perm_check['allowed']) {
+        $error_msg = $perm_check['message'];
+    } else {
+        $action = isset($_POST['action']) ? trim($_POST['action']) : '';
 
-        if ($req_id > 0 && !empty($new_status)) {
-            $now = date('Y-m-d H:i:s');
-            $stmt_u = $pdo->prepare("UPDATE client_maintenance_requests SET status = :st, updated_at = :now WHERE id = :id");
-            $stmt_u->execute(array(
-                ':st' => $new_status,
-                ':now' => $now,
-                ':id' => $req_id
-            ));
+        if ($action === 'update_maintenance_status') {
+            $req_id     = isset($_POST['request_id']) ? intval($_POST['request_id']) : 0;
+            $new_status = isset($_POST['new_status']) ? trim($_POST['new_status']) : '';
 
-            header("Location: maintenance.php?updated=1");
-            exit;
+            if ($req_id > 0 && !empty($new_status)) {
+                $now = date('Y-m-d H:i:s');
+                $stmt_u = $pdo->prepare("UPDATE client_maintenance_requests SET status = :st, updated_at = :now WHERE id = :id");
+                $stmt_u->execute(array(
+                    ':st' => $new_status,
+                    ':now' => $now,
+                    ':id' => $req_id
+                ));
+
+                header("Location: maintenance.php?updated=1");
+                exit;
+            }
         }
     }
 }
