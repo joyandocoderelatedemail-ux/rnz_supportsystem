@@ -18,10 +18,6 @@ $total_tickets = 0;
 $pending_tickets = 0;
 $in_progress_tickets = 0;
 $resolved_tickets = 0;
-$inv_total_items = 0;
-$inv_total_units = 0;
-$inv_low_stock = 0;
-$low_inv_items = array();
 $recent_tickets = array();
 
 try {
@@ -32,15 +28,6 @@ try {
     $pending_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'Pending'")->fetchColumn());
     $in_progress_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'In Progress'")->fetchColumn());
     $resolved_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status IN ('Resolved', 'Closed')")->fetchColumn());
-
-    // Inventory Summary Metrics
-    $inv_total_items = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items")->fetchColumn());
-    $inv_total_units = intval($pdo->query("SELECT SUM(quantity) FROM support_inventory_items")->fetchColumn());
-    $inv_low_stock = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items WHERE quantity <= min_threshold")->fetchColumn());
-
-    // Low Stock / Featured Hardware Items
-    $stmt_low_inv = $pdo->query("SELECT * FROM support_inventory_items ORDER BY quantity ASC, min_threshold DESC LIMIT 4");
-    $low_inv_items = $stmt_low_inv ? $stmt_low_inv->fetchAll() : array();
 
     // Recent Incoming Tickets
     $stmt_tickets = $pdo->query("SELECT t.*, c.tradename, c.clientname 
@@ -101,7 +88,7 @@ $page_title = 'Support Center Overview';
         <main class="p-4 sm:p-6 md:p-8 pb-24 md:pb-8 space-y-6 sm:space-y-8 max-w-7xl w-full mx-auto">
 
             <!-- KPI Metric Stats Cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
                 
                 <!-- Pending Tickets Card -->
                 <div class="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center justify-between">
@@ -142,89 +129,6 @@ $page_title = 'Support Center Overview';
                     </div>
                 </div>
 
-                <!-- Hardware Inventory Units Card -->
-                <a href="inventory.php" class="bg-white hover:bg-slate-50/80 rounded-3xl p-6 border border-slate-200 hover:border-[#EB3E0B]/40 shadow-sm flex items-center justify-between transition-all group">
-                    <div class="space-y-1">
-                        <span class="text-xs font-bold text-[#EB3E0B] uppercase tracking-wider">Hardware Stock</span>
-                        <h3 class="text-3xl font-extrabold text-slate-900 font-mono group-hover:text-[#EB3E0B] transition-colors"><?php echo number_format($inv_total_units); ?></h3>
-                        <p class="text-[11px] text-slate-400">
-                            <?php if ($inv_low_stock > 0): ?>
-                                <span class="text-amber-600 font-bold"><?php echo $inv_low_stock; ?> low stock alert</span>
-                            <?php else: ?>
-                                <span><?php echo $inv_total_items; ?> catalog items</span>
-                            <?php endif; ?>
-                        </p>
-                    </div>
-                    <div class="w-12 h-12 rounded-2xl bg-[#FFE8D5] text-[#EB3E0B] flex items-center justify-center font-bold">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                        </svg>
-                    </div>
-                </a>
-
-            </div>
-
-            <!-- Hardware Inventory Quick Overview & Low Stock Alert Grid -->
-            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <h3 class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                            <span>Hardware Inventory Quick Watch</span>
-                            <?php if ($inv_low_stock > 0): ?>
-                                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
-                                    <?php echo $inv_low_stock; ?> Low Stock Alert
-                                </span>
-                            <?php endif; ?>
-                        </h3>
-                        <p class="text-xs text-slate-500 mt-0.5">Critical stock levels for POS printers, scanners, monitors and peripherals.</p>
-                    </div>
-                    <a href="inventory.php" class="text-xs font-bold text-[#EB3E0B] hover:text-[#C32C0B] flex items-center space-x-1">
-                        <span>Open Full Inventory Hub</span>
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                    </a>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                    <?php if (empty($low_inv_items)): ?>
-                        <div class="col-span-4 py-4 text-center text-xs text-slate-400">
-                            No hardware items found in inventory.
-                        </div>
-                    <?php else: ?>
-                        <?php foreach ($low_inv_items as $litem): 
-                            $lqty = intval($litem['quantity']);
-                            $lmin = intval($litem['min_threshold']);
-                            $limg = !empty($litem['image_path']) ? '../' . ltrim($litem['image_path'], '/') : '../hardware_photos/system_unit.jpg';
-                            
-                            if ($lqty == 0) {
-                                $lbadge = 'bg-rose-100 text-rose-800 border-rose-300';
-                                $llabel = 'Out of Stock';
-                            } elseif ($lqty <= $lmin) {
-                                $lbadge = 'bg-amber-100 text-amber-800 border-amber-300';
-                                $llabel = 'Low: ' . $lqty . ' left';
-                            } else {
-                                $lbadge = 'bg-emerald-100 text-emerald-800 border-emerald-300';
-                                $llabel = $lqty . ' in stock';
-                            }
-                        ?>
-                            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center space-x-3 hover:border-slate-300 transition-colors">
-                                <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center shrink-0 overflow-hidden">
-                                    <img src="<?php echo sanitize($limg); ?>" alt="" class="w-full h-full object-contain" onerror="this.src='../hardware_photos/system_unit.jpg'">
-                                </div>
-                                <div class="min-w-0 flex-1">
-                                    <h4 class="text-xs font-extrabold text-slate-900 truncate" title="<?php echo sanitize($litem['name']); ?>">
-                                        <?php echo sanitize($litem['name']); ?>
-                                    </h4>
-                                    <div class="flex items-center justify-between mt-1">
-                                        <span class="text-[10px] font-mono text-slate-400"><?php echo sanitize($litem['item_code']); ?></span>
-                                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded-full border <?php echo $lbadge; ?>">
-                                            <?php echo $llabel; ?>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
             </div>
 
             <!-- Incoming Support Tickets Queue -->
