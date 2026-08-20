@@ -256,8 +256,12 @@ if (!empty($search)) {
 }
 
 if (!empty($role_filter)) {
-    $where_clauses[] = "LOWER(accesslevel) = LOWER(:rf)";
-    $params[':rf'] = $role_filter;
+    if (strtolower($role_filter) === 'tech support') {
+        $where_clauses[] = "(LOWER(accesslevel) = 'tech support' OR LOWER(accesslevel) = 'technician')";
+    } else {
+        $where_clauses[] = "LOWER(accesslevel) = LOWER(:rf)";
+        $params[':rf'] = $role_filter;
+    }
 }
 
 $where_sql = implode(" AND ", $where_clauses);
@@ -267,9 +271,9 @@ $users_list = $stmt_users->fetchAll();
 
 // KPI Stats
 $total_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user")->fetchColumn());
-$master_admin_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) IN ('master', 'admin')")->fetchColumn());
-$tech_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) = 'technician'")->fetchColumn());
-$support_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) NOT IN ('master', 'admin', 'technician')")->fetchColumn());
+$master_admin_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) IN ('master', 'admin', 'administrator')")->fetchColumn());
+$tech_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) IN ('tech support', 'technician', 'junior programmer', 'junior_programmer', 'senior programmer', 'senior_programmer', 'ojt')")->fetchColumn());
+$support_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) NOT IN ('master', 'admin', 'administrator', 'tech support', 'technician', 'junior programmer', 'junior_programmer', 'senior programmer', 'senior_programmer', 'ojt')")->fetchColumn());
 
 /**
  * Helper to get access level badge style
@@ -278,10 +282,16 @@ function get_role_badge($level) {
     $lvl = strtolower(trim($level));
     if ($lvl === 'master') {
         return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200 shadow-xs">Super Admin (Master)</span>';
-    } elseif ($lvl === 'admin') {
-        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#FFE8D5] text-[#EB3E0B] border border-[#FECDAA] shadow-xs">Administrator</span>';
-    } elseif ($lvl === 'technician') {
-        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-xs">Support Tech</span>';
+    } elseif ($lvl === 'admin' || $lvl === 'administrator') {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-[#FFE8D5] text-[#EB3E0B] border border-[#FECDAA] shadow-xs">Admin</span>';
+    } elseif ($lvl === 'senior programmer' || $lvl === 'senior_programmer') {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 shadow-xs">Senior Programmer</span>';
+    } elseif ($lvl === 'junior programmer' || $lvl === 'junior_programmer') {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-200 shadow-xs">Junior Programmer</span>';
+    } elseif ($lvl === 'tech support' || $lvl === 'technician') {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-xs">Tech Support</span>';
+    } elseif ($lvl === 'ojt') {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200 shadow-xs">OJT</span>';
     } elseif ($lvl === 'support') {
         return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200 shadow-xs">Support Agent</span>';
     } else {
@@ -432,9 +442,12 @@ $page_title = 'Admin Settings & Page Permissions';
                     <div class="sm:col-span-4">
                         <select name="role" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all font-semibold">
                             <option value="" <?php echo empty($role_filter) ? 'selected' : ''; ?>>All Access Levels</option>
+                            <option value="tech support" <?php echo ($role_filter === 'tech support' || $role_filter === 'technician') ? 'selected' : ''; ?>>Tech Support</option>
+                            <option value="junior programmer" <?php echo ($role_filter === 'junior programmer' || $role_filter === 'junior_programmer') ? 'selected' : ''; ?>>Junior Programmer</option>
+                            <option value="senior programmer" <?php echo ($role_filter === 'senior programmer' || $role_filter === 'senior_programmer') ? 'selected' : ''; ?>>Senior Programmer</option>
+                            <option value="ojt" <?php echo ($role_filter === 'ojt') ? 'selected' : ''; ?>>OJT</option>
+                            <option value="admin" <?php echo ($role_filter === 'admin' || $role_filter === 'administrator') ? 'selected' : ''; ?>>Admin</option>
                             <option value="master" <?php echo ($role_filter === 'master') ? 'selected' : ''; ?>>Super Admin (Master)</option>
-                            <option value="admin" <?php echo ($role_filter === 'admin') ? 'selected' : ''; ?>>Administrator</option>
-                            <option value="technician" <?php echo ($role_filter === 'technician') ? 'selected' : ''; ?>>Support Technician</option>
                             <option value="support" <?php echo ($role_filter === 'support') ? 'selected' : ''; ?>>Support Agent</option>
                             <option value="staff" <?php echo ($role_filter === 'staff') ? 'selected' : ''; ?>>Staff / Viewer</option>
                         </select>
@@ -646,11 +659,12 @@ $page_title = 'Admin Settings & Page Permissions';
                 <div class="sm:col-span-2 space-y-1">
                     <label class="text-xs font-bold text-slate-700">Primary Role / Profile <span class="text-[#EB3E0B]">*</span></label>
                     <select name="accesslevel" id="create_accesslevel" onchange="applyRolePreset('create', this.value)" required class="w-full bg-slate-50 text-slate-900 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
-                        <option value="technician" selected>Support Tech (Hardware, Tickets, Diagnostic logs & Inventory)</option>
-                        <option value="admin">Administrator (Full Access to Support Hub & Accounts)</option>
+                        <option value="tech support" selected>Tech Support (Hardware, Tickets, Diagnostic logs & Inventory)</option>
+                        <option value="junior programmer">Junior Programmer (Development, Tickets, Bug Fixes & Maintenance)</option>
+                        <option value="senior programmer">Senior Programmer (System Architecture, Full Technical & Page Access)</option>
+                        <option value="ojt">OJT (On-the-Job Trainee - Guided Support & Tickets)</option>
+                        <option value="admin">Admin (Full Access to Support Hub, Accounts & Settings)</option>
                         <option value="master">Super Admin / Master (Full administrative ownership & User management)</option>
-                        <option value="support">Support Agent (Tickets & Communications)</option>
-                        <option value="staff">Staff / Viewer (Read-only)</option>
                     </select>
                 </div>
 
@@ -771,11 +785,12 @@ $page_title = 'Admin Settings & Page Permissions';
                 <div class="sm:col-span-2 space-y-1">
                     <label class="text-xs font-bold text-slate-700">Primary Role / Profile <span class="text-[#EB3E0B]">*</span></label>
                     <select name="accesslevel" id="edit_accesslevel" onchange="applyRolePreset('edit', this.value)" required class="w-full bg-slate-50 text-slate-900 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
-                        <option value="technician">Support Tech (Hardware, Tickets, Diagnostic logs & Inventory)</option>
-                        <option value="admin">Administrator (Full Access to Support Hub & Accounts)</option>
+                        <option value="tech support">Tech Support (Hardware, Tickets, Diagnostic logs & Inventory)</option>
+                        <option value="junior programmer">Junior Programmer (Development, Tickets, Bug Fixes & Maintenance)</option>
+                        <option value="senior programmer">Senior Programmer (System Architecture, Full Technical & Page Access)</option>
+                        <option value="ojt">OJT (On-the-Job Trainee - Guided Support & Tickets)</option>
+                        <option value="admin">Admin (Full Access to Support Hub, Accounts & Settings)</option>
                         <option value="master">Super Admin / Master (Full administrative ownership & User management)</option>
-                        <option value="support">Support Agent (Tickets & Communications)</option>
-                        <option value="staff">Staff / Viewer (Read-only)</option>
                     </select>
                 </div>
 
@@ -852,16 +867,16 @@ function setAllPages(prefix, checkVal) {
 }
 
 function applyRolePreset(prefix, role) {
-    role = (role || '').toLowerCase();
-    if (role === 'master' || role === 'admin') {
+    role = (role || '').toLowerCase().trim();
+    if (role === 'master' || role === 'admin' || role === 'administrator' || role === 'senior programmer' || role === 'senior_programmer') {
         setAllPages(prefix, true);
-    } else if (role === 'technician') {
+    } else if (role === 'junior programmer' || role === 'junior_programmer' || role === 'tech support' || role === 'technician') {
         setAllPages(prefix, false);
         ['dashboard', 'tickets', 'accounts', 'inventory', 'maintenance'].forEach(function(k) {
             var el = document.getElementById(prefix + '_page_' + k);
             if (el) el.checked = true;
         });
-    } else if (role === 'support') {
+    } else if (role === 'ojt' || role === 'support') {
         setAllPages(prefix, false);
         ['dashboard', 'tickets', 'accounts'].forEach(function(k) {
             var el = document.getElementById(prefix + '_page_' + k);
@@ -900,12 +915,25 @@ function openEditUserModal(userObj, userPages) {
     document.getElementById('edit_user').value = userObj.user || '';
     document.getElementById('edit_new_pass').value = '';
     
-    var roleVal = (userObj.accesslevel || 'technician').toLowerCase();
+    var rawRole = (userObj.accesslevel || 'tech support').toLowerCase().trim();
+    if (rawRole === 'technician') rawRole = 'tech support';
+    if (rawRole === 'administrator') rawRole = 'admin';
+    if (rawRole === 'junior_programmer') rawRole = 'junior programmer';
+    if (rawRole === 'senior_programmer') rawRole = 'senior programmer';
+
     var roleSelect = document.getElementById('edit_accesslevel');
     if (roleSelect) {
-        roleSelect.value = roleVal;
+        roleSelect.value = rawRole;
         if (roleSelect.selectedIndex === -1) {
-            roleSelect.value = 'technician';
+            for (var i = 0; i < roleSelect.options.length; i++) {
+                if (roleSelect.options[i].value.toLowerCase() === rawRole) {
+                    roleSelect.selectedIndex = i;
+                    break;
+                }
+            }
+            if (roleSelect.selectedIndex === -1) {
+                roleSelect.value = 'tech support';
+            }
         }
     }
 
@@ -914,7 +942,7 @@ function openEditUserModal(userObj, userPages) {
     pageKeys.forEach(function(k) {
         var el = document.getElementById('edit_page_' + k);
         if (el) {
-            el.checked = (roleVal === 'master') || allowedArr.indexOf(k) !== -1;
+            el.checked = (rawRole === 'master') || allowedArr.indexOf(k) !== -1;
         }
     });
 

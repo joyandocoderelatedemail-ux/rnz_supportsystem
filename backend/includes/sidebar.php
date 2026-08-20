@@ -6,7 +6,25 @@ if (!isset($active_page)) {
 
 $tech = get_logged_tech();
 $tech_name = $tech ? $tech['fullname'] : 'Support Tech';
-$access_level = $tech ? ucfirst($tech['accesslevel']) : 'Staff';
+$access_level = 'Staff';
+if ($tech && !empty($tech['accesslevel'])) {
+    $raw_role = strtolower(trim($tech['accesslevel']));
+    if ($raw_role === 'ojt') {
+        $access_level = 'OJT';
+    } elseif ($raw_role === 'senior programmer' || $raw_role === 'senior_programmer') {
+        $access_level = 'Senior Programmer';
+    } elseif ($raw_role === 'junior programmer' || $raw_role === 'junior_programmer') {
+        $access_level = 'Junior Programmer';
+    } elseif ($raw_role === 'tech support' || $raw_role === 'technician') {
+        $access_level = 'Tech Support';
+    } elseif ($raw_role === 'admin' || $raw_role === 'administrator') {
+        $access_level = 'Admin';
+    } elseif ($raw_role === 'master') {
+        $access_level = 'Super Admin';
+    } else {
+        $access_level = ucwords(trim($tech['accesslevel']));
+    }
+}
 ?>
 
 <!-- ========================================================================= -->

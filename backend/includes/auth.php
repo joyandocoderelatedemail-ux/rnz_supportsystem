@@ -114,10 +114,16 @@ function get_user_allowed_pages($user_id, $accesslevel = '') {
     }
 
     // Role-based defaults if no custom record in support_user_permissions
-    if ($lvl === 'admin') {
+    if ($lvl === 'admin' || $lvl === 'administrator') {
         return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings');
-    } elseif ($lvl === 'technician') {
+    } elseif ($lvl === 'senior programmer' || $lvl === 'senior_programmer') {
+        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings');
+    } elseif ($lvl === 'junior programmer' || $lvl === 'junior_programmer') {
         return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance');
+    } elseif ($lvl === 'tech support' || $lvl === 'technician') {
+        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance');
+    } elseif ($lvl === 'ojt') {
+        return array('dashboard', 'tickets', 'accounts');
     } elseif ($lvl === 'support') {
         return array('dashboard', 'tickets', 'accounts');
     } else {
