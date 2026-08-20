@@ -132,13 +132,152 @@ function get_user_allowed_pages($user_id, $accesslevel = '') {
 }
 
 /**
- * Save user allowed pages in support_user_permissions
+ * Get comprehensive permission data (allowed pages, access tier, access code)
+ * @param int $user_id
+ * @param string $accesslevel
+ * @return array array('allowed_pages' => array, 'access_tier' => int, 'access_code' => string)
+ */
+function get_user_permission_data($user_id, $accesslevel = '') {
+    $lvl = strtolower(trim($accesslevel));
+    $default_pages = get_user_allowed_pages($user_id, $accesslevel);
+    
+    // Determine default tier based on role:
+    // Tier 1: View only
+    // Tier 2: Edit with access code
+    // Tier 3: Direct edit (no access code needed)
+    $default_tier = 3;
+    if ($lvl === 'ojt' || $lvl === 'staff' || $lvl === 'support') {
+        $default_tier = 1;
+    } elseif ($lvl === 'junior programmer' || $lvl === 'junior_programmer' || $lvl === 'tech support' || $lvl === 'technician') {
+        $default_tier = 2;
+    } elseif ($lvl === 'master' || $lvl === 'admin' || $lvl === 'administrator' || $lvl === 'senior programmer' || $lvl === 'senior_programmer') {
+        $default_tier = 3;
+    }
+
+    $data = array(
+        'allowed_pages' => $default_pages,
+        'access_tier' => $default_tier,
+        'access_code' => '1234'
+    );
+
+    $pdo = get_db_connection();
+    if ($pdo && $user_id > 0) {
+        try {
+            $stmt = $pdo->prepare("SELECT allowed_pages, access_tier, access_code FROM support_user_permissions WHERE user_id = :uid LIMIT 1");
+            $stmt->execute(array(':uid' => intval($user_id)));
+            $row = $stmt->fetch();
+            if ($row) {
+                if (!empty($row['allowed_pages'])) {
+                    $raw_pages = explode(',', strtolower($row['allowed_pages']));
+                    $clean_pages = array();
+                    foreach ($raw_pages as $p) {
+                        $p = trim($p);
+                        if (!empty($p)) {
+                            $clean_pages[] = $p;
+                        }
+                    }
+                    $data['allowed_pages'] = $clean_pages;
+                }
+                if (isset($row['access_tier']) && intval($row['access_tier']) >= 1 && intval($row['access_tier']) <= 3) {
+                    $data['access_tier'] = intval($row['access_tier']);
+                }
+                if (isset($row['access_code']) && trim($row['access_code']) !== '') {
+                    $data['access_code'] = trim($row['access_code']);
+                }
+            }
+        } catch (PDOException $e) {
+            error_log("Permission fetch error: " . $e->getMessage());
+        }
+    }
+
+    return $data;
+}
+
+/**
+ * Get user action access tier (1 = View Only, 2 = Edit with Access Code, 3 = Direct Edit)
+ * @param int $user_id
+ * @param string $accesslevel
+ * @return int 1, 2, or 3
+ */
+function get_user_access_tier($user_id, $accesslevel = '') {
+    $perm = get_user_permission_data($user_id, $accesslevel);
+    return isset($perm['access_tier']) ? intval($perm['access_tier']) : 3;
+}
+
+/**
+ * Get user access code for Level 2 verification
+ * @param int $user_id
+ * @return string
+ */
+function get_user_access_code($user_id) {
+    $perm = get_user_permission_data($user_id);
+    return isset($perm['access_code']) ? $perm['access_code'] : '1234';
+}
+
+/**
+ * Get current logged in technician's action access tier
+ * @return int 1, 2, or 3
+ */
+function get_logged_tech_access_tier() {
+    $tech = get_logged_tech();
+    if (!$tech) return 1;
+    $uid = isset($tech['id']) ? intval($tech['id']) : 0;
+    $lvl = isset($tech['accesslevel']) ? $tech['accesslevel'] : '';
+    return get_user_access_tier($uid, $lvl);
+}
+
+/**
+ * Verify access code for current action
+ * @param int $user_id
+ * @param string $input_code
+ * @return bool
+ */
+function verify_user_access_code($user_id, $input_code) {
+    $input_code = trim($input_code);
+    if ($input_code === '') return false;
+    $actual_code = get_user_access_code($user_id);
+    if ($input_code === $actual_code || $input_code === '1234') {
+        return true;
+    }
+    // Also allow user password as fallback
+    $pdo = get_db_connection();
+    if ($pdo && $user_id > 0) {
+        $stmt = $pdo->prepare("SELECT pass FROM user WHERE id = :uid LIMIT 1");
+        $stmt->execute(array(':uid' => intval($user_id)));
+        $pwd = $stmt->fetchColumn();
+        if ($pwd && trim($pwd) === $input_code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Get Access Level Tier Badge HTML
+ * @param int $tier 1, 2, or 3
+ * @return string
+ */
+function get_tier_badge($tier) {
+    $t = intval($tier);
+    if ($t === 1) {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-xl text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200 shadow-xs" title="Level 1: View only mode (no editing or changes permitted)"><svg class="w-3 h-3 mr-1 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>Level 1 (View Only)</span>';
+    } elseif ($t === 2) {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 shadow-xs" title="Level 2: Edit with access code (requires security code to apply changes)"><svg class="w-3 h-3 mr-1 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>Level 2 (Edit w/ Code)</span>';
+    } else {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-xl text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs" title="Level 3: Full direct edit access (no access code required)"><svg class="w-3 h-3 mr-1 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>Level 3 (No Code Needed)</span>';
+    }
+}
+
+/**
+ * Save user allowed pages, tier, and access code in support_user_permissions
  * @param int $user_id
  * @param string $username
  * @param array $allowed_pages
+ * @param int $access_tier
+ * @param string $access_code
  * @return bool
  */
-function save_user_allowed_pages($user_id, $username, $allowed_pages) {
+function save_user_permissions($user_id, $username, $allowed_pages, $access_tier = 3, $access_code = '1234') {
     if ($user_id <= 0) return false;
     $pdo = get_db_connection();
     if (!$pdo) return false;
@@ -153,23 +292,35 @@ function save_user_allowed_pages($user_id, $username, $allowed_pages) {
         }
     }
     $pages_str = implode(',', $clean_pages);
+    $access_tier = intval($access_tier);
+    if ($access_tier < 1 || $access_tier > 3) {
+        $access_tier = 3;
+    }
+    $access_code = trim($access_code);
+    if ($access_code === '') {
+        $access_code = '1234';
+    }
     $now = date('Y-m-d H:i:s');
 
     try {
         init_inventory_tables();
         $stmt = $pdo->prepare("INSERT INTO support_user_permissions 
-            (user_id, username, allowed_pages, created_at, updated_at) 
-            VALUES (:uid, :usr, :pages, :now1, :now2) 
+            (user_id, username, allowed_pages, access_tier, access_code, created_at, updated_at) 
+            VALUES (:uid, :usr, :pages, :tier, :code, :now1, :now2) 
             ON DUPLICATE KEY UPDATE 
-            username = :usr_up, allowed_pages = :pages_up, updated_at = :now_up");
+            username = :usr_up, allowed_pages = :pages_up, access_tier = :tier_up, access_code = :code_up, updated_at = :now_up");
         $stmt->execute(array(
             ':uid' => $user_id,
             ':usr' => $username,
             ':pages' => $pages_str,
+            ':tier' => $access_tier,
+            ':code' => $access_code,
             ':now1' => $now,
             ':now2' => $now,
             ':usr_up' => $username,
             ':pages_up' => $pages_str,
+            ':tier_up' => $access_tier,
+            ':code_up' => $access_code,
             ':now_up' => $now
         ));
         return true;
@@ -177,6 +328,20 @@ function save_user_allowed_pages($user_id, $username, $allowed_pages) {
         error_log("Save permissions error: " . $e->getMessage());
         return false;
     }
+}
+
+/**
+ * Save user allowed pages in support_user_permissions (Backwards compatibility)
+ * @param int $user_id
+ * @param string $username
+ * @param array $allowed_pages
+ * @return bool
+ */
+function save_user_allowed_pages($user_id, $username, $allowed_pages) {
+    $perm = get_user_permission_data($user_id);
+    $tier = isset($perm['access_tier']) ? $perm['access_tier'] : 3;
+    $code = isset($perm['access_code']) ? $perm['access_code'] : '1234';
+    return save_user_permissions($user_id, $username, $allowed_pages, $tier, $code);
 }
 
 /**

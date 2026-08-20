@@ -55,11 +55,14 @@ function init_inventory_tables() {
         `user_id` INT(11) NOT NULL,
         `username` VARCHAR(100) NOT NULL,
         `allowed_pages` TEXT NOT NULL,
+        `access_tier` INT(11) NOT NULL DEFAULT 3,
+        `access_code` VARCHAR(100) NULL DEFAULT '1234',
         `created_at` DATETIME NOT NULL,
         `updated_at` DATETIME NOT NULL,
         PRIMARY KEY (`id`),
         UNIQUE KEY `user_id` (`user_id`),
-        KEY `username` (`username`)
+        KEY `username` (`username`),
+        KEY `access_tier` (`access_tier`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
 
     try {
@@ -67,6 +70,15 @@ function init_inventory_tables() {
         $pdo->exec($sql2);
         $pdo->exec($sql3);
         $pdo->exec($sql4);
+
+        // Safe upgrade existing support_user_permissions schema
+        try {
+            $pdo->exec("ALTER TABLE `support_user_permissions` ADD COLUMN `access_tier` INT(11) NOT NULL DEFAULT 3");
+        } catch (PDOException $e_col1) {}
+
+        try {
+            $pdo->exec("ALTER TABLE `support_user_permissions` ADD COLUMN `access_code` VARCHAR(100) NULL DEFAULT '1234'");
+        } catch (PDOException $e_col2) {}
 
         // Check if initial seeding has already run once
         $seeded_stmt = $pdo->query("SELECT `meta_value` FROM `support_system_meta` WHERE `meta_key` = 'inventory_seeded' LIMIT 1");

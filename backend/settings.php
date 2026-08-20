@@ -36,13 +36,32 @@ if ($msg === 'user_created') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
 
+    // Enforce Level Tier permission:
+    // Level 1: View Only (cannot perform changes)
+    // Level 2: Edit with Access Code (must verify access code)
+    // Level 3: Direct Edit (no code needed)
+    $my_tier = get_logged_tech_access_tier();
+    if ($my_tier === 1) {
+        header("Location: settings?msg=error&err_msg=" . urlencode("Access Denied: Level 1 (View Only) accounts cannot create, edit, or delete user records."));
+        exit;
+    }
+    if ($my_tier === 2) {
+        $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+        if (!verify_user_access_code($tech_id, $action_code)) {
+            header("Location: settings?msg=error&err_msg=" . urlencode("Access Denied: Invalid Security Access Code. Level 2 accounts require a valid access code to confirm changes."));
+            exit;
+        }
+    }
+
     // 1. Create New User Account
     if ($action === 'create_user') {
         $fname = isset($_POST['fname']) ? trim($_POST['fname']) : '';
         $lname = isset($_POST['lname']) ? trim($_POST['lname']) : '';
         $username = isset($_POST['user']) ? trim($_POST['user']) : '';
         $password = isset($_POST['pass']) ? trim($_POST['pass']) : '';
-        $accesslevel = isset($_POST['accesslevel']) ? trim($_POST['accesslevel']) : 'technician';
+        $accesslevel = isset($_POST['accesslevel']) ? trim($_POST['accesslevel']) : 'tech support';
+        $access_tier = isset($_POST['access_tier']) ? intval($_POST['access_tier']) : 3;
+        $access_code = isset($_POST['access_code']) ? trim($_POST['access_code']) : '1234';
         $emailadd = isset($_POST['emailadd']) ? trim($_POST['emailadd']) : 'N/A';
         $contactnum = isset($_POST['contactnum']) ? trim($_POST['contactnum']) : 'N/A';
         $address = isset($_POST['address']) ? trim($_POST['address']) : 'N/A';
@@ -52,6 +71,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (empty($fname) || empty($username) || empty($password)) {
             header("Location: settings?msg=error&err_msg=" . urlencode("First Name, Username, and Password are required."));
             exit;
+        }
+
+        if ($access_tier < 1 || $access_tier > 3) {
+            $access_tier = 3;
+        }
+        if ($access_code === '') {
+            $access_code = '1234';
         }
 
         // If no pages selected, default based on role
@@ -85,8 +111,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             ));
             $new_user_id = $pdo->lastInsertId();
 
-            // Save granular sidebar page permissions
-            save_user_allowed_pages($new_user_id, $username, $allowed_pages);
+            // Save granular sidebar page permissions, tier level, and access code
+            save_user_permissions($new_user_id, $username, $allowed_pages, $access_tier, $access_code);
 
             header("Location: settings?msg=user_created");
             exit;
@@ -103,7 +129,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $lname = isset($_POST['lname']) ? trim($_POST['lname']) : '';
         $username = isset($_POST['user']) ? trim($_POST['user']) : '';
         $new_password = isset($_POST['new_pass']) ? trim($_POST['new_pass']) : '';
-        $accesslevel = isset($_POST['accesslevel']) ? trim($_POST['accesslevel']) : 'technician';
+        $accesslevel = isset($_POST['accesslevel']) ? trim($_POST['accesslevel']) : 'tech support';
+        $access_tier = isset($_POST['access_tier']) ? intval($_POST['access_tier']) : 3;
+        $access_code = isset($_POST['access_code']) ? trim($_POST['access_code']) : '1234';
         $emailadd = isset($_POST['emailadd']) ? trim($_POST['emailadd']) : 'N/A';
         $contactnum = isset($_POST['contactnum']) ? trim($_POST['contactnum']) : 'N/A';
         $address = isset($_POST['address']) ? trim($_POST['address']) : 'N/A';
@@ -113,6 +141,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if ($user_id <= 0 || empty($fname) || empty($username)) {
             header("Location: settings?msg=error&err_msg=" . urlencode("User ID, First Name, and Username are required."));
             exit;
+        }
+
+        if ($access_tier < 1 || $access_tier > 3) {
+            $access_tier = 3;
+        }
+        if ($access_code === '') {
+            $access_code = '1234';
         }
 
         try {
@@ -161,8 +196,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ));
             }
 
-            // Save granular sidebar page permissions
-            save_user_allowed_pages($user_id, $username, $allowed_pages);
+            // Save granular sidebar page permissions, tier level, and access code
+            save_user_permissions($user_id, $username, $allowed_pages, $access_tier, $access_code);
 
             // If logged-in user modified themselves, update session
             if ($user_id === $tech_id || strtolower($username) === $tech_username) {
@@ -242,6 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 // ----------------------------------------------------
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $role_filter = isset($_GET['role']) ? trim($_GET['role']) : '';
+$tier_filter = isset($_GET['tier']) ? intval($_GET['tier']) : 0;
 
 $where_clauses = array("1=1");
 $params = array();
@@ -267,13 +303,29 @@ if (!empty($role_filter)) {
 $where_sql = implode(" AND ", $where_clauses);
 $stmt_users = $pdo->prepare("SELECT * FROM user WHERE $where_sql ORDER BY accesslevel ASC, fname ASC");
 $stmt_users->execute($params);
-$users_list = $stmt_users->fetchAll();
+$raw_users = $stmt_users->fetchAll();
+
+$users_list = array();
+foreach ($raw_users as $u) {
+    $perm = get_user_permission_data($u['id'], $u['accesslevel']);
+    $u['allowed_pages_list'] = isset($perm['allowed_pages']) ? $perm['allowed_pages'] : array();
+    $u['access_tier'] = isset($perm['access_tier']) ? intval($perm['access_tier']) : 3;
+    $u['access_code'] = isset($perm['access_code']) ? $perm['access_code'] : '1234';
+
+    if ($tier_filter >= 1 && $tier_filter <= 3) {
+        if ($u['access_tier'] !== $tier_filter) {
+            continue;
+        }
+    }
+    $users_list[] = $u;
+}
 
 // KPI Stats
 $total_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user")->fetchColumn());
 $master_admin_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) IN ('master', 'admin', 'administrator')")->fetchColumn());
 $tech_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) IN ('tech support', 'technician', 'junior programmer', 'junior_programmer', 'senior programmer', 'senior_programmer', 'ojt')")->fetchColumn());
-$support_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) NOT IN ('master', 'admin', 'administrator', 'tech support', 'technician', 'junior programmer', 'junior_programmer', 'senior programmer', 'senior_programmer', 'ojt')")->fetchColumn());
+$my_tier = get_logged_tech_access_tier();
+$my_code = get_logged_tech_access_code();
 
 /**
  * Helper to get access level badge style
@@ -412,12 +464,15 @@ $page_title = 'Admin Settings & Page Permissions';
                     </div>
                 </div>
 
-                <!-- Current User Role -->
+                <!-- Current User Role & Access Level -->
                 <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm flex items-center justify-between">
                     <div class="space-y-1 overflow-hidden">
-                        <span class="text-xs font-bold text-[#EB3E0B] uppercase tracking-wider">Your Active Role</span>
+                        <span class="text-xs font-bold text-[#EB3E0B] uppercase tracking-wider">Your Active Profile</span>
                         <h3 class="text-base font-extrabold text-slate-900 truncate"><?php echo sanitize($tech['fullname']); ?></h3>
-                        <div><?php echo get_role_badge($current_access); ?></div>
+                        <div class="flex flex-wrap gap-1 items-center">
+                            <?php echo get_role_badge($current_access); ?>
+                            <?php echo get_tier_badge($my_tier); ?>
+                        </div>
                     </div>
                     <div class="w-12 h-12 rounded-2xl bg-[#FFE8D5] text-[#EB3E0B] flex items-center justify-center font-bold shrink-0">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -431,7 +486,7 @@ $page_title = 'Admin Settings & Page Permissions';
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
                 <form method="GET" action="" class="grid grid-cols-1 sm:grid-cols-12 gap-3">
                     <!-- Search Input -->
-                    <div class="sm:col-span-6 relative">
+                    <div class="sm:col-span-5 relative">
                         <input type="text" name="search" value="<?php echo sanitize($search); ?>" placeholder="Search by name, username, email, phone..." class="w-full bg-slate-50 text-slate-800 text-xs pl-10 pr-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all placeholder-slate-400">
                         <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -439,9 +494,9 @@ $page_title = 'Admin Settings & Page Permissions';
                     </div>
 
                     <!-- Role Filter -->
-                    <div class="sm:col-span-4">
+                    <div class="sm:col-span-3">
                         <select name="role" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all font-semibold">
-                            <option value="" <?php echo empty($role_filter) ? 'selected' : ''; ?>>All Access Levels</option>
+                            <option value="" <?php echo empty($role_filter) ? 'selected' : ''; ?>>All Roles</option>
                             <option value="tech support" <?php echo ($role_filter === 'tech support' || $role_filter === 'technician') ? 'selected' : ''; ?>>Tech Support</option>
                             <option value="junior programmer" <?php echo ($role_filter === 'junior programmer' || $role_filter === 'junior_programmer') ? 'selected' : ''; ?>>Junior Programmer</option>
                             <option value="senior programmer" <?php echo ($role_filter === 'senior programmer' || $role_filter === 'senior_programmer') ? 'selected' : ''; ?>>Senior Programmer</option>
@@ -453,12 +508,22 @@ $page_title = 'Admin Settings & Page Permissions';
                         </select>
                     </div>
 
+                    <!-- Access Level Tier Filter (1, 2, 3) -->
+                    <div class="sm:col-span-2">
+                        <select name="tier" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all font-semibold">
+                            <option value="0" <?php echo ($tier_filter === 0) ? 'selected' : ''; ?>>All Access Levels</option>
+                            <option value="1" <?php echo ($tier_filter === 1) ? 'selected' : ''; ?>>Level 1 (View Only)</option>
+                            <option value="2" <?php echo ($tier_filter === 2) ? 'selected' : ''; ?>>Level 2 (Edit w/ Code)</option>
+                            <option value="3" <?php echo ($tier_filter === 3) ? 'selected' : ''; ?>>Level 3 (Direct Edit)</option>
+                        </select>
+                    </div>
+
                     <!-- Submit & Reset -->
                     <div class="sm:col-span-2 flex items-center gap-2">
                         <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-4 rounded-2xl transition-all shadow-sm">
                             Filter
                         </button>
-                        <?php if (!empty($search) || !empty($role_filter)): ?>
+                        <?php if (!empty($search) || !empty($role_filter) || $tier_filter > 0): ?>
                             <a href="settings.php" class="p-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-xs font-bold transition-all" title="Reset Filters">
                                 &times;
                             </a>
@@ -472,7 +537,7 @@ $page_title = 'Admin Settings & Page Permissions';
                 <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                         <h3 class="text-lg font-extrabold text-slate-900">User Accounts & Sidebar Permissions</h3>
-                        <p class="text-xs text-slate-500">Assign what pages each technician or administrator can access in the navigation.</p>
+                        <p class="text-xs text-slate-500">Assign primary roles, access levels (Level 1, 2, 3), and allowed sidebar pages.</p>
                     </div>
                     <span class="text-xs text-slate-400 font-mono"><?php echo count($users_list); ?> account(s) found</span>
                 </div>
@@ -484,6 +549,7 @@ $page_title = 'Admin Settings & Page Permissions';
                                 <th class="py-3.5 px-6">Name & Details</th>
                                 <th class="py-3.5 px-6">Username</th>
                                 <th class="py-3.5 px-6 text-center">Access Role</th>
+                                <th class="py-3.5 px-6 text-center">Action Level & Code</th>
                                 <th class="py-3.5 px-6">Allowed Sidebar Pages</th>
                                 <th class="py-3.5 px-6">Contact / Email</th>
                                 <th class="py-3.5 px-6 text-right">Actions</th>
@@ -492,7 +558,7 @@ $page_title = 'Admin Settings & Page Permissions';
                         <tbody class="divide-y divide-slate-100 font-medium">
                             <?php if (empty($users_list)): ?>
                                 <tr>
-                                    <td colspan="6" class="py-12 text-center text-slate-400 space-y-3">
+                                    <td colspan="7" class="py-12 text-center text-slate-400 space-y-3">
                                         <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
                                         </div>
@@ -507,7 +573,9 @@ $page_title = 'Admin Settings & Page Permissions';
                                     }
                                     $initial = strtoupper(substr($fullname, 0, 1));
                                     $is_self = ($u['id'] == $tech_id) || (strtolower($u['user']) === $tech_username);
-                                    $user_pages = get_user_allowed_pages($u['id'], $u['accesslevel']);
+                                    $user_pages = isset($u['allowed_pages_list']) ? $u['allowed_pages_list'] : get_user_allowed_pages($u['id'], $u['accesslevel']);
+                                    $user_tier = isset($u['access_tier']) ? intval($u['access_tier']) : 3;
+                                    $user_code = isset($u['access_code']) ? $u['access_code'] : '1234';
                                 ?>
                                     <tr class="hover:bg-slate-50/80 transition-colors">
                                         <!-- Name & Avatar -->
@@ -520,7 +588,7 @@ $page_title = 'Admin Settings & Page Permissions';
                                                     <h4 class="font-extrabold text-slate-900 text-sm truncate flex items-center space-x-1.5">
                                                         <span><?php echo sanitize($fullname); ?></span>
                                                         <?php if ($is_self): ?>
-                                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFE8D5] text-[#EB3E0B] border border-[#FECDAA]">You</span>
+                                                             <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFE8D5] text-[#EB3E0B] border border-[#FECDAA]">You</span>
                                                         <?php endif; ?>
                                                     </h4>
                                                     <?php if (!empty($u['address']) && $u['address'] !== 'NA' && $u['address'] !== 'N/A' && $u['address'] !== 'Admin' && $u['address'] !== 'Edgar'): ?>
@@ -540,6 +608,18 @@ $page_title = 'Admin Settings & Page Permissions';
                                         <!-- Access Level Role -->
                                         <td class="py-4 px-6 text-center">
                                             <?php echo get_role_badge($u['accesslevel']); ?>
+                                        </td>
+
+                                        <!-- Action Level & Code -->
+                                        <td class="py-4 px-6 text-center space-y-1">
+                                            <div><?php echo get_tier_badge($user_tier); ?></div>
+                                            <?php if ($user_tier === 2): ?>
+                                                <span class="inline-block text-[10px] font-mono text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200" title="Security code required to confirm actions">Code: <strong><?php echo sanitize($user_code); ?></strong></span>
+                                            <?php elseif ($user_tier === 3): ?>
+                                                <span class="inline-block text-[10px] text-emerald-600 font-semibold">Direct Edit</span>
+                                            <?php else: ?>
+                                                <span class="inline-block text-[10px] text-slate-400 font-semibold">Locked (Read-Only)</span>
+                                            <?php endif; ?>
                                         </td>
 
                                         <!-- Allowed Sidebar Pages -->
@@ -578,16 +658,17 @@ $page_title = 'Admin Settings & Page Permissions';
                                         <td class="py-4 px-6 text-right">
                                             <div class="flex items-center justify-end space-x-2">
                                                 <!-- Edit Button -->
-                                                <button type="button" onclick='openEditUserModal(<?php echo json_encode($u); ?>, <?php echo json_encode($user_pages); ?>)' class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center space-x-1.5 transition-colors" title="Edit User & Permissions">
+                                                <button type="button" onclick='openEditUserModal(<?php echo json_encode($u); ?>, <?php echo json_encode($user_pages); ?>, <?php echo intval($user_tier); ?>, <?php echo json_encode($user_code); ?>)' class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center space-x-1.5 transition-colors" title="Edit User & Permissions">
                                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                                     <span>Edit</span>
                                                 </button>
 
                                                 <!-- Delete Button -->
                                                 <?php if (!$is_self): ?>
-                                                    <form method="POST" action="" onsubmit="return confirm('Are you sure you want to delete user @<?php echo addslashes($u['user']); ?> (<?php echo addslashes($fullname); ?>)? This action cannot be undone.');" class="inline">
+                                                    <form method="POST" action="" onsubmit="return confirmDeleteUser(event, '@<?php echo addslashes($u['user']); ?>', '<?php echo addslashes($fullname); ?>');" class="inline">
                                                         <input type="hidden" name="action" value="delete_user">
                                                         <input type="hidden" name="user_id" value="<?php echo $u['id']; ?>">
+                                                        <input type="hidden" name="action_access_code" value="" id="delete_code_<?php echo $u['id']; ?>">
                                                         <button type="submit" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center transition-colors" title="Delete User">
                                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                                         </button>
@@ -627,8 +708,9 @@ $page_title = 'Admin Settings & Page Permissions';
             </button>
         </div>
 
-        <form action="" method="POST" class="space-y-5">
+        <form action="" method="POST" id="createUserForm" class="space-y-5" onsubmit="return handleFormLevelCheck(event, this);">
             <input type="hidden" name="action" value="create_user">
+            <input type="hidden" name="action_access_code" id="create_action_access_code" value="">
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <!-- First Name -->
@@ -666,6 +748,56 @@ $page_title = 'Admin Settings & Page Permissions';
                         <option value="admin">Admin (Full Access to Support Hub, Accounts & Settings)</option>
                         <option value="master">Super Admin / Master (Full administrative ownership & User management)</option>
                     </select>
+                </div>
+
+                <!-- Access Level (1, 2, 3) Action Privileges -->
+                <div class="sm:col-span-2 space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-extrabold text-slate-900">Action Access Level <span class="text-[#EB3E0B]">*</span></label>
+                        <span class="text-[11px] font-bold text-slate-400">Level 1, 2, or 3</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500">Define modification and execution privileges across the system:</p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <!-- Level 1: View Only -->
+                        <label class="relative flex flex-col p-3 rounded-xl bg-white border border-slate-200 hover:border-slate-400 cursor-pointer transition-all shadow-xs">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <input type="radio" name="access_tier" value="1" id="create_tier_1" class="w-4 h-4 text-[#EB3E0B] focus:ring-[#EB3E0B]">
+                                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">LEVEL 1</span>
+                            </div>
+                            <span class="text-xs font-extrabold text-slate-900 block">1. View Only</span>
+                            <span class="text-[10px] text-slate-500 block mt-0.5 leading-snug">Read-only view of assigned pages. Record modifications and edits are locked.</span>
+                        </label>
+
+                        <!-- Level 2: Edit with Access Code -->
+                        <label class="relative flex flex-col p-3 rounded-xl bg-white border border-slate-200 hover:border-amber-400 cursor-pointer transition-all shadow-xs">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <input type="radio" name="access_tier" value="2" id="create_tier_2" checked class="w-4 h-4 text-[#EB3E0B] focus:ring-[#EB3E0B]">
+                                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">LEVEL 2</span>
+                            </div>
+                            <span class="text-xs font-extrabold text-slate-900 block">2. Edit w/ Code</span>
+                            <span class="text-[10px] text-slate-500 block mt-0.5 leading-snug">Editing enabled. Requires entering security access code before applying changes.</span>
+                        </label>
+
+                        <!-- Level 3: Direct Edit -->
+                        <label class="relative flex flex-col p-3 rounded-xl bg-white border border-slate-200 hover:border-emerald-400 cursor-pointer transition-all shadow-xs">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <input type="radio" name="access_tier" value="3" id="create_tier_3" class="w-4 h-4 text-[#EB3E0B] focus:ring-[#EB3E0B]">
+                                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">LEVEL 3</span>
+                            </div>
+                            <span class="text-xs font-extrabold text-slate-900 block">3. Direct Edit</span>
+                            <span class="text-[10px] text-slate-500 block mt-0.5 leading-snug">Full edit power. Direct execution with no security code prompt needed.</span>
+                        </label>
+                    </div>
+
+                    <!-- Security Access Code Input -->
+                    <div class="pt-2 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label for="create_access_code" class="text-xs font-bold text-slate-700 whitespace-nowrap">Security Access Code:</label>
+                        <div class="relative flex-1">
+                            <input type="text" name="access_code" id="create_access_code" value="1234" placeholder="e.g. 1234" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2 rounded-xl border border-slate-300 focus:border-[#EB3E0B] focus:outline-none font-mono font-bold">
+                        </div>
+                        <span class="text-[11px] text-slate-400">(Used when confirming actions under Level 2)</span>
+                    </div>
                 </div>
 
                 <!-- Granular Sidebar Page Permissions Checkboxes -->
@@ -744,7 +876,7 @@ $page_title = 'Admin Settings & Page Permissions';
                 </div>
                 <div>
                     <h3 class="font-extrabold text-lg text-slate-900">Edit User & Sidebar Access</h3>
-                    <p class="text-xs text-slate-500">Update credentials and specify allowed sidebar pages.</p>
+                    <p class="text-xs text-slate-500">Update credentials, access tier (1, 2, 3), and allowed sidebar pages.</p>
                 </div>
             </div>
             <button type="button" onclick="closeEditUserModal()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100">
@@ -752,9 +884,10 @@ $page_title = 'Admin Settings & Page Permissions';
             </button>
         </div>
 
-        <form action="" method="POST" class="space-y-5">
+        <form action="" method="POST" id="editUserForm" class="space-y-5" onsubmit="return handleFormLevelCheck(event, this);">
             <input type="hidden" name="action" value="update_user">
             <input type="hidden" name="user_id" id="edit_user_id" value="">
+            <input type="hidden" name="action_access_code" id="edit_action_access_code" value="">
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <!-- First Name -->
@@ -792,6 +925,56 @@ $page_title = 'Admin Settings & Page Permissions';
                         <option value="admin">Admin (Full Access to Support Hub, Accounts & Settings)</option>
                         <option value="master">Super Admin / Master (Full administrative ownership & User management)</option>
                     </select>
+                </div>
+
+                <!-- Access Level (1, 2, 3) Action Privileges -->
+                <div class="sm:col-span-2 space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-extrabold text-slate-900">Action Access Level <span class="text-[#EB3E0B]">*</span></label>
+                        <span class="text-[11px] font-bold text-slate-400">Level 1, 2, or 3</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500">Define modification and execution privileges across the system:</p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <!-- Level 1: View Only -->
+                        <label class="relative flex flex-col p-3 rounded-xl bg-white border border-slate-200 hover:border-slate-400 cursor-pointer transition-all shadow-xs">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <input type="radio" name="access_tier" value="1" id="edit_tier_1" class="w-4 h-4 text-[#EB3E0B] focus:ring-[#EB3E0B]">
+                                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">LEVEL 1</span>
+                            </div>
+                            <span class="text-xs font-extrabold text-slate-900 block">1. View Only</span>
+                            <span class="text-[10px] text-slate-500 block mt-0.5 leading-snug">Read-only view of assigned pages. Record modifications and edits are locked.</span>
+                        </label>
+
+                        <!-- Level 2: Edit with Access Code -->
+                        <label class="relative flex flex-col p-3 rounded-xl bg-white border border-slate-200 hover:border-amber-400 cursor-pointer transition-all shadow-xs">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <input type="radio" name="access_tier" value="2" id="edit_tier_2" class="w-4 h-4 text-[#EB3E0B] focus:ring-[#EB3E0B]">
+                                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900">LEVEL 2</span>
+                            </div>
+                            <span class="text-xs font-extrabold text-slate-900 block">2. Edit w/ Code</span>
+                            <span class="text-[10px] text-slate-500 block mt-0.5 leading-snug">Editing enabled. Requires entering security access code before applying changes.</span>
+                        </label>
+
+                        <!-- Level 3: Direct Edit -->
+                        <label class="relative flex flex-col p-3 rounded-xl bg-white border border-slate-200 hover:border-emerald-400 cursor-pointer transition-all shadow-xs">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <input type="radio" name="access_tier" value="3" id="edit_tier_3" class="w-4 h-4 text-[#EB3E0B] focus:ring-[#EB3E0B]">
+                                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">LEVEL 3</span>
+                            </div>
+                            <span class="text-xs font-extrabold text-slate-900 block">3. Direct Edit</span>
+                            <span class="text-[10px] text-slate-500 block mt-0.5 leading-snug">Full edit power. Direct execution with no security code prompt needed.</span>
+                        </label>
+                    </div>
+
+                    <!-- Security Access Code Input -->
+                    <div class="pt-2 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center gap-2">
+                        <label for="edit_access_code" class="text-xs font-bold text-slate-700 whitespace-nowrap">Security Access Code:</label>
+                        <div class="relative flex-1">
+                            <input type="text" name="access_code" id="edit_access_code" value="1234" placeholder="e.g. 1234" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2 rounded-xl border border-slate-300 focus:border-[#EB3E0B] focus:outline-none font-mono font-bold">
+                        </div>
+                        <span class="text-[11px] text-slate-400">(Used when confirming actions under Level 2)</span>
+                    </div>
                 </div>
 
                 <!-- Granular Sidebar Page Permissions Checkboxes -->
@@ -857,6 +1040,7 @@ $page_title = 'Admin Settings & Page Permissions';
 </div>
 
 <script>
+var currentLoggedTier = <?php echo intval($my_tier); ?>;
 var pageKeys = ['dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings'];
 
 function setAllPages(prefix, checkVal) {
@@ -866,29 +1050,90 @@ function setAllPages(prefix, checkVal) {
     });
 }
 
+function setTierRadio(prefix, tier) {
+    var r = document.getElementById(prefix + '_tier_' + tier);
+    if (r) r.checked = true;
+}
+
 function applyRolePreset(prefix, role) {
     role = (role || '').toLowerCase().trim();
     if (role === 'master' || role === 'admin' || role === 'administrator' || role === 'senior programmer' || role === 'senior_programmer') {
         setAllPages(prefix, true);
+        setTierRadio(prefix, 3);
     } else if (role === 'junior programmer' || role === 'junior_programmer' || role === 'tech support' || role === 'technician') {
         setAllPages(prefix, false);
         ['dashboard', 'tickets', 'accounts', 'inventory', 'maintenance'].forEach(function(k) {
             var el = document.getElementById(prefix + '_page_' + k);
             if (el) el.checked = true;
         });
-    } else if (role === 'ojt' || role === 'support') {
+        setTierRadio(prefix, 2);
+    } else if (role === 'ojt' || role === 'support' || role === 'staff') {
         setAllPages(prefix, false);
         ['dashboard', 'tickets', 'accounts'].forEach(function(k) {
             var el = document.getElementById(prefix + '_page_' + k);
             if (el) el.checked = true;
         });
+        setTierRadio(prefix, 1);
     } else {
         setAllPages(prefix, false);
         ['dashboard', 'tickets'].forEach(function(k) {
             var el = document.getElementById(prefix + '_page_' + k);
             if (el) el.checked = true;
         });
+        setTierRadio(prefix, 1);
     }
+}
+
+function handleFormLevelCheck(e, formEl) {
+    if (currentLoggedTier === 1) {
+        alert("⚠️ Access Denied: Level 1 (View Only)\nYou have read-only privileges and cannot perform modifications.");
+        e.preventDefault();
+        return false;
+    }
+    if (currentLoggedTier === 2) {
+        var code = prompt("🔐 Security Verification (Access Level 2)\nPlease enter your Access Code to confirm this action:");
+        if (!code || code.trim() === "") {
+            alert("Action cancelled: Access code is required for Level 2 confirmation.");
+            e.preventDefault();
+            return false;
+        }
+        var codeInput = formEl.querySelector('input[name="action_access_code"]');
+        if (!codeInput) {
+            codeInput = document.createElement('input');
+            codeInput.type = 'hidden';
+            codeInput.name = 'action_access_code';
+            formEl.appendChild(codeInput);
+        }
+        codeInput.value = code.trim();
+    }
+    return true;
+}
+
+function confirmDeleteUser(e, userHandle, userName) {
+    if (currentLoggedTier === 1) {
+        alert("⚠️ Access Denied: Level 1 (View Only)\nYou have read-only privileges and cannot delete accounts.");
+        e.preventDefault();
+        return false;
+    }
+    var confirmed = confirm("Are you sure you want to delete user " + userHandle + " (" + userName + ")?\nThis action cannot be undone.");
+    if (!confirmed) {
+        e.preventDefault();
+        return false;
+    }
+    if (currentLoggedTier === 2) {
+        var code = prompt("🔐 Security Verification (Access Level 2)\nPlease enter your Access Code to confirm deleting " + userHandle + ":");
+        if (!code || code.trim() === "") {
+            alert("Action cancelled: Access code is required for Level 2 confirmation.");
+            e.preventDefault();
+            return false;
+        }
+        var form = e.target;
+        var codeInput = form.querySelector('input[name="action_access_code"]');
+        if (codeInput) {
+            codeInput.value = code.trim();
+        }
+    }
+    return true;
 }
 
 function openCreateUserModal() {
@@ -907,7 +1152,7 @@ function closeCreateUserModal() {
     }
 }
 
-function openEditUserModal(userObj, userPages) {
+function openEditUserModal(userObj, userPages, userTier, userCode) {
     if (!userObj) return;
     document.getElementById('edit_user_id').value = userObj.id || '';
     document.getElementById('edit_fname').value = userObj.fname || '';
@@ -935,6 +1180,20 @@ function openEditUserModal(userObj, userPages) {
                 roleSelect.value = 'tech support';
             }
         }
+    }
+
+    // Set Access Tier (1, 2, 3)
+    var tierNum = parseInt(userTier, 10);
+    if (isNaN(tierNum) || tierNum < 1 || tierNum > 3) {
+        tierNum = 3;
+    }
+    setTierRadio('edit', tierNum);
+
+    // Set Access Code
+    var codeVal = (userCode !== undefined && userCode !== null && userCode !== '') ? userCode : '1234';
+    var editCodeInput = document.getElementById('edit_access_code');
+    if (editCodeInput) {
+        editCodeInput.value = codeVal;
     }
 
     // Set page permission checkboxes
