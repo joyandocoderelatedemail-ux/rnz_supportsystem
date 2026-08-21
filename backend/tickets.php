@@ -64,15 +64,38 @@ if (!empty($search)) {
 
 $where_sql = !empty($where_clauses) ? "WHERE " . implode(" AND ", $where_clauses) : "";
 
+// 10 items per page pagination
+$per_page = 10;
+$current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+
+// Get total count
+$count_sql = "SELECT COUNT(*) 
+              FROM client_support_tickets t 
+              LEFT JOIN bucket_client c ON t.accountnum = c.accountnum 
+              $where_sql";
+$stmt_count = $pdo->prepare($count_sql);
+$stmt_count->execute($params);
+$total_tickets = intval($stmt_count->fetchColumn());
+$total_pages = max(1, ceil($total_tickets / $per_page));
+
+if ($current_page > $total_pages) {
+    $current_page = $total_pages;
+}
+$offset = ($current_page - 1) * $per_page;
+
 $sql = "SELECT t.*, c.tradename, c.clientname, c.contactnum, c.address 
         FROM client_support_tickets t 
         LEFT JOIN bucket_client c ON t.accountnum = c.accountnum 
         $where_sql 
-        ORDER BY t.created_at DESC";
+        ORDER BY t.created_at DESC 
+        LIMIT " . intval($offset) . ", " . intval($per_page);
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $tickets = $stmt->fetchAll();
+
+$start_item = $total_tickets > 0 ? $offset + 1 : 0;
+$end_item = min($offset + $per_page, $total_tickets);
 
 $active_page = 'tickets';
 $page_title = 'Support Tickets Center';
@@ -210,6 +233,68 @@ $page_title = 'Support Tickets Center';
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination Controls -->
+                <?php if ($total_pages > 1): ?>
+                    <div class="p-4 sm:p-6 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <p class="text-xs text-slate-500 font-medium">
+                            Showing <strong class="text-slate-900 font-bold"><?php echo $start_item; ?></strong> to <strong class="text-slate-900 font-bold"><?php echo $end_item; ?></strong> of <strong class="text-slate-900 font-bold"><?php echo $total_tickets; ?></strong> tickets
+                        </p>
+                        <div class="flex items-center space-x-1.5">
+                            <!-- Prev Button -->
+                            <?php if ($current_page > 1): ?>
+                                <a href="tickets.php?<?php echo http_build_query(array_merge($_GET, array('page' => $current_page - 1))); ?>" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all flex items-center space-x-1 shadow-xs">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                                    <span>Prev</span>
+                                </a>
+                            <?php else: ?>
+                                <span class="px-3 py-2 rounded-xl border border-slate-100 bg-slate-100 text-slate-400 text-xs font-bold cursor-not-allowed flex items-center space-x-1">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                                    <span>Prev</span>
+                                </span>
+                            <?php endif; ?>
+
+                            <!-- Page Number Links -->
+                            <?php 
+                            $start_p = max(1, $current_page - 2);
+                            $end_p = min($total_pages, $current_page + 2);
+                            if ($start_p > 1): ?>
+                                <a href="tickets.php?<?php echo http_build_query(array_merge($_GET, array('page' => 1))); ?>" class="w-8 h-8 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 text-xs font-bold flex items-center justify-center transition-all shadow-xs">1</a>
+                                <?php if ($start_p > 2): ?><span class="text-slate-400 text-xs px-1">...</span><?php endif; ?>
+                            <?php endif; ?>
+
+                            <?php for ($p = $start_p; $p <= $end_p; $p++): ?>
+                                <?php if ($p == $current_page): ?>
+                                    <span class="w-8 h-8 rounded-xl bg-[#EB3E0B] text-white text-xs font-bold flex items-center justify-center shadow-sm shadow-[#EB3E0B]/25"><?php echo $p; ?></span>
+                                <?php else: ?>
+                                    <a href="tickets.php?<?php echo http_build_query(array_merge($_GET, array('page' => $p))); ?>" class="w-8 h-8 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 text-xs font-bold flex items-center justify-center transition-all shadow-xs"><?php echo $p; ?></a>
+                                <?php endif; ?>
+                            <?php endfor; ?>
+
+                            <?php if ($end_p < $total_pages): ?>
+                                <?php if ($end_p < $total_pages - 1): ?><span class="text-slate-400 text-xs px-1">...</span><?php endif; ?>
+                                <a href="tickets.php?<?php echo http_build_query(array_merge($_GET, array('page' => $total_pages))); ?>" class="w-8 h-8 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 text-xs font-bold flex items-center justify-center transition-all shadow-xs"><?php echo $total_pages; ?></a>
+                            <?php endif; ?>
+
+                            <!-- Next Button -->
+                            <?php if ($current_page < $total_pages): ?>
+                                <a href="tickets.php?<?php echo http_build_query(array_merge($_GET, array('page' => $current_page + 1))); ?>" class="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all flex items-center space-x-1 shadow-xs">
+                                    <span>Next</span>
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                </a>
+                            <?php else: ?>
+                                <span class="px-3 py-2 rounded-xl border border-slate-100 bg-slate-100 text-slate-400 text-xs font-bold cursor-not-allowed flex items-center space-x-1">
+                                    <span>Next</span>
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php elseif ($total_tickets > 0): ?>
+                    <div class="p-4 sm:p-6 border-t border-slate-100 bg-slate-50/50 text-xs text-slate-500 font-medium">
+                        Showing all <strong class="text-slate-900 font-bold"><?php echo $total_tickets; ?></strong> ticket(s)
+                    </div>
+                <?php endif; ?>
             </div>
 
         </main>
