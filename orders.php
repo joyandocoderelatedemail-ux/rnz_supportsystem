@@ -251,52 +251,47 @@ $page_title = 'Order Hardware & Materials';
                             } elseif (isset($item['cost_price']) && floatval($item['cost_price']) > 0) {
                                 $price = floatval($item['cost_price']);
                             }
-
-                            $img_src = !empty($item['image_path']) ? $item['image_path'] : 'hardware_photos/system_unit.jpg';
                         ?>
                             <div class="bg-white rounded-3xl border border-[#FECDAA]/70 overflow-hidden shadow-sm hover:shadow-xl hover:border-[#EB3E0B]/50 transition-all flex flex-col justify-between group">
-                                <!-- Card Header & Photo -->
-                                <div>
-                                    <div class="h-44 bg-[#FFF5ED] relative overflow-hidden flex items-center justify-center p-4">
-                                        <img src="<?php echo sanitize($img_src); ?>" alt="<?php echo sanitize($item['name']); ?>" class="max-h-full max-w-full object-contain group-hover:scale-105 transition-transform duration-300" onerror="this.src='hardware_photos/system_unit.jpg'">
-                                        
-                                        <!-- Stock Badge -->
-                                        <div class="absolute top-3 left-3">
-                                            <?php if ($qty > 0): ?>
-                                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                                    ● In Stock (<?php echo $qty; ?>)
-                                                </span>
-                                            <?php else: ?>
-                                                <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                                    Pre-Order / Request
-                                                </span>
-                                            <?php endif; ?>
-                                        </div>
-
-                                        <!-- SKU Badge -->
-                                        <div class="absolute top-3 right-3">
-                                            <span class="font-mono text-[10px] font-bold px-2 py-1 rounded-xl bg-white/90 text-[#EB3E0B] shadow-sm border border-[#FECDAA]/50">
-                                                <?php echo sanitize($item['item_code']); ?>
-                                            </span>
-                                        </div>
+                                <!-- Card Content -->
+                                <div class="p-6 space-y-4">
+                                    <!-- Top Badges -->
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#FFE8D5] text-[#9A2512] uppercase tracking-wider">
+                                            <?php echo sanitize(isset($item['category']) ? $item['category'] : 'Hardware'); ?>
+                                        </span>
+                                        <span class="font-mono text-[10px] font-bold px-2.5 py-1 rounded-xl bg-[#FFF5ED] text-[#EB3E0B] border border-[#FECDAA]/70">
+                                            <?php echo sanitize($item['item_code']); ?>
+                                        </span>
                                     </div>
 
-                                    <!-- Content -->
-                                    <div class="p-5 space-y-2.5">
-                                        <span class="text-[10px] font-bold text-[#9A2512] uppercase tracking-wider block">
-                                            <?php echo sanitize(isset($item['category']) ? $item['category'] : 'Hardware Material'); ?>
-                                        </span>
+                                    <!-- Title & Description -->
+                                    <div class="space-y-1.5">
                                         <h3 class="font-extrabold text-base text-[#430D07] leading-snug line-clamp-1" title="<?php echo sanitize($item['name']); ?>">
                                             <?php echo sanitize($item['name']); ?>
                                         </h3>
                                         <p class="text-xs text-[#7C2112]/80 leading-relaxed line-clamp-2 min-h-[36px]" title="<?php echo sanitize($item['description']); ?>">
-                                            <?php echo !empty($item['description']) ? sanitize($item['description']) : 'Standard POS hardware peripheral and accessories.'; ?>
+                                            <?php echo !empty($item['description']) ? sanitize($item['description']) : 'Standard POS hardware peripheral and replacement accessories.'; ?>
                                         </p>
+                                    </div>
+
+                                    <!-- Stock Availability -->
+                                    <div class="flex items-center justify-between text-xs pt-1 border-t border-[#FFE8D5]/60">
+                                        <span class="text-[11px] font-semibold text-[#7C2112]/70">Stock Level:</span>
+                                        <?php if ($qty > 0): ?>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                ● In Stock (<?php echo $qty; ?>)
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                                Pre-Order / Request
+                                            </span>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
 
                                 <!-- Card Footer & Pricing -->
-                                <div class="p-5 pt-0 border-t border-[#FFE8D5] mt-2 space-y-3">
+                                <div class="p-6 pt-0 border-t border-[#FFE8D5] mt-1 space-y-3">
                                     <div class="flex items-baseline justify-between pt-3">
                                         <span class="text-xs font-semibold text-[#9A2512]">Price:</span>
                                         <span class="text-xl font-extrabold font-mono text-[#EB3E0B]">
