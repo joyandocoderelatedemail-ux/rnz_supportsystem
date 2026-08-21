@@ -511,6 +511,10 @@ $work_orders = array();
 
 $client_pullouts = array();
 $client_assets = array();
+$spend_wo = array('n' => 0, 'total' => 0, 'paid' => 0, 'unpaid' => 0, 'first_date' => null, 'last_date' => null);
+$spend_orders = array('n' => 0, 'total' => 0, 'paid' => 0);
+$spend_assets = array('n' => 0, 'total' => 0);
+$spend_billed = 0; $spend_paid = 0; $spend_unpaid = 0; $spend_txns = 0; $spend_avg = 0;
 
 // Active inventory items, used as the hardware picker in the "Add Item" modal
 $stmt_inv = $pdo->query("SELECT id, item_code, name, category, quantity, selling_price, unit_price 
@@ -542,7 +546,40 @@ if ($selected_client) {
     $stmt_pullouts->execute(array(':acct' => $client_acct));
     $client_pullouts = $stmt_pullouts->fetchAll();
 
-    // 5. Recorded Software & Hardware owned by this account
+    // 5. Lifetime spend for this account, kept split by source so nothing is
+    //    silently double counted between work orders, orders and equipment.
+    $stmt_wo_spend = $pdo->prepare("SELECT
+            COUNT(*) AS n,
+            COALESCE(SUM(amount), 0) AS total,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(status)) = 'paid' THEN amount ELSE 0 END), 0) AS paid,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(status)) <> 'paid' THEN amount ELSE 0 END), 0) AS unpaid,
+            MIN(xdate) AS first_date,
+            MAX(xdate) AS last_date
+        FROM bucket_workorder WHERE accountnum = :acct");
+    $stmt_wo_spend->execute(array(':acct' => $client_acct));
+    $spend_wo = $stmt_wo_spend->fetch();
+
+    $stmt_ord_spend = $pdo->prepare("SELECT
+            COUNT(*) AS n,
+            COALESCE(SUM(total_amount), 0) AS total,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(status)) IN ('paid','completed','delivered','fulfilled') THEN total_amount ELSE 0 END), 0) AS paid
+        FROM client_hardware_orders
+        WHERE accountnum = :acct AND LOWER(TRIM(status)) <> 'cancelled'");
+    $stmt_ord_spend->execute(array(':acct' => $client_acct));
+    $spend_orders = $stmt_ord_spend->fetch();
+
+    $stmt_asset_spend = $pdo->prepare("SELECT COUNT(*) AS n, COALESCE(SUM(total_amount), 0) AS total
+        FROM client_assets WHERE accountnum = :acct");
+    $stmt_asset_spend->execute(array(':acct' => $client_acct));
+    $spend_assets = $stmt_asset_spend->fetch();
+
+    $spend_billed = floatval($spend_wo['total']) + floatval($spend_orders['total']);
+    $spend_paid   = floatval($spend_wo['paid']) + floatval($spend_orders['paid']);
+    $spend_unpaid = max(0, $spend_billed - $spend_paid);
+    $spend_txns   = intval($spend_wo['n']) + intval($spend_orders['n']);
+    $spend_avg    = ($spend_txns > 0) ? ($spend_billed / $spend_txns) : 0;
+
+    // 6. Recorded Software & Hardware owned by this account
     $stmt_assets = $pdo->prepare("SELECT * FROM client_assets WHERE accountnum = :acct ORDER BY id DESC");
     $stmt_assets->execute(array(':acct' => $client_acct));
     $client_assets = $stmt_assets->fetchAll();
@@ -848,6 +885,91 @@ $page_title = 'Manage Accounts';
                             <span class="block text-slate-400 font-bold uppercase text-[10px]">Outstanding Balance</span>
                             <p class="font-mono font-bold text-[#EB3E0B]">₱<?php echo number_format($selected_client['outstandingbalance'], 2); ?></p>
                         </div>
+                    </div>
+
+                    <!-- Lifetime Spend Summary -->
+                    <div class="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 p-5 sm:p-6 space-y-5 shadow-sm">
+                        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+                            <div>
+                                <span class="block text-slate-400 font-bold uppercase text-[10px] tracking-wider">Total Spend With RNZ</span>
+                                <p class="text-3xl sm:text-4xl font-extrabold text-white font-mono mt-1">
+                                    &#8369;<?php echo number_format($spend_billed, 2); ?>
+                                </p>
+                                <p class="text-[11px] text-slate-400 mt-1">
+                                    Across <strong class="text-slate-200"><?php echo number_format($spend_txns); ?></strong> billed transaction(s)
+                                    <?php if ($spend_txns > 0): ?>
+                                        &middot; averaging <strong class="text-slate-200">&#8369;<?php echo number_format($spend_avg, 2); ?></strong> each
+                                    <?php endif; ?>
+                                </p>
+                            </div>
+
+                            <?php if (!empty($spend_wo['first_date'])): ?>
+                                <div class="text-left sm:text-right">
+                                    <span class="block text-slate-400 font-bold uppercase text-[10px] tracking-wider">Client Since</span>
+                                    <p class="text-sm font-bold text-slate-200 font-mono"><?php echo format_date_only($spend_wo['first_date']); ?></p>
+                                    <p class="text-[11px] text-slate-400 mt-0.5">Last billed <?php echo format_date_only($spend_wo['last_date']); ?></p>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <!-- Paid vs unpaid -->
+                        <?php $paid_pct = ($spend_billed > 0) ? round(($spend_paid / $spend_billed) * 100) : 0; ?>
+                        <div class="space-y-2">
+                            <div class="h-2 w-full bg-slate-700 rounded-full overflow-hidden flex">
+                                <div class="h-full bg-emerald-500" style="width: <?php echo $paid_pct; ?>%"></div>
+                                <div class="h-full bg-amber-500" style="width: <?php echo (100 - $paid_pct); ?>%"></div>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                <span class="flex items-center gap-1.5 text-emerald-300 font-bold">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                    Paid &#8369;<?php echo number_format($spend_paid, 2); ?> (<?php echo $paid_pct; ?>%)
+                                </span>
+                                <span class="flex items-center gap-1.5 text-amber-300 font-bold">
+                                    <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                                    Unbilled / Unpaid &#8369;<?php echo number_format($spend_unpaid, 2); ?>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Breakdown by source -->
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+                            <div class="rounded-xl bg-slate-800/80 border border-slate-700 p-3">
+                                <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Work Orders</span>
+                                <p class="text-sm font-extrabold text-white font-mono mt-0.5">&#8369;<?php echo number_format($spend_wo['total'], 2); ?></p>
+                                <p class="text-[10px] text-slate-500"><?php echo number_format($spend_wo['n']); ?> record(s)</p>
+                            </div>
+
+                            <div class="rounded-xl bg-slate-800/80 border border-slate-700 p-3">
+                                <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Hardware Orders</span>
+                                <p class="text-sm font-extrabold text-white font-mono mt-0.5">&#8369;<?php echo number_format($spend_orders['total'], 2); ?></p>
+                                <p class="text-[10px] text-slate-500"><?php echo number_format($spend_orders['n']); ?> order(s)</p>
+                            </div>
+
+                            <div class="rounded-xl bg-slate-800/80 border border-slate-700 p-3">
+                                <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Equipment On Record</span>
+                                <p class="text-sm font-extrabold text-white font-mono mt-0.5">&#8369;<?php echo number_format($spend_assets['total'], 2); ?></p>
+                                <p class="text-[10px] text-slate-500"><?php echo number_format($spend_assets['n']); ?> item(s) &middot; not in total</p>
+                            </div>
+
+                            <div class="rounded-xl bg-slate-800/80 border border-slate-700 p-3">
+                                <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Monthly Retainer</span>
+                                <p class="text-sm font-extrabold text-white font-mono mt-0.5">
+                                    &#8369;<?php echo number_format(floatval($selected_client['monthlyretainersfee']), 2); ?>
+                                </p>
+                                <p class="text-[10px] text-slate-500">recurring</p>
+                            </div>
+                        </div>
+
+                        <?php if (floatval($selected_client['outstandingbalance']) > 0): ?>
+                            <div class="flex items-start gap-2 rounded-xl bg-rose-500/10 border border-rose-500/30 p-3">
+                                <svg class="w-4 h-4 text-rose-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.5 0l-7.1 12.25A2 2 0 004.99 19z"/></svg>
+                                <p class="text-[11px] text-rose-200 font-medium">
+                                    Account carries a manually recorded outstanding balance of
+                                    <strong class="font-mono text-rose-100">&#8369;<?php echo number_format(floatval($selected_client['outstandingbalance']), 2); ?></strong>.
+                                    This is tracked separately from the unpaid work orders above.
+                                </p>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Store Address & Warranty Overview Row -->
