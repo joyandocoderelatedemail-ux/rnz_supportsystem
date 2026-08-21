@@ -142,6 +142,34 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                 <span>Back to Tickets List</span>
             </a>
 
+            <!-- Ticket Submission Notice Banner (24-48 hrs turnaround) -->
+            <?php if (isset($_GET['submitted']) && $_GET['submitted'] == '1'): ?>
+                <div class="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 text-white shadow-xl border border-emerald-400/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                    <div class="flex items-start sm:items-center space-x-4">
+                        <div class="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center font-extrabold shrink-0 shadow-inner">
+                            <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        </div>
+                        <div class="space-y-1">
+                            <div class="flex items-center space-x-2">
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-white text-emerald-900 uppercase tracking-wider">
+                                    Ticket Received
+                                </span>
+                                <span class="text-xs text-emerald-200 font-mono">#<?php echo sanitize($ticket['ticket_number']); ?></span>
+                            </div>
+                            <h3 class="text-base sm:text-lg font-extrabold tracking-tight">Your Support Ticket Has Been Created!</h3>
+                            <p class="text-xs sm:text-sm text-emerald-100 font-medium leading-relaxed">
+                                Our technical team has been notified. Please note that technical review and response may take <strong class="text-white underline decoration-emerald-300 font-extrabold">24 to 48 hours</strong>.
+                            </p>
+                        </div>
+                    </div>
+                    <button type="button" onclick="this.parentElement.remove()" class="px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors shrink-0 self-end sm:self-center">
+                        Dismiss &times;
+                    </button>
+                </div>
+            <?php endif; ?>
+
             <!-- Ticket Information Header Card -->
             <div class="bg-white/90 rounded-3xl p-6 sm:p-8 border border-[#FECDAA] shadow-sm space-y-6">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#FFE8D5] pb-6">

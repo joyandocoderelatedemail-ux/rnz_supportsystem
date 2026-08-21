@@ -197,13 +197,19 @@ if ($is_hw_page) {
             </div>
 
             <!-- Modal Footer Actions (Fixed at bottom) -->
-            <div class="p-4 sm:p-5 bg-slate-50 border-t border-[#FFE8D5] shrink-0 flex items-center justify-end space-x-3">
-                <button type="button" onclick="closeNewTicketModal()" class="px-4 py-2.5 rounded-full text-xs sm:text-sm font-bold text-[#7C2112] hover:bg-[#FFE8D5] transition-colors">
-                    Cancel
-                </button>
-                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-extrabold text-xs sm:text-sm px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95">
-                    Submit Ticket
-                </button>
+            <div class="p-4 sm:p-5 bg-slate-50 border-t border-[#FFE8D5] shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="flex items-center space-x-1.5 text-[11px] text-[#7C2112] font-semibold">
+                    <svg class="w-4 h-4 text-[#EB3E0B] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>Expected Response: <strong class="text-[#430D07]">24–48 hours</strong></span>
+                </div>
+                <div class="flex items-center space-x-3 w-full sm:w-auto justify-end">
+                    <button type="button" onclick="closeNewTicketModal()" class="px-4 py-2.5 rounded-full text-xs sm:text-sm font-bold text-[#7C2112] hover:bg-[#FFE8D5] transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-extrabold text-xs sm:text-sm px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95">
+                        Submit Ticket
+                    </button>
+                </div>
             </div>
         </form>
     </div>
