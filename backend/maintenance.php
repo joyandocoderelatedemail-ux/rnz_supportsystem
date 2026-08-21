@@ -13,6 +13,16 @@ $success_msg = '';
 
 if (isset($_GET['updated']) && $_GET['updated'] === '1') {
     $success_msg = "Maintenance request status updated successfully!";
+
+    if (isset($_GET['wo']) && $_GET['wo'] === '1') {
+        $wo_acct = isset($_GET['acct']) ? trim($_GET['acct']) : '';
+        $success_msg = "Request marked Completed. A work order was created on account #"
+            . sanitize($wo_acct)
+            . " - open it under Manage Accounts to set the amount and mark it paid.";
+    } elseif (isset($_GET['wo']) && $_GET['wo'] === 'error') {
+        $error_msg = "Status updated, but the work order could not be created: "
+            . (isset($_GET['wo_msg']) ? sanitize($_GET['wo_msg']) : 'unknown error');
+    }
 }
 
 // Handle Form Submissions
@@ -31,6 +41,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($req_id > 0 && !empty($new_status)) {
                 $now = date('Y-m-d H:i:s');
+
+                // Read the request before updating so we know its previous status
+                // and have the details needed to raise a work order.
+                $stmt_req = $pdo->prepare("SELECT m.*, c.tradename, c.clientname, c.address AS client_address
+                    FROM client_maintenance_requests m
+                    LEFT JOIN bucket_client c ON m.accountnum = c.accountnum
+                    WHERE m.id = :id LIMIT 1");
+                $stmt_req->execute(array(':id' => $req_id));
+                $req_row = $stmt_req->fetch();
+
                 $stmt_u = $pdo->prepare("UPDATE client_maintenance_requests SET status = :st, updated_at = :now WHERE id = :id");
                 $stmt_u->execute(array(
                     ':st' => $new_status,
@@ -38,7 +58,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':id' => $req_id
                 ));
 
-                header("Location: maintenance.php?updated=1");
+                // Completing a request raises a work order on the client's account
+                // so the visit can be billed and shows in their service history.
+                $wo_created = 0;
+                if ($req_row
+                    && strtolower($new_status) === 'completed'
+                    && strtolower(trim($req_row['status'])) !== 'completed'
+                    && !empty($req_row['accountnum'])) {
+
+                    $wo_tag = '[POS Maintenance ' . $req_row['request_number'] . ']';
+
+                    // Never raise a second work order for the same request
+                    $stmt_dupe = $pdo->prepare("SELECT id FROM bucket_workorder
+                        WHERE accountnum = :acct AND natureofwork LIKE :tag LIMIT 1");
+                    $stmt_dupe->execute(array(
+                        ':acct' => $req_row['accountnum'],
+                        ':tag' => '%' . $wo_tag . '%'
+                    ));
+
+                    if (!$stmt_dupe->fetch()) {
+                        $wo_client = !empty($req_row['tradename']) ? $req_row['tradename']
+                            : (!empty($req_row['clientname']) ? $req_row['clientname'] : $req_row['tradename']);
+                        if (empty($wo_client)) {
+                            $wo_client = 'Account #' . $req_row['accountnum'];
+                        }
+
+                        $wo_address = !empty($req_row['location_address']) ? $req_row['location_address']
+                            : (!empty($req_row['client_address']) ? $req_row['client_address'] : 'N/A');
+
+                        $nature_parts = array();
+                        $nature_parts[] = $wo_tag . ' Preventive POS maintenance service';
+                        $nature_parts[] = 'Units serviced: ' . intval($req_row['units_count']);
+                        $nature_parts[] = 'Requested schedule: ' . format_date_only($req_row['preferred_date'])
+                            . ' ' . format_time($req_row['preferred_time']);
+                        if (!empty($req_row['contact_person'])) {
+                            $nature_parts[] = 'Contact: ' . $req_row['contact_person'];
+                        }
+                        if (!empty($req_row['additional_notes'])) {
+                            $nature_parts[] = 'Notes: ' . $req_row['additional_notes'];
+                        }
+
+                        try {
+                            $stmt_wo = $pdo->prepare("INSERT INTO bucket_workorder
+                                (accountnum, xdate, clientname, address, natureofwork, amount, status, ornum)
+                                VALUES (:acct, :xdate, :cname, :addr, :nature, 0.00, 'Unpaid', '')");
+                            $stmt_wo->execute(array(
+                                ':acct' => $req_row['accountnum'],
+                                ':xdate' => date('Y-m-d'),
+                                ':cname' => $wo_client,
+                                ':addr' => $wo_address,
+                                ':nature' => implode(' | ', $nature_parts)
+                            ));
+                            $wo_created = 1;
+                        } catch (PDOException $e_wo) {
+                            // The status change already succeeded; surface the billing
+                            // failure rather than losing it silently.
+                            header("Location: maintenance.php?updated=1&wo=error&wo_msg=" . urlencode($e_wo->getMessage()));
+                            exit;
+                        }
+                    }
+                }
+
+                header("Location: maintenance.php?updated=1" . ($wo_created ? "&wo=1&acct=" . urlencode($req_row['accountnum']) : ""));
                 exit;
             }
         }
