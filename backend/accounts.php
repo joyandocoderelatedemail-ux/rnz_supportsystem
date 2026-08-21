@@ -104,6 +104,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $update_error = "Error removing warranty: " . $e->getMessage();
                 }
             }
+        } elseif ($action === 'create_client') {
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $tradename = isset($_POST['tradename']) ? trim($_POST['tradename']) : '';
+            $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
+            $contactnum = isset($_POST['contactnum']) ? trim($_POST['contactnum']) : '';
+            $emailaddress = isset($_POST['emailaddress']) ? trim($_POST['emailaddress']) : '';
+            $address = isset($_POST['address']) ? trim($_POST['address']) : '';
+            $type = isset($_POST['type']) && $_POST['type'] !== '' ? trim($_POST['type']) : 'Client';
+            $monthlyretainersfee = isset($_POST['monthlyretainersfee']) && $_POST['monthlyretainersfee'] !== '' ? $_POST['monthlyretainersfee'] : 0;
+            $outstandingbalance = isset($_POST['outstandingbalance']) && $_POST['outstandingbalance'] !== '' ? $_POST['outstandingbalance'] : 0;
+            $warranty_status = isset($_POST['warranty_status']) ? trim($_POST['warranty_status']) : 'Inactive';
+            $warranty_coverage_type = isset($_POST['warranty_coverage_type']) ? trim($_POST['warranty_coverage_type']) : 'Both';
+            $warranty_expiry = isset($_POST['warranty_expiry']) && !empty($_POST['warranty_expiry']) ? trim($_POST['warranty_expiry']) : null;
+            $warranty_notes = isset($_POST['warranty_notes']) ? trim($_POST['warranty_notes']) : '';
+
+            if (empty($accountnum) || empty($tradename) || empty($clientname)) {
+                $update_error = "Account Number, Trade Business Name and Owner / Client Name are all required.";
+            } else {
+                try {
+                    // accountnum doubles as the client's portal password, so it must be unique
+                    $stmt_dupe = $pdo->prepare("SELECT id FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+                    $stmt_dupe->execute(array(':acct' => $accountnum));
+
+                    if ($stmt_dupe->fetch()) {
+                        $update_error = "Account #$accountnum already exists. Please use a different account number.";
+                    } else {
+                        $stmt_new = $pdo->prepare("INSERT INTO bucket_client 
+                            (accountnum, type, clientname, tradename, address, contactnum, emailaddress, 
+                             monthlyretainersfee, outstandingbalance, warranty_status, warranty_expiry, 
+                             warranty_notes, warranty_coverage_type) 
+                            VALUES 
+                            (:acct, :type, :cname, :tname, :addr, :contact, :email, 
+                             :fee, :balance, :w_status, :w_expiry, 
+                             :w_notes, :w_cov)");
+
+                        $stmt_new->execute(array(
+                            ':acct' => $accountnum,
+                            ':type' => $type,
+                            ':cname' => $clientname,
+                            ':tname' => $tradename,
+                            ':addr' => $address,
+                            ':contact' => $contactnum,
+                            ':email' => $emailaddress,
+                            ':fee' => $monthlyretainersfee,
+                            ':balance' => $outstandingbalance,
+                            ':w_status' => $warranty_status,
+                            ':w_expiry' => $warranty_expiry,
+                            ':w_notes' => $warranty_notes,
+                            ':w_cov' => $warranty_coverage_type
+                        ));
+
+                        $update_msg = "New client \"$tradename\" registered successfully as Account #$accountnum. The client can now sign in to the portal using their Trade Name and this account number.";
+                    }
+                } catch (PDOException $e) {
+                    $update_error = "Error creating client: " . $e->getMessage();
+                }
+            }
         } elseif ($action === 'create_workorder') {
             $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
             $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
@@ -210,6 +267,34 @@ if ($searched) {
 }
 
 // Fetch top quick clients
+
+
+// Retain "Add New Client" form input when a submission is rejected, so nothing typed is lost
+$cf = (!empty($update_error) && isset($_POST['action']) && $_POST['action'] === 'create_client') ? $_POST : array();
+function cf_val($cf, $key, $default = '') {
+    return isset($cf[$key]) ? $cf[$key] : $default;
+}
+function cf_sel($cf, $key, $option, $default) {
+    $current = isset($cf[$key]) ? $cf[$key] : $default;
+    return ($current === $option) ? ' selected' : '';
+}
+// Suggest an unused account number for the "Add New Client" form.
+// Existing accounts are random 7-8 digit numbers rather than a sequence,
+// so generate a random 8-digit value and confirm it is free.
+$next_accountnum = '';
+try {
+    $stmt_free = $pdo->prepare("SELECT id FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+    for ($try = 0; $try < 10; $try++) {
+        $candidate = str_pad(mt_rand(1, 99999999), 8, '0', STR_PAD_LEFT);
+        $stmt_free->execute(array(':acct' => $candidate));
+        if (!$stmt_free->fetch()) {
+            $next_accountnum = $candidate;
+            break;
+        }
+    }
+} catch (PDOException $e) {
+    $next_accountnum = '';
+}
 $stmt_quick = $pdo->query("SELECT accountnum, tradename, clientname FROM bucket_client ORDER BY id ASC LIMIT 6");
 $quick_clients = $stmt_quick->fetchAll();
 
@@ -329,12 +414,22 @@ $page_title = 'Manage Accounts';
 
             <!-- Prominent Account Search Bar -->
             <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-4">
-                <div>
-                    <div class="inline-flex items-center space-x-2 bg-[#FFE8D5] px-3 py-1 rounded-full text-[#EB3E0B] text-xs font-bold uppercase tracking-wider mb-2">
-                        <span>Account Management Hub</span>
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div>
+                        <div class="inline-flex items-center space-x-2 bg-[#FFE8D5] px-3 py-1 rounded-full text-[#EB3E0B] text-xs font-bold uppercase tracking-wider mb-2">
+                            <span>Account Management Hub</span>
+                        </div>
+                        <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900">Manage Client Accounts</h2>
+                        <p class="text-xs text-slate-500 mt-1">Search an account below to view/edit client profile details, diagnostic logs, service notes, and work orders.</p>
                     </div>
-                    <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900">Manage Client Accounts</h2>
-                    <p class="text-xs text-slate-500 mt-1">Search an account below to view/edit client profile details, diagnostic logs, service notes, and work orders.</p>
+                    <?php if ($my_tier >= 2): ?>
+                        <button type="button" onclick="openCreateClientModal()" class="shrink-0 inline-flex items-center justify-center space-x-2 bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-5 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            <span>Add New Client</span>
+                        </button>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Search Input Form with Live Autocomplete -->
@@ -1467,6 +1562,159 @@ $page_title = 'Manage Accounts';
                 </script>
 
             <?php endif; ?>
+
+                <!-- ADD NEW CLIENT MODAL -->
+                <div id="createClientModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto">
+                        <button onclick="closeCreateClientModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 mb-6">
+                            <div class="w-10 h-10 rounded-2xl bg-[#FFE8D5] text-[#EB3E0B] flex items-center justify-center font-bold shadow-sm">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Register New Client Account</h3>
+                                <p class="text-xs text-slate-500">Creates a new record in the bucket_client table.</p>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php" method="POST" class="space-y-4">
+                            <input type="hidden" name="action" value="create_client">
+
+                            <div class="p-3.5 bg-[#FFF5ED] border border-[#FECDAA] rounded-2xl text-[11px] text-[#7C2112] font-medium flex items-start space-x-2">
+                                <svg class="w-4 h-4 text-[#EB3E0B] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                <span>The client signs in to the portal with their <strong>Trade Business Name</strong> as the username and their <strong>Account Number</strong> as the password. Both values below become their login credentials.</span>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Account Number *</label>
+                                    <input type="text" name="accountnum" value="<?php echo sanitize(cf_val($cf, 'accountnum', $next_accountnum)); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                    <p class="text-[10px] text-slate-400 mt-1">A free number is pre-filled. Must be unique - it doubles as the client's password.</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Client Type</label>
+                                    <input type="text" name="type" value="<?php echo sanitize(cf_val($cf, 'type', 'Client')); ?>" placeholder="POS Client / Standard" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Trade Business Name *</label>
+                                    <input type="text" name="tradename" value="<?php echo sanitize(cf_val($cf, 'tradename')); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Owner / Client Name *</label>
+                                    <input type="text" name="clientname" value="<?php echo sanitize(cf_val($cf, 'clientname')); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Contact Number</label>
+                                    <input type="text" name="contactnum" value="<?php echo sanitize(cf_val($cf, 'contactnum')); ?>" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Email Address</label>
+                                    <input type="email" name="emailaddress" value="<?php echo sanitize(cf_val($cf, 'emailaddress')); ?>" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Physical Address</label>
+                                <textarea name="address" rows="2" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"><?php echo sanitize(cf_val($cf, 'address')); ?></textarea>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Monthly Retainer Fee</label>
+                                    <input type="number" step="0.01" min="0" name="monthlyretainersfee" value="<?php echo sanitize(cf_val($cf, 'monthlyretainersfee', '0.00')); ?>" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Outstanding Balance</label>
+                                    <input type="number" step="0.01" min="0" name="outstandingbalance" value="<?php echo sanitize(cf_val($cf, 'outstandingbalance', '0.00')); ?>" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <div class="pt-4 border-t border-slate-100 space-y-4">
+                                <p class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Warranty Coverage (Optional)</p>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Status</label>
+                                        <select name="warranty_status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                            <option value="Inactive"<?php echo cf_sel($cf, 'warranty_status', 'Inactive', 'Inactive'); ?>>Inactive</option>
+                                            <option value="Active"<?php echo cf_sel($cf, 'warranty_status', 'Active', 'Inactive'); ?>>Active</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Coverage</label>
+                                        <select name="warranty_coverage_type" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                            <option value="Both"<?php echo cf_sel($cf, 'warranty_coverage_type', 'Both', 'Both'); ?>>Both</option>
+                                            <option value="Hardware"<?php echo cf_sel($cf, 'warranty_coverage_type', 'Hardware', 'Both'); ?>>Hardware</option>
+                                            <option value="Software"<?php echo cf_sel($cf, 'warranty_coverage_type', 'Software', 'Both'); ?>>Software</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Expiry Date</label>
+                                        <input type="date" name="warranty_expiry" value="<?php echo sanitize(cf_val($cf, 'warranty_expiry')); ?>" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Notes</label>
+                                    <textarea name="warranty_notes" rows="2" placeholder="e.g. Full Hardware &amp; POS System Warranty Coverage" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"><?php echo sanitize(cf_val($cf, 'warranty_notes')); ?></textarea>
+                                </div>
+                            </div>
+
+                            <?php if ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="pt-4 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeCreateClientModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                                    Register Client
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <script>
+                function openCreateClientModal() {
+                    var modal = document.getElementById('createClientModal');
+                    if (modal) modal.classList.remove('hidden');
+                }
+                function closeCreateClientModal() {
+                    var modal = document.getElementById('createClientModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+                <?php if (!empty($cf)): ?>
+                // A submission was rejected - reopen the form with the entered values intact
+                document.addEventListener('DOMContentLoaded', openCreateClientModal);
+                <?php endif; ?>
+                </script>
 
 <script>
 function handleAccountSearchInput(val) {
