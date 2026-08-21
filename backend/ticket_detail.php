@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
     $perm_check = check_tech_action_permission($action_code);
     if (!$perm_check['allowed']) {
-        header("Location: ticket_detail?id=" . $ticket_id . "&err=" . urlencode($perm_check['message']));
+        header("Location: ticket_detail.php?id=" . $ticket_id . "&err=" . urlencode($perm_check['message']));
         exit;
     }
 
@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare("UPDATE client_support_tickets SET status = 'In Progress', updated_at = :now WHERE id = :tid AND status = 'Pending'")
                 ->execute(array(':now' => date('Y-m-d H:i:s'), ':tid' => $ticket_id));
 
-            header("Location: ticket_detail?id=" . $ticket_id);
+            header("Location: ticket_detail.php?id=" . $ticket_id);
             exit;
         }
 
@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ));
         }
 
-        header("Location: ticket_detail?id=" . $ticket_id . "&saved=1");
+        header("Location: ticket_detail.php?id=" . $ticket_id . "&saved=1");
         exit;
     }
 }
@@ -81,7 +81,7 @@ $stmt_t->execute(array(':tid' => $ticket_id));
 $ticket = $stmt_t->fetch();
 
 if (!$ticket) {
-    header("Location: tickets");
+    header("Location: tickets.php");
     exit;
 }
 
@@ -318,7 +318,7 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
 
                         <!-- Reply Box -->
                         <div class="pt-6 border-t border-slate-100">
-                            <form id="techReplyForm" action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
+                            <form id="techReplyForm" action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
                                 <input type="hidden" name="action" value="send_tech_reply">
                                 <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
 
@@ -375,7 +375,7 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                             Management & Actions
                         </h3>
 
-                        <form action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
+                        <form action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" class="space-y-4">
                             <input type="hidden" name="action" value="update_ticket_status">
 
                             <div>

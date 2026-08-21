@@ -45,13 +45,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // Level 3: Direct Edit (no code needed)
     $my_tier = get_logged_tech_access_tier();
     if ($my_tier === 1) {
-        header("Location: settings?msg=error&err_msg=" . urlencode("Access Denied: Level 1 (View Only) accounts cannot create, edit, or delete user records."));
+        header("Location: settings.php?msg=error&err_msg=" . urlencode("Access Denied: Level 1 (View Only) accounts cannot create, edit, or delete user records."));
         exit;
     }
     if ($my_tier === 2) {
         $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
         if (!verify_user_access_code($tech_id, $action_code)) {
-            header("Location: settings?msg=error&err_msg=" . urlencode("Access Denied: Invalid Security Access Code. Level 2 accounts require a valid access code to confirm changes."));
+            header("Location: settings.php?msg=error&err_msg=" . urlencode("Access Denied: Invalid Security Access Code. Level 2 accounts require a valid access code to confirm changes."));
             exit;
         }
     }
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $allowed_pages = isset($_POST['allowed_pages']) && is_array($_POST['allowed_pages']) ? $_POST['allowed_pages'] : array();
 
         if (empty($fname) || empty($username) || empty($password)) {
-            header("Location: settings?msg=error&err_msg=" . urlencode("First Name, Username, and Password are required."));
+            header("Location: settings.php?msg=error&err_msg=" . urlencode("First Name, Username, and Password are required."));
             exit;
         }
 
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt_check = $pdo->prepare("SELECT id FROM user WHERE LOWER(TRIM(user)) = LOWER(:usr) LIMIT 1");
             $stmt_check->execute(array(':usr' => $username));
             if ($stmt_check->fetch()) {
-                header("Location: settings?msg=error&err_msg=" . urlencode("Username '" . $username . "' already exists. Please choose a different username."));
+                header("Location: settings.php?msg=error&err_msg=" . urlencode("Username '" . $username . "' already exists. Please choose a different username."));
                 exit;
             }
 
@@ -117,10 +117,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Save granular sidebar page permissions, tier level, and access code
             save_user_permissions($new_user_id, $username, $allowed_pages, $access_tier, $access_code);
 
-            header("Location: settings?msg=user_created");
+            header("Location: settings.php?msg=user_created");
             exit;
         } catch (PDOException $e) {
-            header("Location: settings?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: settings.php?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }
@@ -142,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $allowed_pages = isset($_POST['allowed_pages']) && is_array($_POST['allowed_pages']) ? $_POST['allowed_pages'] : array();
 
         if ($user_id <= 0 || empty($fname) || empty($username)) {
-            header("Location: settings?msg=error&err_msg=" . urlencode("User ID, First Name, and Username are required."));
+            header("Location: settings.php?msg=error&err_msg=" . urlencode("User ID, First Name, and Username are required."));
             exit;
         }
 
@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $stmt_check = $pdo->prepare("SELECT id FROM user WHERE LOWER(TRIM(user)) = LOWER(:usr) AND id != :uid LIMIT 1");
             $stmt_check->execute(array(':usr' => $username, ':uid' => $user_id));
             if ($stmt_check->fetch()) {
-                header("Location: settings?msg=error&err_msg=" . urlencode("Username '" . $username . "' is already taken by another account."));
+                header("Location: settings.php?msg=error&err_msg=" . urlencode("Username '" . $username . "' is already taken by another account."));
                 exit;
             }
 
@@ -212,10 +212,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $_SESSION['tech_data']['accesslevel'] = $accesslevel;
             }
 
-            header("Location: settings?msg=user_updated");
+            header("Location: settings.php?msg=user_updated");
             exit;
         } catch (PDOException $e) {
-            header("Location: settings?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: settings.php?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }
@@ -225,13 +225,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $user_id = isset($_POST['user_id']) ? intval($_POST['user_id']) : 0;
 
         if ($user_id <= 0) {
-            header("Location: settings?msg=error&err_msg=" . urlencode("Invalid user ID specified."));
+            header("Location: settings.php?msg=error&err_msg=" . urlencode("Invalid user ID specified."));
             exit;
         }
 
         // Prevent deleting own currently active account
         if ($user_id === $tech_id) {
-            header("Location: settings?msg=error&err_msg=" . urlencode("You cannot delete your own logged-in account."));
+            header("Location: settings.php?msg=error&err_msg=" . urlencode("You cannot delete your own logged-in account."));
             exit;
         }
 
@@ -241,12 +241,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $target_row = $stmt_target->fetch();
 
             if (!$target_row) {
-                header("Location: settings?msg=error&err_msg=" . urlencode("User account not found."));
+                header("Location: settings.php?msg=error&err_msg=" . urlencode("User account not found."));
                 exit;
             }
 
             if (strtolower($target_row['user']) === $tech_username) {
-                header("Location: settings?msg=error&err_msg=" . urlencode("You cannot delete your own logged-in account."));
+                header("Location: settings.php?msg=error&err_msg=" . urlencode("You cannot delete your own logged-in account."));
                 exit;
             }
 
@@ -255,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt_m_cnt = $pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) = 'master'");
                 $m_cnt = intval($stmt_m_cnt->fetchColumn());
                 if ($m_cnt <= 1) {
-                    header("Location: settings?msg=error&err_msg=" . urlencode("Cannot delete the last Super Admin (Master) account."));
+                    header("Location: settings.php?msg=error&err_msg=" . urlencode("Cannot delete the last Super Admin (Master) account."));
                     exit;
                 }
             }
@@ -266,10 +266,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Clean up custom permissions entry
             $pdo->prepare("DELETE FROM support_user_permissions WHERE user_id = :uid")->execute(array(':uid' => $user_id));
 
-            header("Location: settings?msg=user_deleted");
+            header("Location: settings.php?msg=user_deleted");
             exit;
         } catch (PDOException $e) {
-            header("Location: settings?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: settings.php?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }

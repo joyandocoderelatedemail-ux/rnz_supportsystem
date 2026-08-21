@@ -50,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $stmt_u = $pdo->prepare("UPDATE client_support_tickets SET updated_at = :now WHERE id = :id");
         $stmt_u->execute(array(':now' => $now, ':id' => $ticket_id));
 
-        header("Location: ticket_detail?id=" . $ticket_id);
+        header("Location: ticket_detail.php?id=" . $ticket_id);
         exit;
     }
 }
@@ -248,7 +248,7 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
 
             <!-- Reply Input Box -->
             <div class="bg-white/90 rounded-3xl p-6 border border-[#FECDAA] shadow-sm">
-                <form id="replyForm" action="ticket_detail?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
+                <form id="replyForm" action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
                     <input type="hidden" name="action" value="post_reply">
                     <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
                     

@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
     $perm_check = check_tech_action_permission($action_code);
     if (!$perm_check['allowed']) {
-        header("Location: inventory?msg=error&err_msg=" . urlencode($perm_check['message']));
+        header("Location: inventory.php?msg=error&err_msg=" . urlencode($perm_check['message']));
         exit;
     }
 
@@ -69,11 +69,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $auto_technote = isset($_POST['auto_technote']) ? intval($_POST['auto_technote']) : 1;
 
         if ($item_id <= 0) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode("Please select a valid hardware item."));
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode("Please select a valid hardware item."));
             exit;
         }
         if (empty($accountnum)) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode("Please select or specify the client account for this pull out."));
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode("Please select or specify the client account for this pull out."));
             exit;
         }
 
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $item_data = $stmt_cur->fetch();
 
             if (!$item_data) {
-                header("Location: inventory?msg=error&err_msg=" . urlencode("Hardware item not found in inventory."));
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode("Hardware item not found in inventory."));
                 exit;
             }
 
@@ -192,10 +192,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ));
             }
 
-            header("Location: inventory?msg=pullout_success&item=" . urlencode($item_data['name']) . "&client=" . urlencode($client_name));
+            header("Location: inventory.php?msg=pullout_success&item=" . urlencode($item_data['name']) . "&client=" . urlencode($client_name));
             exit;
         } catch (PDOException $e) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }
@@ -209,7 +209,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $description = isset($_POST['description']) ? trim($_POST['description']) : '';
 
         if (empty($name)) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode("Item name is required."));
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode("Item name is required."));
             exit;
         }
 
@@ -249,10 +249,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':now' => $now
             ));
 
-            header("Location: inventory?msg=item_added");
+            header("Location: inventory.php?msg=item_added");
             exit;
         } catch (PDOException $e) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }
@@ -268,7 +268,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $client_name = isset($_POST['client_name']) ? trim($_POST['client_name']) : '';
 
         if ($item_id <= 0) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode("Invalid item selected."));
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode("Invalid item selected."));
             exit;
         }
 
@@ -278,7 +278,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $item_data = $stmt_cur->fetch();
 
             if (!$item_data) {
-                header("Location: inventory?msg=error&err_msg=" . urlencode("Item not found."));
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode("Item not found."));
                 exit;
             }
 
@@ -326,10 +326,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':now' => $now
             ));
 
-            header("Location: inventory?msg=quantity_adjusted");
+            header("Location: inventory.php?msg=quantity_adjusted");
             exit;
         } catch (PDOException $e) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }
@@ -344,7 +344,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $status = isset($_POST['status']) ? trim($_POST['status']) : 'Active';
 
         if ($item_id <= 0 || empty($name)) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode("Invalid item parameters."));
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode("Invalid item parameters."));
             exit;
         }
 
@@ -364,10 +364,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':id' => $item_id
             ));
 
-            header("Location: inventory?msg=item_updated");
+            header("Location: inventory.php?msg=item_updated");
             exit;
         } catch (PDOException $e) {
-            header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
             exit;
         }
     }
@@ -383,10 +383,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt_del_logs = $pdo->prepare("DELETE FROM support_inventory_logs WHERE item_id = :id");
                 $stmt_del_logs->execute(array(':id' => $item_id));
 
-                header("Location: inventory?msg=item_deleted");
+                header("Location: inventory.php?msg=item_deleted");
                 exit;
             } catch (PDOException $e) {
-                header("Location: inventory?msg=error&err_msg=" . urlencode($e->getMessage()));
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
                 exit;
             }
         }
@@ -395,7 +395,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // 5. Sync Portal Hardware
     elseif ($action === 'sync_portal_hardware') {
         $synced = seed_portal_hardware_inventory();
-        header("Location: inventory?msg=synced&count=" . $synced);
+        header("Location: inventory.php?msg=synced&count=" . $synced);
         exit;
     }
 }

@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ':c_at' => $now
             ));
 
-            header("Location: ticket_detail?id=" . $new_ticket_id . "&submitted=1");
+            header("Location: ticket_detail.php?id=" . $new_ticket_id . "&submitted=1");
             exit;
 
         } catch (PDOException $e) {

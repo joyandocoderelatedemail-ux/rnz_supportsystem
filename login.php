@@ -5,7 +5,7 @@ require_once __DIR__ . '/includes/auth.php';
 
 // Redirect if already logged in
 if (is_logged_in()) {
-    header("Location: tickets");
+    header("Location: tickets.php");
     exit;
 }
 
@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $res = login_client($username, $password);
     if ($res['success']) {
-        header("Location: tickets");
+        header("Location: tickets.php");
         exit;
     } else {
         $error_message = $res['message'];

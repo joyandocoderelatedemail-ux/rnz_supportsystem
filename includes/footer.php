@@ -23,7 +23,7 @@
             </div>
         </div>
 
-        <form action="tickets" method="POST" enctype="multipart/form-data" class="space-y-4">
+        <form action="tickets.php" method="POST" enctype="multipart/form-data" class="space-y-4">
             <input type="hidden" name="action" value="create_ticket">
             
             <div>

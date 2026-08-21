@@ -39,7 +39,7 @@ $accountnum = $client ? $client['accountnum'] : '';
                 </a>
 
                 <!-- Support Tickets -->
-                <a href="tickets" title="Support Tickets" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'tickets') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+                <a href="tickets.php" title="Support Tickets" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'tickets') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'tickets') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2 2 2 0 010 4 2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2 2 2 0 010-4 2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
                     </svg>
@@ -47,7 +47,7 @@ $accountnum = $client ? $client['accountnum'] : '';
                 </a>
 
                 <!-- Hardware Devices -->
-                <a href="hardware" title="Hardware Devices" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'hardware') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+                <a href="hardware.php" title="Hardware Devices" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'hardware') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'hardware') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
                     </svg>
@@ -55,7 +55,7 @@ $accountnum = $client ? $client['accountnum'] : '';
                 </a>
 
                 <!-- Software Issues -->
-                <a href="software" title="Software Issues" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'software') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+                <a href="software.php" title="Software Issues" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'software') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'software') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
                     </svg>
@@ -63,7 +63,7 @@ $accountnum = $client ? $client['accountnum'] : '';
                 </a>
 
                 <!-- POS Maintenance -->
-                <a href="maintenance" title="POS Maintenance" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'maintenance') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+                <a href="maintenance.php" title="POS Maintenance" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'maintenance') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'maintenance') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -72,7 +72,7 @@ $accountnum = $client ? $client['accountnum'] : '';
                 </a>
 
                 <!-- Tech Service History -->
-                <a href="technotes" title="Tech Service History" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'technotes') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+                <a href="technotes.php" title="Tech Service History" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'technotes') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'technotes') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
@@ -80,7 +80,7 @@ $accountnum = $client ? $client['accountnum'] : '';
                 </a>
 
                 <!-- Work Orders -->
-                <a href="workorders" title="Work Orders" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'workorders') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+                <a href="workorders.php" title="Work Orders" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'workorders') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'workorders') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
@@ -88,7 +88,7 @@ $accountnum = $client ? $client['accountnum'] : '';
                 </a>
 
                 <!-- Account Details -->
-                <a href="profile" title="Account Details" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'profile') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+                <a href="profile.php" title="Account Details" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'profile') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'profile') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                     </svg>
@@ -158,7 +158,7 @@ $accountnum = $client ? $client['accountnum'] : '';
             </a>
 
             <!-- Support Tickets -->
-            <a href="tickets" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'tickets') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+            <a href="tickets.php" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'tickets') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                 <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'tickets') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2 2 2 0 010 4 2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2 2 2 0 010-4 2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
                 </svg>
@@ -166,7 +166,7 @@ $accountnum = $client ? $client['accountnum'] : '';
             </a>
 
             <!-- Hardware Devices -->
-            <a href="hardware" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'hardware') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+            <a href="hardware.php" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'hardware') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                 <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'hardware') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
                 </svg>
@@ -174,7 +174,7 @@ $accountnum = $client ? $client['accountnum'] : '';
             </a>
 
             <!-- Software Issues -->
-            <a href="software" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'software') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+            <a href="software.php" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'software') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                 <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'software') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
                 </svg>
@@ -182,7 +182,7 @@ $accountnum = $client ? $client['accountnum'] : '';
             </a>
 
             <!-- POS Maintenance -->
-            <a href="maintenance" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'maintenance') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+            <a href="maintenance.php" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'maintenance') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                 <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'maintenance') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -191,7 +191,7 @@ $accountnum = $client ? $client['accountnum'] : '';
             </a>
 
             <!-- Tech Service History -->
-            <a href="technotes" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'technotes') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+            <a href="technotes.php" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'technotes') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                 <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'technotes') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
@@ -199,7 +199,7 @@ $accountnum = $client ? $client['accountnum'] : '';
             </a>
 
             <!-- Work Orders -->
-            <a href="workorders" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'workorders') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+            <a href="workorders.php" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'workorders') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                 <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'workorders') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                 </svg>
@@ -207,7 +207,7 @@ $accountnum = $client ? $client['accountnum'] : '';
             </a>
 
             <!-- Account Details -->
-            <a href="profile" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'profile') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+            <a href="profile.php" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'profile') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                 <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'profile') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                 </svg>
@@ -228,7 +228,7 @@ $accountnum = $client ? $client['accountnum'] : '';
                     <p class="text-[10px] text-[#7C2112] font-mono">Acct: <?php echo sanitize($accountnum); ?></p>
                 </div>
             </div>
-            <a href="logout" title="Sign Out" class="text-[#9A2512] hover:text-rose-600 p-2 rounded-xl hover:bg-white/80 transition-colors">
+            <a href="logout.php" title="Sign Out" class="text-[#9A2512] hover:text-rose-600 p-2 rounded-xl hover:bg-white/80 transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                 </svg>
@@ -250,7 +250,7 @@ $accountnum = $client ? $client['accountnum'] : '';
     </a>
 
     <!-- Tickets -->
-    <a href="tickets" class="flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl text-[10px] font-bold transition-all <?php echo ($active_page === 'tickets') ? 'text-[#EB3E0B]' : 'text-[#7C2112] hover:text-[#430D07]'; ?>">
+    <a href="tickets.php" class="flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl text-[10px] font-bold transition-all <?php echo ($active_page === 'tickets') ? 'text-[#EB3E0B]' : 'text-[#7C2112] hover:text-[#430D07]'; ?>">
         <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="<?php echo ($active_page === 'tickets') ? '2.5' : '1.8'; ?>" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2 2 2 0 010 4 2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2 2 2 0 010-4 2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
         </svg>
@@ -258,7 +258,7 @@ $accountnum = $client ? $client['accountnum'] : '';
     </a>
 
     <!-- Hardware -->
-    <a href="hardware" class="flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl text-[10px] font-bold transition-all <?php echo ($active_page === 'hardware') ? 'text-[#EB3E0B]' : 'text-[#7C2112] hover:text-[#430D07]'; ?>">
+    <a href="hardware.php" class="flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl text-[10px] font-bold transition-all <?php echo ($active_page === 'hardware') ? 'text-[#EB3E0B]' : 'text-[#7C2112] hover:text-[#430D07]'; ?>">
         <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="<?php echo ($active_page === 'hardware') ? '2.5' : '1.8'; ?>" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
         </svg>
@@ -266,7 +266,7 @@ $accountnum = $client ? $client['accountnum'] : '';
     </a>
 
     <!-- Maintenance -->
-    <a href="maintenance" class="flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl text-[10px] font-bold transition-all <?php echo ($active_page === 'maintenance') ? 'text-[#EB3E0B]' : 'text-[#7C2112] hover:text-[#430D07]'; ?>">
+    <a href="maintenance.php" class="flex flex-col items-center justify-center py-1 px-2.5 rounded-2xl text-[10px] font-bold transition-all <?php echo ($active_page === 'maintenance') ? 'text-[#EB3E0B]' : 'text-[#7C2112] hover:text-[#430D07]'; ?>">
         <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="<?php echo ($active_page === 'maintenance') ? '2.5' : '1.8'; ?>" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
         </svg>
