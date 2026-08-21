@@ -233,6 +233,7 @@ $page_title = 'POS Maintenance Requests';
                                     <th class="pb-3 px-3">Contact Person & Phone</th>
                                     <th class="pb-3 px-3">Location Address</th>
                                     <th class="pb-3 px-3">Warranty</th>
+                                    <th class="pb-3 px-3">Created At</th>
                                     <th class="pb-3 px-3">Status</th>
                                     <th class="pb-3 px-3 text-right">Actions</th>
                                 </tr>
@@ -273,6 +274,9 @@ $page_title = 'POS Maintenance Requests';
                                                     No Warranty
                                                 </span>
                                             <?php endif; ?>
+                                        </td>
+                                        <td class="py-4 px-3 text-slate-500 whitespace-nowrap">
+                                            <?php echo format_date(isset($r['created_at']) ? $r['created_at'] : ''); ?>
                                         </td>
                                         <td class="py-4 px-3">
                                             <span class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold border <?php echo get_status_badge_class($r['status']); ?>">
