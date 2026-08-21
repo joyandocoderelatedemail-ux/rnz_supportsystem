@@ -18,32 +18,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $category = isset($_POST['category']) ? trim($_POST['category']) : 'General Support';
     $priority = isset($_POST['priority']) ? trim($_POST['priority']) : 'Medium';
     $issue_description = isset($_POST['issue_description']) ? trim($_POST['issue_description']) : '';
+    $ultraviewer_user = isset($_POST['ultraviewer_user']) ? trim($_POST['ultraviewer_user']) : '';
+    $ultraviewer_pass = isset($_POST['ultraviewer_pass']) ? trim($_POST['ultraviewer_pass']) : '';
+    $remarks = isset($_POST['remarks']) ? trim($_POST['remarks']) : '';
+
+    $is_remote_category = (stripos($category, 'Update Data') !== false || stripos($category, 'Update Item') !== false || stripos($category, 'Remote') !== false);
 
     if (empty($subject) || empty($issue_description)) {
         $error_msg = 'Please fill out all required fields (Subject and Description).';
+    } elseif ($is_remote_category && (empty($ultraviewer_user) || empty($ultraviewer_pass) || empty($remarks))) {
+        $error_msg = 'UltraViewer Username, Password, and Remarks are required for remote software update requests.';
     } else {
         // Generate unique ticket number
         $ticket_number = 'RNZ-' . date('Y') . '-' . rand(10000, 99999);
         $now = date('Y-m-d H:i:s');
         $photo_attachment = upload_ticket_photos('attachments');
 
+        // If remote credentials provided, format a clean header in description
+        $full_description = $issue_description;
+        if (!empty($ultraviewer_user) || !empty($ultraviewer_pass) || !empty($remarks)) {
+            $uv_block = "=== ULTRAVIEWER REMOTE ACCESS DETAILS ===\n";
+            if (!empty($ultraviewer_user)) $uv_block .= "UltraViewer ID/User: " . $ultraviewer_user . "\n";
+            if (!empty($ultraviewer_pass)) $uv_block .= "UltraViewer Password: " . $ultraviewer_pass . "\n";
+            if (!empty($remarks))          $uv_block .= "Update Remarks: " . $remarks . "\n";
+            $uv_block .= "=========================================\n\n";
+            $full_description = $uv_block . $issue_description;
+        }
+
         try {
             $stmt = $pdo->prepare("INSERT INTO client_support_tickets 
-                (ticket_number, accountnum, clientname, tradename, subject, category, priority, issue_description, attachment_path, status, assigned_tech, created_at, updated_at) 
-                VALUES (:num, :acct, :cname, :tname, :subj, :cat, :prio, :desc, :att, 'Pending', 'Unassigned', :c_at, :u_at)");
+                (ticket_number, accountnum, clientname, tradename, subject, category, ultraviewer_id, ultraviewer_pass, remarks, priority, issue_description, attachment_path, status, assigned_tech, created_at, updated_at) 
+                VALUES (:num, :acct, :cname, :tname, :subj, :cat, :uv_id, :uv_pass, :remarks, :prio, :desc, :att, 'Pending', 'Unassigned', :c_at, :u_at)");
             
             $stmt->execute(array(
-                ':num' => $ticket_number,
-                ':acct' => $accountnum,
-                ':cname' => $client['clientname'],
-                ':tname' => $client['tradename'],
-                ':subj' => $subject,
-                ':cat' => $category,
-                ':prio' => $priority,
-                ':desc' => $issue_description,
-                ':att' => $photo_attachment ? $photo_attachment : null,
-                ':c_at' => $now,
-                ':u_at' => $now
+                ':num'      => $ticket_number,
+                ':acct'     => $accountnum,
+                ':cname'    => $client['clientname'],
+                ':tname'    => $client['tradename'],
+                ':subj'     => $subject,
+                ':cat'      => $category,
+                ':uv_id'    => !empty($ultraviewer_user) ? $ultraviewer_user : null,
+                ':uv_pass'  => !empty($ultraviewer_pass) ? $ultraviewer_pass : null,
+                ':remarks'  => !empty($remarks) ? $remarks : null,
+                ':prio'     => $priority,
+                ':desc'     => $full_description,
+                ':att'      => $photo_attachment ? $photo_attachment : null,
+                ':c_at'     => $now,
+                ':u_at'     => $now
             ));
 
             $new_ticket_id = $pdo->lastInsertId();
@@ -53,11 +74,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 (ticket_id, sender_type, sender_name, message, attachment_path, created_at) 
                 VALUES (:tid, 'client', :sname, :msg, :att, :c_at)");
             $stmt2->execute(array(
-                ':tid' => $new_ticket_id,
+                ':tid'   => $new_ticket_id,
                 ':sname' => $client['tradename'],
-                ':msg' => $issue_description,
-                ':att' => $photo_attachment ? $photo_attachment : null,
-                ':c_at' => $now
+                ':msg'   => $full_description,
+                ':att'   => $photo_attachment ? $photo_attachment : null,
+                ':c_at'  => $now
             ));
 
             header("Location: ticket_detail.php?id=" . $new_ticket_id . "&submitted=1");

@@ -183,6 +183,31 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                         <span id="ticketLastUpdated" class="font-bold text-[#430D07]"><?php echo format_date($ticket['updated_at']); ?></span>
                     </div>
                 </div>
+
+                <?php if (!empty($ticket['ultraviewer_id']) || !empty($ticket['ultraviewer_pass']) || !empty($ticket['remarks'])): ?>
+                    <div class="p-4 rounded-2xl bg-amber-50 border border-amber-200 space-y-2 text-xs">
+                        <div class="flex items-center space-x-2 text-amber-900 font-extrabold">
+                            <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                            <span>UltraViewer Remote Access Credentials Submitted</span>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div>
+                                <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">UltraViewer Username / ID</span>
+                                <span class="font-mono font-extrabold text-[#430D07] text-sm"><?php echo sanitize($ticket['ultraviewer_id']); ?></span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">UltraViewer Password</span>
+                                <span class="font-mono font-extrabold text-[#430D07] text-sm"><?php echo sanitize($ticket['ultraviewer_pass']); ?></span>
+                            </div>
+                        </div>
+                        <?php if (!empty($ticket['remarks'])): ?>
+                            <div class="pt-1 border-t border-amber-200/60">
+                                <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Submitted Remarks</span>
+                                <p class="text-xs text-slate-800 font-medium whitespace-pre-wrap"><?php echo sanitize($ticket['remarks']); ?></p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
             </div>
 
             <!-- Conversation Thread -->

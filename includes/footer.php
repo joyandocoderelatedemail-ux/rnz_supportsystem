@@ -22,6 +22,8 @@ if ($is_hw_page) {
     );
 } elseif ($is_sw_page) {
     $modal_categories = array(
+        'Update Data' => 'Update Data (Remote POS Access)',
+        'Update Item Info' => 'Update Item Info (Price / SKU / Products)',
         'POS Software' => 'POS Software (General)',
         'Slow / Lagging POS Terminal' => 'Slow / Lagging POS Terminal',
         'Database Connection Error' => 'Database Connection Error',
@@ -35,6 +37,8 @@ if ($is_hw_page) {
     );
 } else {
     $modal_categories = array(
+        'Update Data' => 'Update Data (Remote POS Access)',
+        'Update Item Info' => 'Update Item Info (Price / SKU / Products)',
         'POS Software' => 'POS Software',
         'Hardware & Printer' => 'Hardware & Printer',
         'Database & Network' => 'Database & Network',
@@ -96,7 +100,7 @@ if ($is_hw_page) {
                             else echo 'Category';
                         ?>
                     </label>
-                    <select name="category" id="modalTicketCategorySelect" class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-xl px-3 py-2.5 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-semibold">
+                    <select name="category" id="modalTicketCategorySelect" onchange="checkCategoryRemoteAccess()" class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-xl px-3 py-2.5 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-semibold">
                         <?php foreach ($modal_categories as $val => $label): ?>
                             <option value="<?php echo sanitize($val); ?>"><?php echo sanitize($label); ?></option>
                         <?php endforeach; ?>
@@ -111,6 +115,41 @@ if ($is_hw_page) {
                         <option value="High">High</option>
                         <option value="Urgent">Urgent</option>
                     </select>
+                </div>
+            </div>
+
+            <!-- UltraViewer Remote Access Box (Required when Update Data, Update Item Info, or remote access is chosen) -->
+            <div id="modalUltraviewerBox" class="p-4 rounded-2xl bg-amber-50 border border-amber-300/80 space-y-3 hidden animate-in fade-in duration-200">
+                <div class="flex items-center space-x-2 text-amber-900 font-extrabold text-xs">
+                    <svg class="w-4 h-4 text-[#EB3E0B] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    <span>UltraViewer Remote Access Details <span class="text-[#EB3E0B] font-bold">(Required)</span></span>
+                </div>
+                <p class="text-[11px] text-amber-800 leading-relaxed font-medium">
+                    Open UltraViewer on your POS computer terminal and provide your credentials so technical staff can connect remotely to complete your update request.
+                </p>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#430D07] uppercase tracking-wider mb-1">
+                            UltraViewer Username / ID <span class="text-[#EB3E0B]">*</span>
+                        </label>
+                        <input type="text" name="ultraviewer_user" id="modalUltraviewerUser" placeholder="e.g. 12 345 678" class="w-full bg-white border border-amber-300 text-[#430D07] text-xs sm:text-sm rounded-xl px-3 py-2.5 focus:border-[#EB3E0B] focus:outline-none font-mono font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-[#430D07] uppercase tracking-wider mb-1">
+                            UltraViewer Password <span class="text-[#EB3E0B]">*</span>
+                        </label>
+                        <input type="text" name="ultraviewer_pass" id="modalUltraviewerPass" placeholder="e.g. 1234" class="w-full bg-white border border-amber-300 text-[#430D07] text-xs sm:text-sm rounded-xl px-3 py-2.5 focus:border-[#EB3E0B] focus:outline-none font-mono font-bold">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-[#430D07] uppercase tracking-wider mb-1">
+                        Add Remarks / Details to Update <span class="text-[#EB3E0B]">*</span>
+                    </label>
+                    <textarea name="remarks" id="modalRemarks" rows="2" placeholder="List the specific item names, barcodes, prices, or database records you want our team to update..." class="w-full bg-white border border-amber-300 text-[#430D07] text-xs rounded-xl p-2.5 focus:border-[#EB3E0B] focus:outline-none"></textarea>
                 </div>
             </div>
 
@@ -160,6 +199,30 @@ if ($is_hw_page) {
 </div>
 
 <script>
+function checkCategoryRemoteAccess() {
+    var catSelect = document.getElementById('modalTicketCategorySelect');
+    var uvBox = document.getElementById('modalUltraviewerBox');
+    var uvUser = document.getElementById('modalUltraviewerUser');
+    var uvPass = document.getElementById('modalUltraviewerPass');
+    var uvRemarks = document.getElementById('modalRemarks');
+    if (!catSelect || !uvBox) return;
+
+    var val = catSelect.value.toLowerCase();
+    var isRemote = (val.indexOf('update data') !== -1 || val.indexOf('update item') !== -1 || val.indexOf('remote') !== -1 || val === 'update data' || val === 'update item info');
+
+    if (isRemote) {
+        uvBox.classList.remove('hidden');
+        if (uvUser) uvUser.required = true;
+        if (uvPass) uvPass.required = true;
+        if (uvRemarks) uvRemarks.required = true;
+    } else {
+        uvBox.classList.add('hidden');
+        if (uvUser) uvUser.required = false;
+        if (uvPass) uvPass.required = false;
+        if (uvRemarks) uvRemarks.required = false;
+    }
+}
+
 function openNewTicketModal(prefillCat, prefillSubj, prefillDesc) {
     var modal = document.getElementById('newTicketModal');
     if (modal) {
@@ -193,6 +256,7 @@ function openNewTicketModal(prefillCat, prefillSubj, prefillDesc) {
         var descInput = document.querySelector('#newTicketModal textarea[name="issue_description"]');
         if (descInput) descInput.value = prefillDesc;
     }
+    checkCategoryRemoteAccess();
 }
 function closeNewTicketModal() {
     document.getElementById('newTicketModal').classList.add('hidden');

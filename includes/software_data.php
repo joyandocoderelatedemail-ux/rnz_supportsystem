@@ -3,6 +3,70 @@
 
 function get_software_issues_list() {
     return array(
+        'update-data' => array(
+            'id' => 'update-data',
+            'name' => 'Update Data',
+            'category' => 'Software Support',
+            'icon' => '<svg class="w-6 h-6 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>',
+            'description' => 'Request remote technical support to update POS database tables, client records, tax configurations, or system data via UltraViewer.',
+            'main_cause' => 'Requires remote technical access via UltraViewer to execute database adjustments and data updates directly on the POS terminal.',
+            'is_remote' => true,
+            'questions' => array(
+                array(
+                    'id' => 'q1',
+                    'text' => 'Is UltraViewer installed and running on your POS computer terminal?',
+                    'type' => 'yesno',
+                    'no_solution' => 'Please download and open UltraViewer on your POS terminal so the technician can connect.'
+                )
+            ),
+            'steps' => array(
+                array(
+                    'step_num' => 1,
+                    'title' => 'Open UltraViewer on POS Terminal',
+                    'instruction' => 'Launch UltraViewer on your desktop. Locate the "Your ID" and "Password" displayed on the UltraViewer main window.',
+                    'expected' => 'UltraViewer status shows "Ready to connect".'
+                ),
+                array(
+                    'step_num' => 2,
+                    'title' => 'Submit Ticket with UltraViewer Credentials & Remarks',
+                    'instruction' => 'Submit a support ticket providing your UltraViewer ID, Password, and specific remarks on which data needs updating.',
+                    'expected' => 'Support ticket created and assigned to technical staff.'
+                )
+            )
+        ),
+
+        'update-item-info' => array(
+            'id' => 'update-item-info',
+            'name' => 'Update Item Info',
+            'category' => 'Software Support',
+            'icon' => '<svg class="w-6 h-6 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>',
+            'description' => 'Request remote technical assistance to encode new items, update product selling prices, edit barcodes, or reorganize menu categories via UltraViewer.',
+            'main_cause' => 'Requires remote technical access via UltraViewer to update product lists, prices, barcodes, and inventory records.',
+            'is_remote' => true,
+            'questions' => array(
+                array(
+                    'id' => 'q1',
+                    'text' => 'Do you have the item details/prices list ready and UltraViewer open on your POS terminal?',
+                    'type' => 'yesno',
+                    'no_solution' => 'Prepare the list of item names, SKU barcodes, and updated prices, then open UltraViewer.'
+                )
+            ),
+            'steps' => array(
+                array(
+                    'step_num' => 1,
+                    'title' => 'Prepare Item List & Launch UltraViewer',
+                    'instruction' => 'Have your list of items, prices, or barcode corrections ready. Open UltraViewer on the POS terminal.',
+                    'expected' => 'UltraViewer is active and ready with ID & Password.'
+                ),
+                array(
+                    'step_num' => 2,
+                    'title' => 'Submit Ticket with UltraViewer Credentials & Remarks',
+                    'instruction' => 'Submit a ticket with your UltraViewer ID, Password, and detailed remarks describing the items and prices to update.',
+                    'expected' => 'Technical support connects remotely and updates item info.'
+                )
+            )
+        ),
+
         'slow-pos' => array(
             'id' => 'slow-pos',
             'name' => 'Slow / Lagging POS Terminal',

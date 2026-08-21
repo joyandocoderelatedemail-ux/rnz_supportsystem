@@ -256,6 +256,20 @@ function init_client_portal_tables() {
             } else {
                 $pdo->exec("ALTER TABLE `client_ticket_replies` MODIFY COLUMN `attachment_path` TEXT NULL");
             }
+
+            // Ensure client_support_tickets has ultraviewer & remarks fields
+            $check_uv_id = $pdo->query("SHOW COLUMNS FROM `client_support_tickets` LIKE 'ultraviewer_id'");
+            if ($check_uv_id && $check_uv_id->rowCount() == 0) {
+                $pdo->exec("ALTER TABLE `client_support_tickets` ADD `ultraviewer_id` VARCHAR(100) NULL AFTER `category`");
+            }
+            $check_uv_pass = $pdo->query("SHOW COLUMNS FROM `client_support_tickets` LIKE 'ultraviewer_pass'");
+            if ($check_uv_pass && $check_uv_pass->rowCount() == 0) {
+                $pdo->exec("ALTER TABLE `client_support_tickets` ADD `ultraviewer_pass` VARCHAR(100) NULL AFTER `ultraviewer_id`");
+            }
+            $check_t_rem = $pdo->query("SHOW COLUMNS FROM `client_support_tickets` LIKE 'remarks'");
+            if ($check_t_rem && $check_t_rem->rowCount() == 0) {
+                $pdo->exec("ALTER TABLE `client_support_tickets` ADD `remarks` TEXT NULL AFTER `ultraviewer_pass`");
+            }
         } catch (PDOException $e_col) {
             // Non-blocking
         }

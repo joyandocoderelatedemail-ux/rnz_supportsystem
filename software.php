@@ -222,38 +222,71 @@ $page_title = $issue_item ? $issue_item['name'] . ' Support' : 'Software & POS I
                     <!-- Software Issues Grid -->
                     <div id="softwareCardsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <?php foreach ($all_software_issues as $s_key => $s_info): ?>
-                            <a href="software.php?issue=<?php echo $s_key; ?>&step=overview" 
-                               class="software-card bg-white p-6 rounded-3xl border border-[#FECDAA] shadow-sm hover:shadow-xl hover:border-[#FA5915] transition-all space-y-4 group flex flex-col justify-between">
-                                <div class="space-y-3">
-                                    <div class="flex items-center justify-between">
-                                        <div class="w-12 h-12 rounded-2xl bg-[#FFE8D5] group-hover:bg-[#EB3E0B] text-[#EB3E0B] group-hover:text-white flex items-center justify-center transition-colors shadow-sm">
-                                            <?php echo $s_info['icon']; ?>
+                            <?php if (!empty($s_info['is_remote'])): ?>
+                                <div onclick="openNewTicketModal('<?php echo sanitize($s_info['name']); ?>', 'Request <?php echo sanitize($s_info['name']); ?> via UltraViewer')" 
+                                     class="software-card bg-white p-6 rounded-3xl border border-amber-300/80 shadow-sm hover:shadow-xl hover:border-[#EB3E0B] transition-all space-y-4 group flex flex-col justify-between cursor-pointer">
+                                    <div class="space-y-3">
+                                        <div class="flex items-center justify-between">
+                                            <div class="w-12 h-12 rounded-2xl bg-amber-100 group-hover:bg-[#EB3E0B] text-[#EB3E0B] group-hover:text-white flex items-center justify-center transition-colors shadow-sm">
+                                                <?php echo $s_info['icon']; ?>
+                                            </div>
+                                            <span class="text-[11px] font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                                                ● UltraViewer Remote
+                                            </span>
                                         </div>
-                                        <span class="text-[11px] font-bold px-3 py-1 rounded-full bg-[#FFF5ED] text-[#EB3E0B] border border-[#FECDAA]">
-                                            <?php echo sanitize($s_info['category']); ?>
-                                        </span>
+                                        <h3 class="text-lg font-extrabold text-[#430D07] group-hover:text-[#EB3E0B] transition-colors">
+                                            <?php echo sanitize($s_info['name']); ?>
+                                        </h3>
+                                        <p class="text-xs text-[#7C2112] font-medium leading-relaxed">
+                                            <?php echo sanitize($s_info['description']); ?>
+                                        </p>
+
+                                        <!-- UltraViewer Callout -->
+                                        <div class="p-3 rounded-2xl bg-amber-50 border border-amber-200 space-y-1">
+                                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-[#EB3E0B] block">Remote Session Required:</span>
+                                            <p class="text-[11px] text-amber-900 font-semibold">Requires UltraViewer Username & Password + Remarks of what to update.</p>
+                                        </div>
                                     </div>
-                                    <h3 class="text-lg font-extrabold text-[#430D07] group-hover:text-[#EB3E0B] transition-colors">
-                                        <?php echo sanitize($s_info['name']); ?>
-                                    </h3>
-                                    <p class="text-xs text-[#7C2112] font-medium leading-relaxed">
-                                        <?php echo sanitize($s_info['description']); ?>
-                                    </p>
 
-                                    <!-- Main Cause Callout if available -->
-                                    <?php if (!empty($s_info['main_cause'])): ?>
-                                        <div class="p-3 rounded-2xl bg-[#FFF5ED] border border-[#FECDAA] space-y-1">
-                                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-[#EB3E0B] block">Probable Cause:</span>
-                                            <p class="text-[11px] text-slate-700 font-semibold line-clamp-2"><?php echo sanitize($s_info['main_cause']); ?></p>
+                                    <div class="pt-4 border-t border-[#FFE8D5] flex items-center justify-between text-xs font-bold text-[#EB3E0B]">
+                                        <span>Submit Remote Request &rarr;</span>
+                                        <span class="w-8 h-8 rounded-full bg-[#FFE8D5] group-hover:bg-[#EB3E0B] group-hover:text-white flex items-center justify-center transition-colors">&rarr;</span>
+                                    </div>
+                                </div>
+                            <?php else: ?>
+                                <a href="software.php?issue=<?php echo $s_key; ?>&step=overview" 
+                                   class="software-card bg-white p-6 rounded-3xl border border-[#FECDAA] shadow-sm hover:shadow-xl hover:border-[#FA5915] transition-all space-y-4 group flex flex-col justify-between">
+                                    <div class="space-y-3">
+                                        <div class="flex items-center justify-between">
+                                            <div class="w-12 h-12 rounded-2xl bg-[#FFE8D5] group-hover:bg-[#EB3E0B] text-[#EB3E0B] group-hover:text-white flex items-center justify-center transition-colors shadow-sm">
+                                                <?php echo $s_info['icon']; ?>
+                                            </div>
+                                            <span class="text-[11px] font-bold px-3 py-1 rounded-full bg-[#FFF5ED] text-[#EB3E0B] border border-[#FECDAA]">
+                                                <?php echo sanitize($s_info['category']); ?>
+                                            </span>
                                         </div>
-                                    <?php endif; ?>
-                                </div>
+                                        <h3 class="text-lg font-extrabold text-[#430D07] group-hover:text-[#EB3E0B] transition-colors">
+                                            <?php echo sanitize($s_info['name']); ?>
+                                        </h3>
+                                        <p class="text-xs text-[#7C2112] font-medium leading-relaxed">
+                                            <?php echo sanitize($s_info['description']); ?>
+                                        </p>
 
-                                <div class="pt-4 border-t border-[#FFE8D5] flex items-center justify-between text-xs font-bold text-[#EB3E0B]">
-                                    <span>Start Diagnostics & Resolution &rarr;</span>
-                                    <span class="w-8 h-8 rounded-full bg-[#FFE8D5] group-hover:bg-[#EB3E0B] group-hover:text-white flex items-center justify-center transition-colors">&rarr;</span>
-                                </div>
-                            </a>
+                                        <!-- Main Cause Callout if available -->
+                                        <?php if (!empty($s_info['main_cause'])): ?>
+                                            <div class="p-3 rounded-2xl bg-[#FFF5ED] border border-[#FECDAA] space-y-1">
+                                                <span class="text-[10px] font-extrabold uppercase tracking-wider text-[#EB3E0B] block">Probable Cause:</span>
+                                                <p class="text-[11px] text-slate-700 font-semibold line-clamp-2"><?php echo sanitize($s_info['main_cause']); ?></p>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <div class="pt-4 border-t border-[#FFE8D5] flex items-center justify-between text-xs font-bold text-[#EB3E0B]">
+                                        <span>Start Diagnostics & Resolution &rarr;</span>
+                                        <span class="w-8 h-8 rounded-full bg-[#FFE8D5] group-hover:bg-[#EB3E0B] group-hover:text-white flex items-center justify-center transition-colors">&rarr;</span>
+                                    </div>
+                                </a>
+                            <?php endif; ?>
                         <?php endforeach; ?>
                     </div>
                 </div>
@@ -294,8 +327,25 @@ $page_title = $issue_item ? $issue_item['name'] . ' Support' : 'Software & POS I
                             </div>
                         </div>
 
-                        <!-- Special Highlight for Account Already In Use -->
-                        <?php if ($issue_item['id'] === 'account-in-use'): ?>
+                        <!-- Special Highlight for Remote UltraViewer Categories -->
+                        <?php if (!empty($issue_item['is_remote'])): ?>
+                            <div class="p-5 rounded-3xl bg-amber-50 border border-amber-200 space-y-4">
+                                <div class="flex items-center space-x-2 text-amber-900 font-extrabold text-sm">
+                                    <svg class="w-5 h-5 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                    </svg>
+                                    <span>UltraViewer Remote Session Required</span>
+                                </div>
+                                <p class="text-xs text-slate-700 leading-relaxed font-medium">
+                                    To <?php echo strtolower(sanitize($issue_item['name'])); ?>, our technical team needs to connect remotely to your POS computer terminal. Please make sure UltraViewer is launched and submit your ticket with your credentials and specific update remarks.
+                                </p>
+                                <div>
+                                    <button type="button" onclick="openNewTicketModal('<?php echo sanitize($issue_item['name']); ?>', 'Request <?php echo sanitize($issue_item['name']); ?> via UltraViewer')" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-extrabold text-xs px-6 py-3 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 inline-flex items-center space-x-2">
+                                        <span>Open Ticket Form with UltraViewer Credentials &rarr;</span>
+                                    </button>
+                                </div>
+                            </div>
+                        <?php elseif ($issue_item['id'] === 'account-in-use'): ?>
                             <div class="p-5 rounded-3xl bg-amber-50 border border-amber-200 space-y-3">
                                 <div class="flex items-center space-x-2 text-amber-800 font-extrabold text-sm">
                                     <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -121,6 +121,19 @@ function init_inventory_tables() {
             $pdo->exec("ALTER TABLE `support_inventory_items` ADD COLUMN `selling_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER `cost_price`");
         } catch (PDOException $e_col4) {}
 
+        // Safe upgrade for client_support_tickets ultraviewer fields
+        try {
+            $pdo->exec("ALTER TABLE `client_support_tickets` ADD COLUMN `ultraviewer_id` VARCHAR(100) NULL AFTER `category`");
+        } catch (PDOException $e_col5) {}
+
+        try {
+            $pdo->exec("ALTER TABLE `client_support_tickets` ADD COLUMN `ultraviewer_pass` VARCHAR(100) NULL AFTER `ultraviewer_id`");
+        } catch (PDOException $e_col6) {}
+
+        try {
+            $pdo->exec("ALTER TABLE `client_support_tickets` ADD COLUMN `remarks` TEXT NULL AFTER `ultraviewer_pass`");
+        } catch (PDOException $e_col7) {}
+
         // Sync selling_price with unit_price if needed
         try {
             $pdo->exec("UPDATE `support_inventory_items` SET `selling_price` = `unit_price` WHERE `selling_price` = 0.00 AND `unit_price` > 0");

@@ -250,6 +250,54 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                 </p>
                             <?php endif; ?>
                         </div>
+
+                        <!-- UltraViewer Remote Access Card if present -->
+                        <?php if (!empty($ticket['ultraviewer_id']) || !empty($ticket['ultraviewer_pass']) || !empty($ticket['remarks'])): ?>
+                            <div class="p-5 rounded-2xl bg-amber-50 border border-amber-300 space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2.5 text-amber-900 font-extrabold text-xs">
+                                        <div class="w-7 h-7 rounded-xl bg-[#EB3E0B] text-white flex items-center justify-center font-bold shadow-xs">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                                        </div>
+                                        <div>
+                                            <span class="block">UltraViewer Remote Access Credentials</span>
+                                            <span class="text-[10px] text-amber-700 font-medium">Remote support connection credentials submitted by client</span>
+                                        </div>
+                                    </div>
+                                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900">
+                                        Remote Session
+                                    </span>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                    <div class="bg-white p-3 rounded-xl border border-amber-200 flex items-center justify-between">
+                                        <div>
+                                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">UltraViewer ID</span>
+                                            <span class="font-mono font-extrabold text-slate-900 text-sm"><?php echo sanitize($ticket['ultraviewer_id']); ?></span>
+                                        </div>
+                                        <button type="button" onclick="navigator.clipboard.writeText('<?php echo sanitize($ticket['ultraviewer_id']); ?>'); this.textContent = 'Copied!'; var btn=this; setTimeout(function(){ btn.textContent = 'Copy ID'; }, 1500);" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white font-bold text-[11px] transition-colors">
+                                            Copy ID
+                                        </button>
+                                    </div>
+                                    <div class="bg-white p-3 rounded-xl border border-amber-200 flex items-center justify-between">
+                                        <div>
+                                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">UltraViewer Password</span>
+                                            <span class="font-mono font-extrabold text-slate-900 text-sm"><?php echo sanitize($ticket['ultraviewer_pass']); ?></span>
+                                        </div>
+                                        <button type="button" onclick="navigator.clipboard.writeText('<?php echo sanitize($ticket['ultraviewer_pass']); ?>'); this.textContent = 'Copied!'; var btn=this; setTimeout(function(){ btn.textContent = 'Copy Pass'; }, 1500);" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white font-bold text-[11px] transition-colors">
+                                            Copy Pass
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <?php if (!empty($ticket['remarks'])): ?>
+                                    <div class="bg-white/90 p-3.5 rounded-xl border border-amber-200 space-y-1">
+                                        <span class="text-[10px] font-bold text-amber-900 uppercase tracking-wider block">Client Remarks / Update Instructions:</span>
+                                        <p class="text-xs text-slate-800 font-medium whitespace-pre-wrap leading-relaxed"><?php echo sanitize($ticket['remarks']); ?></p>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Conversation Thread -->
