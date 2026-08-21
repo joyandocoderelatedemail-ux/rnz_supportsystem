@@ -121,6 +121,39 @@ function format_date($date_str) {
 }
 
 /**
+ * Format a stored 24-hour time value (HH:MM or HH:MM:SS) as 12-hour with AM/PM.
+ * Any other string is returned untouched so free-text time ranges survive.
+ */
+function format_time($time_str) {
+    if (empty($time_str) || $time_str == 'N/A') {
+        return 'N/A';
+    }
+    $time_str = trim($time_str);
+    if (!preg_match('/^([01]?[0-9]|2[0-3]):([0-5][0-9])(:[0-5][0-9])?$/', $time_str)) {
+        return $time_str;
+    }
+    $timestamp = strtotime($time_str);
+    if ($timestamp === false) {
+        return $time_str;
+    }
+    return date('g:i A', $timestamp);
+}
+
+/**
+ * Format a DATE column without the meaningless 12:00 AM time component.
+ */
+function format_date_only($date_str) {
+    if (empty($date_str) || $date_str == 'N/A') {
+        return 'N/A';
+    }
+    $timestamp = strtotime($date_str);
+    if ($timestamp === false) {
+        return $date_str;
+    }
+    return date('M d, Y', $timestamp);
+}
+
+/**
  * Get Tailwind CSS badge class by status
  */
 function get_status_badge_class($status) {

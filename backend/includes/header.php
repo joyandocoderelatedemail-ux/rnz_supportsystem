@@ -31,7 +31,7 @@ foreach ($maint_list as $mr) {
         'key' => 'maintenance_' . $mr['id'],
         'combined_id' => $m_comb_id,
         'title' => 'POS Maintenance: ' . $mr['tradename'],
-        'subtitle' => $mr['units_count'] . ' Unit(s) | Date: ' . format_date($mr['preferred_date']) . ' (' . $mr['preferred_time'] . ')',
+        'subtitle' => $mr['units_count'] . ' Unit(s) | Date: ' . format_date_only($mr['preferred_date']) . ' (' . format_time($mr['preferred_time']) . ')',
         'link' => 'maintenance.php',
         'number' => $mr['request_number'],
         'date' => $mr['created_at'],

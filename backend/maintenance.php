@@ -249,8 +249,8 @@ $page_title = 'POS Maintenance Requests';
                                             <span class="text-[11px] text-slate-500 font-mono">Acct: <?php echo sanitize($r['accountnum']); ?></span>
                                         </td>
                                         <td class="py-4 px-3 font-medium">
-                                            <span class="block font-bold text-slate-800"><?php echo format_date($r['preferred_date']); ?></span>
-                                            <span class="text-[11px] text-slate-500 font-mono"><?php echo sanitize($r['preferred_time']); ?></span>
+                                            <span class="block font-bold text-slate-800"><?php echo format_date_only($r['preferred_date']); ?></span>
+                                            <span class="text-[11px] text-slate-500 font-mono"><?php echo sanitize(format_time($r['preferred_time'])); ?></span>
                                         </td>
                                         <td class="py-4 px-3">
                                             <span class="inline-flex items-center px-2.5 py-1 rounded-full font-extrabold bg-[#FFE8D5] text-[#EB3E0B] border border-[#FECDAA]">

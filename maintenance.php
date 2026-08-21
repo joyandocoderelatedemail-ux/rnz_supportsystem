@@ -198,7 +198,7 @@ $page_title = 'POS Unit Maintenance';
                                         </td>
                                         <td class="py-4 px-3 font-medium">
                                             <span class="block font-bold text-[#430D07]"><?php echo format_date($req['preferred_date']); ?></span>
-                                            <span class="text-[11px] text-[#7C2112] font-mono"><?php echo sanitize($req['preferred_time']); ?></span>
+                                            <span class="text-[11px] text-[#7C2112] font-mono"><?php echo sanitize(format_time($req['preferred_time'])); ?></span>
                                         </td>
                                         <td class="py-4 px-3">
                                             <span class="inline-flex items-center px-2.5 py-1 rounded-full font-extrabold bg-[#FFE8D5] text-[#EB3E0B] border border-[#FECDAA]">
