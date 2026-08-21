@@ -26,6 +26,7 @@ try {
     // KPI Stats Queries
     $total_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets")->fetchColumn());
     $pending_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'Pending'")->fetchColumn());
+    $pending_orders = intval($pdo->query("SELECT COUNT(*) FROM client_hardware_orders WHERE status = 'Pending'")->fetchColumn());
     $in_progress_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'In Progress'")->fetchColumn());
     $resolved_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status IN ('Resolved', 'Closed')")->fetchColumn());
 
@@ -88,26 +89,42 @@ $page_title = 'Support Center Overview';
         <main class="p-4 sm:p-6 md:p-8 pb-24 md:pb-8 space-y-6 sm:space-y-8 max-w-7xl w-full mx-auto">
 
             <!-- KPI Metric Stats Cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
                 
                 <!-- Pending Tickets Card -->
-                <div class="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center justify-between">
+                <a href="tickets.php?status=Pending" class="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center justify-between hover:border-amber-500/50 transition-all group">
                     <div class="space-y-1">
-                        <span class="text-xs font-bold text-amber-600 uppercase tracking-wider">Pending Action</span>
+                        <span class="text-xs font-bold text-amber-600 uppercase tracking-wider">Pending Tickets</span>
                         <h3 class="text-3xl font-extrabold text-slate-900 font-mono"><?php echo number_format($pending_tickets); ?></h3>
+                        <p class="text-[11px] text-slate-500 group-hover:text-amber-600 font-medium">Customer tickets</p>
                     </div>
                     <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
                         </svg>
                     </div>
-                </div>
+                </a>
+
+                <!-- Pending Orders Card -->
+                <a href="orders.php?status=Pending" class="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center justify-between hover:border-[#EB3E0B]/50 transition-all group">
+                    <div class="space-y-1">
+                        <span class="text-xs font-bold text-[#EB3E0B] uppercase tracking-wider">Pending Orders</span>
+                        <h3 class="text-3xl font-extrabold text-slate-900 font-mono"><?php echo number_format($pending_orders); ?></h3>
+                        <p class="text-[11px] text-slate-500 group-hover:text-[#EB3E0B] font-medium">Material requests</p>
+                    </div>
+                    <div class="w-12 h-12 rounded-2xl bg-[#FFE8D5] text-[#EB3E0B] flex items-center justify-center font-bold">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                        </svg>
+                    </div>
+                </a>
 
                 <!-- In Progress Card -->
                 <div class="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex items-center justify-between">
                     <div class="space-y-1">
                         <span class="text-xs font-bold text-blue-600 uppercase tracking-wider">In Progress</span>
                         <h3 class="text-3xl font-extrabold text-slate-900 font-mono"><?php echo number_format($in_progress_tickets); ?></h3>
+                        <p class="text-[11px] text-slate-500">Under investigation</p>
                     </div>
                     <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,6 +138,7 @@ $page_title = 'Support Center Overview';
                     <div class="space-y-1">
                         <span class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Resolved Tickets</span>
                         <h3 class="text-3xl font-extrabold text-slate-900 font-mono"><?php echo number_format($resolved_tickets); ?></h3>
+                        <p class="text-[11px] text-slate-500">Completed support</p>
                     </div>
                     <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

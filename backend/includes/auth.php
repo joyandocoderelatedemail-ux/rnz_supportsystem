@@ -71,6 +71,7 @@ function get_all_backend_pages() {
     return array(
         'dashboard' => array('name' => 'Dashboard', 'url' => 'index.php', 'desc' => 'Overview stats, recent tickets & activity summary'),
         'tickets' => array('name' => 'Support Tickets', 'url' => 'tickets.php', 'desc' => 'Customer support ticket list & live reply thread'),
+        'orders' => array('name' => 'Orders', 'url' => 'orders.php', 'desc' => 'Client hardware and materials order fulfillment & tracking'),
         'accounts' => array('name' => 'Manage Accounts', 'url' => 'accounts.php', 'desc' => 'Client profiles, tech logs, work orders & technotes'),
         'inventory' => array('name' => 'Hardware Inventory', 'url' => 'inventory.php', 'desc' => 'Hardware stock levels, quick adjustments & log history'),
         'maintenance' => array('name' => 'POS Maintenance', 'url' => 'maintenance.php', 'desc' => 'Quarterly POS preventive maintenance requests'),
@@ -88,7 +89,7 @@ function get_user_allowed_pages($user_id, $accesslevel = '') {
     $lvl = strtolower(trim($accesslevel));
     // Super Admin / Master always has full access to all pages
     if ($lvl === 'master') {
-        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings');
+        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance', 'settings');
     }
 
     $pdo = get_db_connection();
@@ -115,19 +116,19 @@ function get_user_allowed_pages($user_id, $accesslevel = '') {
 
     // Role-based defaults if no custom record in support_user_permissions
     if ($lvl === 'admin' || $lvl === 'administrator') {
-        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings');
+        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance', 'settings');
     } elseif ($lvl === 'senior programmer' || $lvl === 'senior_programmer') {
-        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings');
+        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance', 'settings');
     } elseif ($lvl === 'junior programmer' || $lvl === 'junior_programmer') {
-        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance');
+        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance');
     } elseif ($lvl === 'tech support' || $lvl === 'technician') {
-        return array('dashboard', 'tickets', 'accounts', 'inventory', 'maintenance');
+        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance');
     } elseif ($lvl === 'ojt') {
-        return array('dashboard', 'tickets', 'accounts');
+        return array('dashboard', 'tickets', 'orders', 'accounts');
     } elseif ($lvl === 'support') {
-        return array('dashboard', 'tickets', 'accounts');
+        return array('dashboard', 'tickets', 'orders', 'accounts');
     } else {
-        return array('dashboard', 'tickets');
+        return array('dashboard', 'tickets', 'orders');
     }
 }
 

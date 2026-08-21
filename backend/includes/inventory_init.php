@@ -67,11 +67,41 @@ function init_inventory_tables() {
         KEY `access_tier` (`access_tier`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
 
+    $sql5 = "CREATE TABLE IF NOT EXISTS `client_hardware_orders` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT,
+        `order_number` VARCHAR(50) NOT NULL UNIQUE,
+        `accountnum` VARCHAR(100) NOT NULL,
+        `tradename` VARCHAR(150) NOT NULL,
+        `clientname` VARCHAR(150) NULL,
+        `contact_person` VARCHAR(150) NOT NULL,
+        `contact_number` VARCHAR(50) NOT NULL,
+        `delivery_address` TEXT NOT NULL,
+        `item_id` INT(11) NOT NULL,
+        `item_code` VARCHAR(50) NOT NULL,
+        `item_name` VARCHAR(150) NOT NULL,
+        `quantity` INT(11) NOT NULL DEFAULT 1,
+        `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        `total_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        `notes` TEXT NULL,
+        `status` VARCHAR(50) NOT NULL DEFAULT 'Pending',
+        `payment_method` VARCHAR(100) NOT NULL DEFAULT 'Charge to POS Account Billing',
+        `admin_remarks` TEXT NULL,
+        `fulfilled_by` VARCHAR(100) NULL,
+        `created_at` DATETIME NOT NULL,
+        `updated_at` DATETIME NOT NULL,
+        PRIMARY KEY (`id`),
+        KEY `accountnum` (`accountnum`),
+        KEY `item_id` (`item_id`),
+        KEY `status` (`status`),
+        KEY `created_at` (`created_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
     try {
         $pdo->exec($sql1);
         $pdo->exec($sql2);
         $pdo->exec($sql3);
         $pdo->exec($sql4);
+        $pdo->exec($sql5);
 
         // Safe upgrade existing support_user_permissions schema
         try {

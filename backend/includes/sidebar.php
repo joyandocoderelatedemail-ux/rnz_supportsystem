@@ -25,6 +25,17 @@ if ($tech && !empty($tech['accesslevel'])) {
         $access_level = ucwords(trim($tech['accesslevel']));
     }
 }
+
+$pending_orders_count = 0;
+$pdo_sb = get_db_connection();
+if ($pdo_sb) {
+    try {
+        $stmt_p_ord = $pdo_sb->query("SELECT COUNT(*) FROM client_hardware_orders WHERE status = 'Pending'");
+        if ($stmt_p_ord) {
+            $pending_orders_count = intval($stmt_p_ord->fetchColumn());
+        }
+    } catch (PDOException $e) {}
+}
 ?>
 
 <!-- ========================================================================= -->
@@ -65,6 +76,23 @@ if ($tech && !empty($tech['accesslevel'])) {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2 2 2 0 010 4 2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2 2 2 0 010-4 2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
                         </svg>
                         <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Support Tickets</span>
+                    </a>
+                <?php endif; ?>
+
+                <!-- Client Hardware Orders -->
+                <?php if (user_has_page_access('orders')): ?>
+                    <a href="orders.php" title="Hardware Orders" class="flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'orders') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                        <div class="flex items-center">
+                            <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'orders') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                            </svg>
+                            <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Orders</span>
+                        </div>
+                        <?php if ($pending_orders_count > 0): ?>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-slate-950 opacity-0 group-hover:opacity-100 transition-opacity duration-200 shrink-0">
+                                <?php echo $pending_orders_count; ?>
+                            </span>
+                        <?php endif; ?>
                     </a>
                 <?php endif; ?>
 
@@ -180,6 +208,23 @@ if ($tech && !empty($tech['accesslevel'])) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2 2 2 0 010 4 2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2 2 2 0 010-4 2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
                     </svg>
                     <span>Support Tickets</span>
+                </a>
+            <?php endif; ?>
+
+            <!-- Client Hardware Orders -->
+            <?php if (user_has_page_access('orders')): ?>
+                <a href="orders.php" onclick="closeAdminMobileSidebar()" class="flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'orders') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                    <div class="flex items-center space-x-3.5">
+                        <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'orders') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                        </svg>
+                        <span>Hardware Orders</span>
+                    </div>
+                    <?php if ($pending_orders_count > 0): ?>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500 text-slate-950">
+                            <?php echo $pending_orders_count; ?>
+                        </span>
+                    <?php endif; ?>
                 </a>
             <?php endif; ?>
 

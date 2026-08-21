@@ -54,6 +54,14 @@ $accountnum = $client ? $client['accountnum'] : '';
                     <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Hardware Devices</span>
                 </a>
 
+                <!-- Order Hardware Materials -->
+                <a href="orders.php" title="Order Hardware" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'orders') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+                    <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'orders') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                    </svg>
+                    <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Order Hardware</span>
+                </a>
+
                 <!-- Software Issues -->
                 <a href="software.php" title="Software Issues" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'software') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'software') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,6 +179,14 @@ $accountnum = $client ? $client['accountnum'] : '';
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
                 </svg>
                 <span>Hardware Devices</span>
+            </a>
+
+            <!-- Order Hardware Materials -->
+            <a href="orders.php" onclick="closeMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'orders') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-[#7C2112] hover:bg-[#FFE8D5] hover:text-[#430D07]'; ?>">
+                <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'orders') ? 'text-white' : 'text-[#FA5915]'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                </svg>
+                <span>Order Hardware</span>
             </a>
 
             <!-- Software Issues -->
