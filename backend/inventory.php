@@ -206,6 +206,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $item_code = isset($_POST['item_code']) ? trim($_POST['item_code']) : '';
         $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 0;
         $min_threshold = isset($_POST['min_threshold']) ? intval($_POST['min_threshold']) : 5;
+        $cost_price = isset($_POST['cost_price']) ? floatval($_POST['cost_price']) : 0.00;
+        $selling_price = isset($_POST['selling_price']) ? floatval($_POST['selling_price']) : (isset($_POST['unit_price']) ? floatval($_POST['unit_price']) : 0.00);
+        if ($cost_price < 0) $cost_price = 0.00;
+        if ($selling_price < 0) $selling_price = 0.00;
         $description = isset($_POST['description']) ? trim($_POST['description']) : '';
 
         if (empty($name)) {
@@ -226,14 +230,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             $stmt_in = $pdo->prepare("INSERT INTO support_inventory_items 
-                (item_code, name, category, description, image_path, quantity, min_threshold, unit_price, location, status, created_at, updated_at) 
-                VALUES (:code, :name, 'Hardware', :description, NULL, :qty, :min, 0.00, 'Main Storage', 'Active', :now, :now)");
+                (item_code, name, category, description, image_path, quantity, min_threshold, cost_price, selling_price, unit_price, location, status, created_at, updated_at) 
+                VALUES (:code, :name, 'Hardware', :description, NULL, :qty, :min, :cost, :price, :price, 'Main Storage', 'Active', :now, :now)");
             $stmt_in->execute(array(
                 ':code' => $item_code,
                 ':name' => $name,
                 ':description' => $description,
                 ':qty' => $quantity,
                 ':min' => $min_threshold,
+                ':cost' => $cost_price,
+                ':price' => $selling_price,
                 ':now' => $now
             ));
             $item_id = $pdo->lastInsertId();
@@ -340,6 +346,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $name = isset($_POST['name']) ? trim($_POST['name']) : '';
         $item_code = isset($_POST['item_code']) ? trim($_POST['item_code']) : '';
         $min_threshold = isset($_POST['min_threshold']) ? intval($_POST['min_threshold']) : 5;
+        $cost_price = isset($_POST['cost_price']) ? floatval($_POST['cost_price']) : 0.00;
+        $selling_price = isset($_POST['selling_price']) ? floatval($_POST['selling_price']) : (isset($_POST['unit_price']) ? floatval($_POST['unit_price']) : 0.00);
+        if ($cost_price < 0) $cost_price = 0.00;
+        if ($selling_price < 0) $selling_price = 0.00;
         $description = isset($_POST['description']) ? trim($_POST['description']) : '';
         $status = isset($_POST['status']) ? trim($_POST['status']) : 'Active';
 
@@ -352,12 +362,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $now = date('Y-m-d H:i:s');
             $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET 
                 item_code = :code, name = :name, min_threshold = :min, 
+                cost_price = :cost, selling_price = :selling, unit_price = :selling,
                 description = :description, 
                 status = :status, updated_at = :now WHERE id = :id");
             $stmt_up->execute(array(
                 ':code' => $item_code,
                 ':name' => $name,
                 ':min' => $min_threshold,
+                ':cost' => $cost_price,
+                ':selling' => $selling_price,
                 ':description' => $description,
                 ':status' => $status,
                 ':now' => $now,
@@ -431,9 +444,13 @@ if ($sort_by === 'qty_asc') {
 } elseif ($sort_by === 'qty_desc') {
     $order_by = "quantity DESC";
 } elseif ($sort_by === 'price_desc') {
-    $order_by = "unit_price DESC";
+    $order_by = "IF(selling_price > 0, selling_price, unit_price) DESC";
 } elseif ($sort_by === 'price_asc') {
-    $order_by = "unit_price ASC";
+    $order_by = "IF(selling_price > 0, selling_price, unit_price) ASC";
+} elseif ($sort_by === 'cost_desc') {
+    $order_by = "cost_price DESC";
+} elseif ($sort_by === 'cost_asc') {
+    $order_by = "cost_price ASC";
 } elseif ($sort_by === 'newest') {
     $order_by = "created_at DESC";
 }
@@ -448,11 +465,20 @@ $total_skus = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items")
 $total_units = intval($pdo->query("SELECT SUM(quantity) FROM support_inventory_items")->fetchColumn());
 $low_stock_count = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items WHERE quantity <= min_threshold AND quantity > 0")->fetchColumn());
 $out_of_stock_count = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items WHERE quantity = 0")->fetchColumn());
-$total_val_row = $pdo->query("SELECT SUM(quantity * unit_price) FROM support_inventory_items")->fetchColumn();
-$total_inventory_value = floatval($total_val_row ? $total_val_row : 0);
+
+// Materials Cost Valuation
+$total_cost_row = $pdo->query("SELECT SUM(quantity * cost_price) FROM support_inventory_items")->fetchColumn();
+$total_cost_valuation = floatval($total_cost_row ? $total_cost_row : 0);
+
+// Selling / Retail Valuation
+$total_val_row = $pdo->query("SELECT SUM(quantity * IF(selling_price > 0, selling_price, unit_price)) FROM support_inventory_items")->fetchColumn();
+$total_selling_valuation = floatval($total_val_row ? $total_val_row : 0);
+
+// Estimated Margin / Profit
+$total_inventory_profit = max(0, $total_selling_valuation - $total_cost_valuation);
 
 // Fetch all inventory items for quick dropdown selection in Pull Out Modal
-$stmt_all_inv = $pdo->query("SELECT id, item_code, name, quantity, min_threshold, status FROM support_inventory_items WHERE status = 'Active' ORDER BY name ASC");
+$stmt_all_inv = $pdo->query("SELECT id, item_code, name, quantity, min_threshold, cost_price, selling_price, unit_price, status FROM support_inventory_items WHERE status = 'Active' ORDER BY name ASC");
 $all_inventory_items = $stmt_all_inv ? $stmt_all_inv->fetchAll() : array();
 
 // Fetch Clients for Tagging in Pull-outs and Adjustments
@@ -615,44 +641,49 @@ $page_title = 'Hardware Inventory Hub';
                     </div>
                 </div>
 
-                <!-- Low Stock Alert -->
-                <a href="inventory.php?stock_status=low" class="bg-white hover:bg-amber-50/40 rounded-3xl p-5 sm:p-6 border border-slate-200 hover:border-amber-300 shadow-sm flex items-center justify-between transition-all group">
+                <!-- Materials Cost Valuation -->
+                <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm flex items-center justify-between">
                     <div class="space-y-1">
-                        <span class="text-xs font-bold text-amber-600 uppercase tracking-wider">Low Stock Warning</span>
-                        <h3 class="text-3xl font-extrabold text-amber-600 font-mono"><?php echo number_format($low_stock_count); ?></h3>
-                        <p class="text-[11px] text-slate-400 group-hover:text-amber-700">At or below threshold level</p>
+                        <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Materials Cost Value</span>
+                        <h3 class="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono truncate">₱<?php echo number_format($total_cost_valuation, 2); ?></h3>
+                        <p class="text-[11px] text-slate-400">Total capital purchase cost</p>
                     </div>
                     <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
                         </svg>
                     </div>
-                </a>
+                </div>
 
-                <!-- Out of Stock -->
-                <a href="inventory.php?stock_status=out" class="bg-white hover:bg-rose-50/40 rounded-3xl p-5 sm:p-6 border border-slate-200 hover:border-rose-300 shadow-sm flex items-center justify-between transition-all group">
-                    <div class="space-y-1">
-                        <span class="text-xs font-bold text-rose-600 uppercase tracking-wider">Out of Stock</span>
-                        <h3 class="text-3xl font-extrabold text-rose-600 font-mono"><?php echo number_format($out_of_stock_count); ?></h3>
-                        <p class="text-[11px] text-slate-400 group-hover:text-rose-700">Needs immediate replenishment</p>
-                    </div>
-                    <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-                        </svg>
-                    </div>
-                </a>
-
-                <!-- Total Valuation -->
+                <!-- Selling Valuation -->
                 <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm flex items-center justify-between">
                     <div class="space-y-1">
-                        <span class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Inventory Valuation</span>
-                        <h3 class="text-2xl sm:text-3xl font-extrabold text-emerald-700 font-mono truncate">₱<?php echo number_format($total_inventory_value, 2); ?></h3>
-                        <p class="text-[11px] text-slate-400">Total estimated asset value</p>
+                        <span class="text-xs font-bold text-emerald-600 uppercase tracking-wider">Selling / Retail Value</span>
+                        <h3 class="text-2xl sm:text-3xl font-extrabold text-emerald-700 font-mono truncate">₱<?php echo number_format($total_selling_valuation, 2); ?></h3>
+                        <p class="text-[11px] text-slate-400">Total client retail worth</p>
                     </div>
                     <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Estimated Gross Profit / Margin -->
+                <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm flex items-center justify-between">
+                    <div class="space-y-1">
+                        <span class="text-xs font-bold text-indigo-600 uppercase tracking-wider">Est. Gross Margin</span>
+                        <h3 class="text-2xl sm:text-3xl font-extrabold text-indigo-700 font-mono truncate">+₱<?php echo number_format($total_inventory_profit, 2); ?></h3>
+                        <p class="text-[11px] text-slate-400">
+                            <?php 
+                                $overall_margin = ($total_cost_valuation > 0) ? round(($total_inventory_profit / $total_cost_valuation) * 100, 1) : 0;
+                                echo $overall_margin . '% markup on inventory';
+                            ?>
+                        </p>
+                    </div>
+                    <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                         </svg>
                     </div>
                 </div>
@@ -662,7 +693,7 @@ $page_title = 'Hardware Inventory Hub';
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
                 <form method="GET" action="" class="grid grid-cols-1 sm:grid-cols-12 gap-3">
                     <!-- Search Input -->
-                    <div class="sm:col-span-6 relative">
+                    <div class="sm:col-span-5 relative">
                         <input type="text" name="search" value="<?php echo sanitize($search); ?>" placeholder="Search by hardware name, SKU, or description..." class="w-full bg-slate-50 text-slate-800 text-xs pl-10 pr-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all placeholder-slate-400">
                         <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -670,22 +701,36 @@ $page_title = 'Hardware Inventory Hub';
                     </div>
 
                     <!-- Stock Status Filter -->
-                    <div class="sm:col-span-4">
+                    <div class="sm:col-span-3">
                         <select name="stock_status" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all font-semibold">
                             <option value="" <?php echo empty($stock_status) ? 'selected' : ''; ?>>All Stock Levels</option>
                             <option value="in_stock" <?php echo ($stock_status === 'in_stock') ? 'selected' : ''; ?>>In Stock (Sufficient)</option>
-                            <option value="low" <?php echo ($stock_status === 'low') ? 'selected' : ''; ?>>Low Stock Warning</option>
-                            <option value="out" <?php echo ($stock_status === 'out') ? 'selected' : ''; ?>>Out of Stock</option>
+                            <option value="low" <?php echo ($stock_status === 'low') ? 'selected' : ''; ?>>Low Stock Warning (<?php echo $low_stock_count; ?>)</option>
+                            <option value="out" <?php echo ($stock_status === 'out') ? 'selected' : ''; ?>>Out of Stock (<?php echo $out_of_stock_count; ?>)</option>
+                        </select>
+                    </div>
+
+                    <!-- Sort Filter -->
+                    <div class="sm:col-span-3">
+                        <select name="sort" class="w-full bg-slate-50 text-slate-800 text-xs px-3.5 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all font-semibold">
+                            <option value="name_asc" <?php if ($sort_by === 'name_asc') echo 'selected'; ?>>Name (A - Z)</option>
+                            <option value="qty_desc" <?php if ($sort_by === 'qty_desc') echo 'selected'; ?>>Highest Quantity</option>
+                            <option value="qty_asc" <?php if ($sort_by === 'qty_asc') echo 'selected'; ?>>Lowest Quantity</option>
+                            <option value="price_desc" <?php if ($sort_by === 'price_desc') echo 'selected'; ?>>Highest Selling Price</option>
+                            <option value="price_asc" <?php if ($sort_by === 'price_asc') echo 'selected'; ?>>Lowest Selling Price</option>
+                            <option value="cost_desc" <?php if ($sort_by === 'cost_desc') echo 'selected'; ?>>Highest Materials Cost</option>
+                            <option value="cost_asc" <?php if ($sort_by === 'cost_asc') echo 'selected'; ?>>Lowest Materials Cost</option>
+                            <option value="newest" <?php if ($sort_by === 'newest') echo 'selected'; ?>>Newest Added</option>
                         </select>
                     </div>
 
                     <!-- Sort and Filter Submit Button -->
-                    <div class="sm:col-span-2 flex items-center gap-2">
-                        <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-4 rounded-2xl transition-all shadow-sm">
-                            Filter
+                    <div class="sm:col-span-1 flex items-center gap-1.5">
+                        <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-3 rounded-2xl transition-all shadow-sm">
+                            Go
                         </button>
-                        <?php if (!empty($search) || !empty($stock_status)): ?>
-                            <a href="inventory.php" class="p-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-xs font-bold transition-all" title="Reset Filters">
+                        <?php if (!empty($search) || !empty($stock_status) || $sort_by !== 'name_asc'): ?>
+                            <a href="inventory.php" class="p-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-xs font-bold transition-all flex items-center justify-center shrink-0" title="Reset Filters">
                                 &times;
                             </a>
                         <?php endif; ?>
@@ -710,8 +755,9 @@ $page_title = 'Hardware Inventory Hub';
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                                 <th class="py-3.5 px-6">Hardware Item & Code</th>
-                                <th class="py-3.5 px-6">Description / Remarks</th>
-                                <th class="py-3.5 px-6 text-center">In Stock / Threshold</th>
+                                <th class="py-3.5 px-6">Description / Specs</th>
+                                <th class="py-3.5 px-6">Pricing & Margins</th>
+                                <th class="py-3.5 px-6 text-center">In Stock / Min</th>
                                 <th class="py-3.5 px-6 text-center">Quick Adjust</th>
                                 <th class="py-3.5 px-6 text-right">Actions</th>
                             </tr>
@@ -719,7 +765,7 @@ $page_title = 'Hardware Inventory Hub';
                         <tbody class="divide-y divide-slate-100 font-medium">
                             <?php if (empty($items)): ?>
                                 <tr>
-                                    <td colspan="5" class="py-12 text-center text-slate-400 space-y-3">
+                                    <td colspan="6" class="py-12 text-center text-slate-400 space-y-3">
                                         <div class="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                                             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                                         </div>
@@ -731,6 +777,10 @@ $page_title = 'Hardware Inventory Hub';
                                 <?php foreach ($items as $item): 
                                     $qty = intval($item['quantity']);
                                     $min = intval($item['min_threshold']);
+                                    $cost = isset($item['cost_price']) ? floatval($item['cost_price']) : 0.00;
+                                    $selling = isset($item['selling_price']) && floatval($item['selling_price']) > 0 ? floatval($item['selling_price']) : floatval($item['unit_price']);
+                                    $profit_unit = $selling - $cost;
+                                    $margin_pct = ($cost > 0) ? round(($profit_unit / $cost) * 100, 1) : 0;
                                     
                                     // Status Badge styling
                                     if ($qty == 0) {
@@ -773,6 +823,28 @@ $page_title = 'Hardware Inventory Hub';
                                             <?php else: ?>
                                                 <span class="text-slate-400 italic text-[11px]">No remarks</span>
                                             <?php endif; ?>
+                                        </td>
+
+                                        <!-- Pricing & Margins -->
+                                        <td class="py-4 px-6 min-w-[170px]">
+                                            <div class="space-y-1">
+                                                <div class="flex items-center justify-between text-xs gap-2">
+                                                    <span class="text-slate-400 font-medium">Cost:</span>
+                                                    <span class="font-mono font-bold text-slate-800">₱<?php echo number_format($cost, 2); ?></span>
+                                                </div>
+                                                <div class="flex items-center justify-between text-xs gap-2">
+                                                    <span class="text-slate-400 font-medium">Selling:</span>
+                                                    <span class="font-mono font-extrabold text-emerald-600">₱<?php echo number_format($selling, 2); ?></span>
+                                                </div>
+                                                <?php if ($selling > 0 && $cost > 0): ?>
+                                                    <div class="flex items-center justify-between text-[10px] border-t border-slate-100 pt-0.5 font-mono">
+                                                        <span class="text-slate-400">Margin:</span>
+                                                        <span class="<?php echo $profit_unit >= 0 ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'; ?>">
+                                                            <?php echo ($profit_unit >= 0 ? '+' : '') . '₱' . number_format($profit_unit, 2); ?> (<?php echo $margin_pct; ?>%)
+                                                        </span>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
                                         </td>
 
                                         <!-- Current Quantity & Threshold -->
@@ -916,15 +988,24 @@ $page_title = 'Hardware Inventory Hub';
                 <label class="text-xs font-bold text-slate-700">Hardware Item <span class="text-[#EB3E0B]">*</span></label>
                 <select name="item_id" id="pullout_item_id" required onchange="updatePullOutItem(this)" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-semibold">
                     <option value="">-- Choose Hardware Item --</option>
-                    <?php foreach ($all_inventory_items as $inv_item): ?>
-                        <option value="<?php echo $inv_item['id']; ?>" data-name="<?php echo sanitize($inv_item['name']); ?>" data-code="<?php echo sanitize($inv_item['item_code']); ?>" data-qty="<?php echo $inv_item['quantity']; ?>">
-                            <?php echo sanitize($inv_item['name'] . ' (' . $inv_item['item_code'] . ') — Stock: ' . $inv_item['quantity'] . ' units'); ?>
+                    <?php foreach ($all_inventory_items as $inv_item): 
+                        $item_cost = isset($inv_item['cost_price']) ? floatval($inv_item['cost_price']) : 0.00;
+                        $item_price = isset($inv_item['selling_price']) && floatval($inv_item['selling_price']) > 0 ? floatval($inv_item['selling_price']) : floatval($inv_item['unit_price']);
+                    ?>
+                        <option value="<?php echo $inv_item['id']; ?>" 
+                                data-name="<?php echo sanitize($inv_item['name']); ?>" 
+                                data-code="<?php echo sanitize($inv_item['item_code']); ?>" 
+                                data-qty="<?php echo $inv_item['quantity']; ?>"
+                                data-cost="<?php echo $item_cost; ?>"
+                                data-price="<?php echo $item_price; ?>">
+                            <?php echo sanitize($inv_item['name'] . ' (' . $inv_item['item_code'] . ') — ' . $inv_item['quantity'] . ' in stock [Cost: ₱' . number_format($item_cost, 2) . ' | Sell: ₱' . number_format($item_price, 2) . ']'); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
-                <div id="pullout_item_info" class="hidden text-[11px] font-mono text-slate-500 pt-1 flex items-center justify-between">
+                <div id="pullout_item_info" class="hidden text-[11px] font-mono text-slate-500 pt-1 flex flex-wrap items-center justify-between gap-1">
                     <span>Selected: <strong id="pullout_item_name_text" class="text-slate-800 font-sans"></strong></span>
-                    <span>In Stock: <strong id="pullout_item_qty_text" class="text-amber-700"></strong> units</span>
+                    <span id="pullout_item_pricing_text" class="text-slate-600"></span>
+                    <span>Stock: <strong id="pullout_item_qty_text" class="text-amber-700"></strong> units</span>
                 </div>
             </div>
 
@@ -1080,6 +1161,30 @@ $page_title = 'Hardware Inventory Hub';
                 <div class="sm:col-span-2 space-y-1">
                     <label class="text-xs font-bold text-slate-700">SKU / Item Code</label>
                     <input type="text" name="item_code" placeholder="e.g., HW-PRN-80 (Auto if blank)" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono uppercase">
+                </div>
+
+                <!-- Materials Cost Price -->
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-700 flex items-center justify-between">
+                        <span>Materials Cost Price (₱)</span>
+                        <span class="text-[10px] text-slate-400 font-normal">Capital / Purchase</span>
+                    </label>
+                    <input type="number" name="cost_price" id="add_cost_price" step="0.01" min="0" value="0.00" oninput="calculateAddMargin()" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono">
+                </div>
+
+                <!-- Selling Price -->
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-700 flex items-center justify-between">
+                        <span>Selling / SRP Price (₱)</span>
+                        <span class="text-[10px] text-emerald-600 font-semibold">Client / Retail</span>
+                    </label>
+                    <input type="number" name="selling_price" id="add_selling_price" step="0.01" min="0" value="0.00" oninput="calculateAddMargin()" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono">
+                </div>
+
+                <!-- Profit / Margin Indicator -->
+                <div class="sm:col-span-2 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs">
+                    <span class="text-slate-500 font-medium">Estimated Markup & Unit Margin:</span>
+                    <span id="add_margin_preview" class="font-mono font-bold text-slate-700">₱0.00 (0.0%)</span>
                 </div>
 
                 <!-- Initial Quantity -->
@@ -1301,6 +1406,30 @@ $page_title = 'Hardware Inventory Hub';
                     <input type="text" name="item_code" id="edit_item_code" required class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono uppercase">
                 </div>
 
+                <!-- Materials Cost Price -->
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-700 flex items-center justify-between">
+                        <span>Materials Cost Price (₱)</span>
+                        <span class="text-[10px] text-slate-400 font-normal">Capital / Purchase</span>
+                    </label>
+                    <input type="number" name="cost_price" id="edit_cost_price" step="0.01" min="0" oninput="calculateEditMargin()" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono">
+                </div>
+
+                <!-- Selling Price -->
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-700 flex items-center justify-between">
+                        <span>Selling / SRP Price (₱)</span>
+                        <span class="text-[10px] text-emerald-600 font-semibold">Client / Retail</span>
+                    </label>
+                    <input type="number" name="selling_price" id="edit_selling_price" step="0.01" min="0" oninput="calculateEditMargin()" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-mono">
+                </div>
+
+                <!-- Profit / Margin Indicator -->
+                <div class="sm:col-span-2 p-2.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between text-xs">
+                    <span class="text-slate-500 font-medium">Estimated Markup & Unit Margin:</span>
+                    <span id="edit_margin_preview" class="font-mono font-bold text-slate-700">₱0.00 (0.0%)</span>
+                </div>
+
                 <!-- Minimum Threshold -->
                 <div class="space-y-1">
                     <label class="text-xs font-bold text-slate-700">Min Alert Threshold</label>
@@ -1520,8 +1649,16 @@ function updatePullOutItem(sel) {
     if (opt && opt.value) {
         var name = opt.getAttribute('data-name') || '';
         var qty = opt.getAttribute('data-qty') || '0';
+        var cost = parseFloat(opt.getAttribute('data-cost') || 0);
+        var price = parseFloat(opt.getAttribute('data-price') || 0);
+        
         document.getElementById('pullout_item_name_text').textContent = name;
         document.getElementById('pullout_item_qty_text').textContent = qty;
+        
+        var pricingEl = document.getElementById('pullout_item_pricing_text');
+        if (pricingEl) {
+            pricingEl.textContent = 'Cost: ₱' + cost.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' | Sell: ₱' + price.toLocaleString('en-US', {minimumFractionDigits: 2});
+        }
         if (infoBox) infoBox.classList.remove('hidden');
     } else {
         if (infoBox) infoBox.classList.add('hidden');
@@ -1536,8 +1673,38 @@ function updatePullOutClient(sel) {
     document.getElementById('pullout_client_address').value = address;
 }
 
+// Real-time Profit & Margin Calculators
+function calculateAddMargin() {
+    var cost = parseFloat(document.getElementById('add_cost_price').value) || 0;
+    var sell = parseFloat(document.getElementById('add_selling_price').value) || 0;
+    var profit = sell - cost;
+    var pct = cost > 0 ? ((profit / cost) * 100).toFixed(1) : (sell > 0 ? '100.0' : '0.0');
+    var label = (profit >= 0 ? '+' : '') + '₱' + profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' (' + pct + '%)';
+    
+    var el = document.getElementById('add_margin_preview');
+    if (el) {
+        el.textContent = label;
+        el.className = profit >= 0 ? 'font-mono font-bold text-emerald-700' : 'font-mono font-bold text-rose-600';
+    }
+}
+
+function calculateEditMargin() {
+    var cost = parseFloat(document.getElementById('edit_cost_price').value) || 0;
+    var sell = parseFloat(document.getElementById('edit_selling_price').value) || 0;
+    var profit = sell - cost;
+    var pct = cost > 0 ? ((profit / cost) * 100).toFixed(1) : (sell > 0 ? '100.0' : '0.0');
+    var label = (profit >= 0 ? '+' : '') + '₱' + profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' (' + pct + '%)';
+    
+    var el = document.getElementById('edit_margin_preview');
+    if (el) {
+        el.textContent = label;
+        el.className = profit >= 0 ? 'font-mono font-bold text-emerald-700' : 'font-mono font-bold text-rose-600';
+    }
+}
+
 // Modal Handlers
 function openAddItemModal() {
+    calculateAddMargin();
     var m = document.getElementById('addItemModal');
     if (m) {
         m.classList.remove('hidden');
@@ -1584,9 +1751,14 @@ function openEditModal(item) {
     document.getElementById('edit_item_id').value = item.id;
     document.getElementById('edit_name').value = item.name || '';
     document.getElementById('edit_item_code').value = item.item_code || '';
+    document.getElementById('edit_cost_price').value = item.cost_price ? parseFloat(item.cost_price).toFixed(2) : '0.00';
+    var sellPrice = (item.selling_price && parseFloat(item.selling_price) > 0) ? item.selling_price : (item.unit_price || 0.00);
+    document.getElementById('edit_selling_price').value = parseFloat(sellPrice).toFixed(2);
     document.getElementById('edit_min_threshold').value = item.min_threshold || 5;
     document.getElementById('edit_status').value = item.status || 'Active';
     document.getElementById('edit_description').value = item.description || '';
+
+    calculateEditMargin();
 
     var m = document.getElementById('editModal');
     if (m) {
