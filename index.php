@@ -157,13 +157,19 @@ $page_title = 'Dashboard';
                         Welcome back, <?php echo sanitize($client['tradename']); ?>!
                     </h2>
                 </div>
-                <div class="relative z-10 flex shrink-0 space-x-3">
-                    <button onclick="openNewTicketModal()" class="bg-[#EB3E0B] hover:bg-[#FC884D] text-white font-semibold text-xs sm:text-sm px-5 py-3 rounded-full shadow-lg shadow-[#EB3E0B]/30 transition-all active:scale-95 flex items-center space-x-2">
+                <div class="relative z-10 flex flex-wrap gap-2.5">
+                    <a href="hardware.php" class="bg-[#EB3E0B] hover:bg-[#FC884D] text-white font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-full shadow-lg shadow-[#EB3E0B]/30 transition-all active:scale-95 flex items-center space-x-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
                         </svg>
-                        <span>Create Support Ticket</span>
-                    </button>
+                        <span>Hardware Devices</span>
+                    </a>
+                    <a href="software.php" class="bg-white/15 hover:bg-white/25 text-white font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-full backdrop-blur-md border border-white/20 transition-all active:scale-95 flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                        </svg>
+                        <span>Software Issues</span>
+                    </a>
                 </div>
             </div>
 
@@ -333,10 +339,15 @@ $page_title = 'Dashboard';
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2 2 2 0 010 4 2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 00-2-2 2 2 0 010-4 2 2 0 002-2V7a2 2 0 00-2-2H5z"/>
                                 </svg>
                                 <p class="text-sm font-bold text-[#430D07]">No support tickets yet</p>
-                                <p class="text-xs text-[#7C2112] mt-1 mb-4">Need help with your software or POS system?</p>
-                                <button onclick="openNewTicketModal()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-semibold text-xs px-4 py-2 rounded-full transition-all">
-                                    Submit First Ticket
-                                </button>
+                                <p class="text-xs text-[#7C2112] mt-1 mb-4">Select your issue category to troubleshoot or request assistance:</p>
+                                <div class="flex items-center justify-center gap-2">
+                                    <a href="hardware.php" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-semibold text-xs px-4 py-2 rounded-full transition-all">
+                                        Hardware Support
+                                    </a>
+                                    <a href="software.php" class="bg-[#FFE8D5] hover:bg-[#FECDAA] text-[#7C2112] font-semibold text-xs px-4 py-2 rounded-full transition-all">
+                                        Software Issues
+                                    </a>
+                                </div>
                             </div>
                         <?php else: ?>
                             <div class="overflow-x-auto">

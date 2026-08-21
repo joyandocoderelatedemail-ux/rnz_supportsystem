@@ -22,3 +22,7 @@ RNZWEBSITE/videos/
 **/caferesto.sql
 RNZWEBSITE/IMAGES/caferesto.sql
 IMAGES/caferesto.sql
+
+# User uploads
+uploads/ticket_attachments/*
+!uploads/ticket_attachments/.gitkeep

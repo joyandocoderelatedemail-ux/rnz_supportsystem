@@ -266,10 +266,14 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                                 </svg>
                                 <span>Choose Photos</span>
-                                <input type="file" name="attachments[]" id="chatPhotoInput" accept="image/*" multiple class="hidden" onchange="previewChatPhotos(this)">
+                                <input type="file" name="attachments[]" id="chatPhotoInput" accept=".png, .jpg, .jpeg, image/png, image/jpeg" multiple class="hidden" onchange="previewChatPhotos(this)">
                             </label>
                             <span id="chatPhotoName" class="text-xs text-[#7C2112] truncate max-w-[220px]">No photos chosen</span>
                         </div>
+                        <p class="text-[11px] text-[#7C2112] mt-1.5 font-medium flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5 text-[#EB3E0B] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span><strong class="text-[#EB3E0B]">Allowed formats:</strong> <strong class="text-[#430D07]">PNG, JPG, JPEG only</strong> (Max 15MB each)</span>
+                        </p>
                         <div id="chatPhotoPreviewBox" class="hidden mt-3 space-y-2">
                             <div class="flex items-center justify-between">
                                 <span id="chatPhotoCount" class="text-[11px] font-bold text-[#EB3E0B]">0 photos selected</span>
@@ -315,6 +319,22 @@ function previewChatPhotos(input) {
     var countEl = document.getElementById('chatPhotoCount');
 
     if (!input.files || input.files.length === 0) {
+        clearChatPhotos();
+        return;
+    }
+
+    var validExts = ['png', 'jpg', 'jpeg'];
+    var invalidFiles = [];
+    for (var f = 0; f < input.files.length; f++) {
+        var file = input.files[f];
+        var ext = file.name.split('.').pop().toLowerCase();
+        if (validExts.indexOf(ext) === -1) {
+            invalidFiles.push(file.name);
+        }
+    }
+
+    if (invalidFiles.length > 0) {
+        alert('Invalid photo format: ' + invalidFiles.join(', ') + '\n\nOnly PNG, JPG, and JPEG photos are allowed. Please convert or choose supported image files.');
         clearChatPhotos();
         return;
     }

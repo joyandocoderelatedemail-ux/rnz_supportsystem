@@ -156,7 +156,7 @@ function upload_ticket_photos($file_key = 'attachments', $subdir = 'ticket_attac
         @mkdir($upload_dir, 0777, true);
     }
 
-    $allowed_exts = array('jpg', 'jpeg', 'png', 'webp', 'gif');
+    $allowed_exts = array('jpg', 'jpeg', 'png');
     $saved_paths = array();
 
     // Check if multiple files were uploaded (name is array)
