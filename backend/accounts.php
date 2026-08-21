@@ -171,6 +171,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $unit_price = isset($_POST['unit_price']) ? floatval($_POST['unit_price']) : 0;
             $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
             if ($quantity < 1) $quantity = 1;
+            $w_status = (isset($_POST['warranty_status']) && $_POST['warranty_status'] === 'Active') ? 'Active' : 'Inactive';
+            $w_start = isset($_POST['warranty_start']) && !empty($_POST['warranty_start']) ? trim($_POST['warranty_start']) : null;
+            $w_expiry = isset($_POST['warranty_expiry']) && !empty($_POST['warranty_expiry']) ? trim($_POST['warranty_expiry']) : null;
+            $w_notes = isset($_POST['warranty_notes']) ? trim($_POST['warranty_notes']) : '';
 
             $item_id = null;
             $item_code = null;
@@ -213,10 +217,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                     $stmt_asset = $pdo->prepare("INSERT INTO client_assets 
                         (accountnum, asset_type, item_id, item_code, name, serial_number, quantity, 
-                         unit_price, total_amount, notes, recorded_by, created_at, updated_at) 
+                         unit_price, total_amount, notes, warranty_status, warranty_start, warranty_expiry, warranty_notes, 
+                         recorded_by, created_at, updated_at) 
                         VALUES 
                         (:acct, :atype, :iid, :icode, :name, :serial, :qty, 
-                         :price, :total, :notes, :by, :created, :updated)");
+                         :price, :total, :notes, :w_status, :w_start, :w_expiry, :w_notes, 
+                         :by, :created, :updated)");
 
                     $stmt_asset->execute(array(
                         ':acct' => $accountnum,
@@ -229,6 +235,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         ':price' => $unit_price,
                         ':total' => ($unit_price * $quantity),
                         ':notes' => $notes,
+                        ':w_status' => $w_status,
+                        ':w_start' => $w_start,
+                        ':w_expiry' => $w_expiry,
+                        ':w_notes' => $w_notes,
                         ':by' => $recorded_by,
                         ':created' => $now,
                         ':updated' => $now
@@ -237,6 +247,120 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $update_msg = "$asset_type \"$asset_name\" recorded for Account #$accountnum.";
                 } catch (PDOException $e) {
                     $update_error = "Error saving item: " . $e->getMessage();
+                }
+            }
+        } elseif ($action === 'update_client_asset') {
+            $asset_id = isset($_POST['asset_id']) ? intval($_POST['asset_id']) : 0;
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $serial_number = isset($_POST['serial_number']) ? trim($_POST['serial_number']) : '';
+            $notes = isset($_POST['notes']) ? trim($_POST['notes']) : '';
+            $unit_price = isset($_POST['unit_price']) ? floatval($_POST['unit_price']) : 0;
+            $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
+            if ($quantity < 1) $quantity = 1;
+            $w_status = (isset($_POST['warranty_status']) && $_POST['warranty_status'] === 'Active') ? 'Active' : 'Inactive';
+            $w_start = isset($_POST['warranty_start']) && !empty($_POST['warranty_start']) ? trim($_POST['warranty_start']) : null;
+            $w_expiry = isset($_POST['warranty_expiry']) && !empty($_POST['warranty_expiry']) ? trim($_POST['warranty_expiry']) : null;
+            $w_notes = isset($_POST['warranty_notes']) ? trim($_POST['warranty_notes']) : '';
+
+            if ($asset_id < 1) {
+                $update_error = "No item selected to edit.";
+            } else {
+                try {
+                    // Scope the lookup to the account so one client's id cannot touch another's record
+                    $stmt_cur = $pdo->prepare("SELECT * FROM client_assets WHERE id = :id AND accountnum = :acct LIMIT 1");
+                    $stmt_cur->execute(array(':id' => $asset_id, ':acct' => $accountnum));
+                    $current = $stmt_cur->fetch();
+
+                    if (!$current) {
+                        $update_error = "That item no longer exists for this account.";
+                    } else {
+                        $asset_name = $current['name'];
+                        $item_id = $current['item_id'];
+                        $item_code = $current['item_code'];
+
+                        if ($current['asset_type'] === 'Software') {
+                            $asset_name = isset($_POST['software_name']) ? trim($_POST['software_name']) : '';
+                            $quantity = 1;
+                            $serial_number = '';
+                        } else {
+                            $new_item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
+                            if ($new_item_id > 0) {
+                                $stmt_item = $pdo->prepare("SELECT id, item_code, name FROM support_inventory_items WHERE id = :id LIMIT 1");
+                                $stmt_item->execute(array(':id' => $new_item_id));
+                                $inv_item = $stmt_item->fetch();
+                                if ($inv_item) {
+                                    $item_id = $inv_item['id'];
+                                    $item_code = $inv_item['item_code'];
+                                    $asset_name = $inv_item['name'];
+                                }
+                            }
+                        }
+
+                        if ($current['asset_type'] === 'Software' && $asset_name === '') {
+                            $update_error = "Please enter the software name.";
+                        } else {
+                            $stmt_up = $pdo->prepare("UPDATE client_assets
+                                SET item_id = :iid,
+                                    item_code = :icode,
+                                    name = :name,
+                                    serial_number = :serial,
+                                    quantity = :qty,
+                                    unit_price = :price,
+                                    total_amount = :total,
+                                    notes = :notes,
+                                    warranty_status = :w_status,
+                                    warranty_start = :w_start,
+                                    warranty_expiry = :w_expiry,
+                                    warranty_notes = :w_notes,
+                                    updated_at = :updated
+                                WHERE id = :id AND accountnum = :acct");
+
+                            $stmt_up->execute(array(
+                                ':iid' => $item_id,
+                                ':icode' => $item_code,
+                                ':name' => $asset_name,
+                                ':serial' => $serial_number,
+                                ':qty' => $quantity,
+                                ':price' => $unit_price,
+                                ':total' => ($unit_price * $quantity),
+                                ':notes' => $notes,
+                                ':w_status' => $w_status,
+                                ':w_start' => $w_start,
+                                ':w_expiry' => $w_expiry,
+                                ':w_notes' => $w_notes,
+                                ':updated' => date('Y-m-d H:i:s'),
+                                ':id' => $asset_id,
+                                ':acct' => $accountnum
+                            ));
+
+                            $update_msg = "\"$asset_name\" updated successfully.";
+                        }
+                    }
+                } catch (PDOException $e) {
+                    $update_error = "Error updating item: " . $e->getMessage();
+                }
+            }
+        } elseif ($action === 'delete_client_asset') {
+            $asset_id = isset($_POST['asset_id']) ? intval($_POST['asset_id']) : 0;
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+
+            if ($asset_id < 1) {
+                $update_error = "No item selected to delete.";
+            } else {
+                try {
+                    $stmt_cur = $pdo->prepare("SELECT name FROM client_assets WHERE id = :id AND accountnum = :acct LIMIT 1");
+                    $stmt_cur->execute(array(':id' => $asset_id, ':acct' => $accountnum));
+                    $current = $stmt_cur->fetch();
+
+                    if (!$current) {
+                        $update_error = "That item no longer exists for this account.";
+                    } else {
+                        $stmt_del = $pdo->prepare("DELETE FROM client_assets WHERE id = :id AND accountnum = :acct");
+                        $stmt_del->execute(array(':id' => $asset_id, ':acct' => $accountnum));
+                        $update_msg = "\"" . $current['name'] . "\" removed from this account.";
+                    }
+                } catch (PDOException $e) {
+                    $update_error = "Error deleting item: " . $e->getMessage();
                 }
             }
         } elseif ($action === 'create_workorder') {
@@ -329,7 +453,7 @@ $active_tab = isset($_GET['tab']) ? trim($_GET['tab']) : 'logs';
 if (isset($_POST['action']) && in_array($_POST['action'], array('create_workorder', 'update_workorder', 'delete_workorder'))) {
     $active_tab = 'orders';
 }
-if (isset($_POST['action']) && $_POST['action'] === 'add_client_asset') {
+if (isset($_POST['action']) && in_array($_POST['action'], array('add_client_asset', 'update_client_asset', 'delete_client_asset'))) {
     $active_tab = 'assets';
 }
 
@@ -1140,13 +1264,15 @@ $page_title = 'Manage Accounts';
                                             <th class="py-3 px-4 text-center">Qty</th>
                                             <th class="py-3 px-4 text-right">Unit Price</th>
                                             <th class="py-3 px-4 text-right">Total</th>
+                                            <th class="py-3 px-4">Warranty</th>
                                             <th class="py-3 px-4">Recorded</th>
+                                            <th class="py-3 px-4 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-100 font-medium">
                                         <?php if (empty($client_assets)): ?>
                                             <tr>
-                                                <td colspan="7" class="py-8 text-center text-slate-400">
+                                                <td colspan="9" class="py-8 text-center text-slate-400">
                                                     No software or hardware recorded for this account yet.
                                                 </td>
                                             </tr>
@@ -1175,10 +1301,56 @@ $page_title = 'Manage Accounts';
                                                     <td class="py-3 px-4 text-center font-mono font-bold text-slate-800"><?php echo intval($ca['quantity']); ?></td>
                                                     <td class="py-3 px-4 text-right font-mono text-slate-600">&#8369;<?php echo number_format($ca['unit_price'], 2); ?></td>
                                                     <td class="py-3 px-4 text-right font-mono font-bold text-slate-900">&#8369;<?php echo number_format($ca['total_amount'], 2); ?></td>
+                                                    <td class="py-3 px-4">
+                                                        <?php
+                                                        $ca_today   = strtotime(date('Y-m-d'));
+                                                        $ca_expired = (!empty($ca['warranty_expiry']) && strtotime($ca['warranty_expiry']) < $ca_today);
+                                                        $ca_pending = (!empty($ca['warranty_start']) && strtotime($ca['warranty_start']) > $ca_today);
+                                                        ?>
+                                                        <?php if ($ca['warranty_status'] === 'Active' && $ca_expired): ?>
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200">Expired</span>
+                                                        <?php elseif ($ca['warranty_status'] === 'Active' && $ca_pending): ?>
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-300">Not Yet Started</span>
+                                                        <?php elseif ($ca['warranty_status'] === 'Active'): ?>
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">Under Warranty</span>
+                                                        <?php else: ?>
+                                                            <span class="text-[11px] text-slate-400">No warranty</span>
+                                                        <?php endif; ?>
+
+                                                        <?php if ($ca['warranty_status'] === 'Active' && (!empty($ca['warranty_start']) || !empty($ca['warranty_expiry']))): ?>
+                                                            <span class="block text-[11px] text-slate-500 font-mono mt-0.5">
+                                                                <?php echo !empty($ca['warranty_start']) ? format_date_only($ca['warranty_start']) : '&mdash;'; ?>
+                                                                &rarr;
+                                                                <?php echo !empty($ca['warranty_expiry']) ? format_date_only($ca['warranty_expiry']) : '&mdash;'; ?>
+                                                            </span>
+                                                        <?php endif; ?>
+
+                                                        <?php if (!empty($ca['warranty_notes'])): ?>
+                                                            <span class="block text-[11px] text-slate-500 mt-0.5"><?php echo sanitize($ca['warranty_notes']); ?></span>
+                                                        <?php endif; ?>
+                                                    </td>
                                                     <td class="py-3 px-4 text-slate-500 whitespace-nowrap">
                                                         <span class="block"><?php echo format_date($ca['created_at']); ?></span>
                                                         <?php if (!empty($ca['recorded_by'])): ?>
                                                             <span class="text-[11px] text-slate-400">by <?php echo sanitize($ca['recorded_by']); ?></span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-right whitespace-nowrap">
+                                                        <?php if ($my_tier >= 2): ?>
+                                                            <button type="button"
+                                                                    onclick='openEditAssetModal(<?php echo htmlspecialchars(json_encode($ca), ENT_QUOTES, "UTF-8"); ?>)'
+                                                                    class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-800 text-slate-600 hover:text-white border border-slate-200 font-bold text-[11px] transition-colors"
+                                                                    title="Edit this item">
+                                                                Edit
+                                                            </button>
+                                                            <button type="button"
+                                                                    onclick='openDeleteAssetModal(<?php echo intval($ca["id"]); ?>, <?php echo htmlspecialchars(json_encode($ca["name"]), ENT_QUOTES, "UTF-8"); ?>)'
+                                                                    class="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 font-bold text-[11px] transition-colors"
+                                                                    title="Delete this item">
+                                                                Delete
+                                                            </button>
+                                                        <?php else: ?>
+                                                            <span class="text-[11px] text-slate-300">View only</span>
                                                         <?php endif; ?>
                                                     </td>
                                                 </tr>
@@ -1272,6 +1444,38 @@ $page_title = 'Manage Accounts';
                                 <textarea name="notes" rows="2" placeholder="Optional remarks" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-blue-500 focus:outline-none transition-all"></textarea>
                             </div>
 
+                            <div class="pt-4 border-t border-slate-100 space-y-4">
+                                <div class="flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                                    <p class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Item Warranty</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Status</label>
+                                    <select name="warranty_status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                        <option value="Inactive" selected>No Warranty</option>
+                                        <option value="Active">Under Warranty</option>
+                                    </select>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Start</label>
+                                        <input type="date" name="warranty_start" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Expiry</label>
+                                        <input type="date" name="warranty_expiry" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Notes</label>
+                                    <textarea name="warranty_notes" rows="2" placeholder="e.g. 1 year parts and service" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all"></textarea>
+                                </div>
+                            </div>
+
                             <?php if ($my_tier === 2): ?>
                                 <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
                                     <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
@@ -1360,6 +1564,38 @@ $page_title = 'Manage Accounts';
                                     <textarea name="notes" rows="2" placeholder="Optional remarks" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-amber-500 focus:outline-none transition-all"></textarea>
                                 </div>
 
+                                <div class="pt-4 border-t border-slate-100 space-y-4">
+                                    <div class="flex items-center space-x-2">
+                                        <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                                        <p class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Item Warranty</p>
+                                    </div>
+    
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Status</label>
+                                        <select name="warranty_status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                            <option value="Inactive" selected>No Warranty</option>
+                                            <option value="Active">Under Warranty</option>
+                                        </select>
+                                    </div>
+    
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Start</label>
+                                            <input type="date" name="warranty_start" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                        </div>
+    
+                                        <div>
+                                            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Expiry</label>
+                                            <input type="date" name="warranty_expiry" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                        </div>
+                                    </div>
+    
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Notes</label>
+                                        <textarea name="warranty_notes" rows="2" placeholder="e.g. 1 year parts and service" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all"></textarea>
+                                    </div>
+                                </div>
+    
                                 <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
                                     <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">Total</span>
                                     <span id="hardware_total" class="text-lg font-extrabold text-[#EB3E0B] font-mono">&#8369;0.00</span>
@@ -1425,6 +1661,243 @@ $page_title = 'Manage Accounts';
                     if (isNaN(price) || price < 0) price = 0;
                     var out = document.getElementById('hardware_total');
                     if (out) out.textContent = '₱' + (qty * price).toFixed(2);
+                }
+                </script>
+
+                <!-- EDIT CLIENT ASSET MODAL -->
+                <div id="editAssetModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto">
+                        <button onclick="closeEditAssetModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 mb-6">
+                            <div class="w-10 h-10 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center shadow-sm">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Edit Item</h3>
+                                <p class="text-xs text-slate-500">Editing <span id="edit_asset_kind" class="font-bold">item</span> on Account #<?php echo sanitize($client_acct); ?></p>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=assets" method="POST" class="space-y-4">
+                            <input type="hidden" name="action" value="update_client_asset">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                            <input type="hidden" name="asset_id" id="edit_asset_id" value="">
+
+                            <!-- Software-only field -->
+                            <div id="edit_software_fields" class="hidden">
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Software Name *</label>
+                                <input type="text" name="software_name" id="edit_software_name" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-blue-500 focus:outline-none transition-all">
+                            </div>
+
+                            <!-- Hardware-only fields -->
+                            <div id="edit_hardware_fields" class="hidden space-y-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Hardware Type *</label>
+                                    <select name="item_id" id="edit_item_id" onchange="onEditHardwareItemChange()" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-amber-500 focus:outline-none transition-all">
+                                        <option value="">-- Select hardware from inventory --</option>
+                                        <?php foreach ($inventory_items as $inv): ?>
+                                            <?php $inv_price = ($inv['selling_price'] > 0) ? $inv['selling_price'] : $inv['unit_price']; ?>
+                                            <option value="<?php echo intval($inv['id']); ?>" data-price="<?php echo sanitize($inv_price); ?>">
+                                                <?php echo sanitize($inv['name']); ?> (<?php echo sanitize($inv['item_code']); ?>) &mdash; <?php echo intval($inv['quantity']); ?> in stock
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Serial Number</label>
+                                    <input type="text" name="serial_number" id="edit_serial_number" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-amber-500 focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div id="edit_qty_wrap">
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Quantity *</label>
+                                    <input type="number" min="1" step="1" name="quantity" id="edit_quantity" value="1" oninput="updateEditTotal()" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Unit Price</label>
+                                    <input type="number" step="0.01" min="0" name="unit_price" id="edit_unit_price" value="0.00" oninput="updateEditTotal()" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Notes</label>
+                                <textarea name="notes" id="edit_notes" rows="2" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                            </div>
+
+                            <div class="pt-4 border-t border-slate-100 space-y-4">
+                                <div class="flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                                    <p class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">Item Warranty</p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Status</label>
+                                    <select name="warranty_status" id="edit_warranty_status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                        <option value="Inactive">No Warranty</option>
+                                        <option value="Active">Under Warranty</option>
+                                    </select>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Start</label>
+                                        <input type="date" name="warranty_start" id="edit_warranty_start" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Expiry</label>
+                                        <input type="date" name="warranty_expiry" id="edit_warranty_expiry" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Warranty Notes</label>
+                                    <textarea name="warranty_notes" id="edit_warranty_notes" rows="2" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                                <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">Total</span>
+                                <span id="edit_total" class="text-lg font-extrabold text-[#EB3E0B] font-mono">&#8369;0.00</span>
+                            </div>
+
+                            <?php if ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="pt-4 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeEditAssetModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">Save Changes</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- DELETE CLIENT ASSET CONFIRM MODAL -->
+                <div id="deleteAssetModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn">
+                        <div class="flex items-center space-x-3 mb-4">
+                            <div class="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shadow-sm">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Delete Item</h3>
+                                <p class="text-xs text-slate-500">This cannot be undone.</p>
+                            </div>
+                        </div>
+
+                        <p class="text-xs text-slate-600 mb-6">
+                            Remove <strong id="delete_asset_name" class="text-slate-900"></strong> from this client's records?
+                        </p>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=assets" method="POST" class="space-y-4">
+                            <input type="hidden" name="action" value="delete_client_asset">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                            <input type="hidden" name="asset_id" id="delete_asset_id" value="">
+
+                            <?php if ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="flex items-center justify-end space-x-3">
+                                <button type="button" onclick="closeDeleteAssetModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                                <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">Delete Item</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <script>
+                function openEditAssetModal(asset) {
+                    var isSoftware = (asset.asset_type === 'Software');
+
+                    document.getElementById('edit_asset_id').value = asset.id;
+                    document.getElementById('edit_asset_kind').textContent = isSoftware ? 'software' : 'hardware';
+                    document.getElementById('edit_unit_price').value = parseFloat(asset.unit_price || 0).toFixed(2);
+                    document.getElementById('edit_quantity').value = parseInt(asset.quantity, 10) || 1;
+                    document.getElementById('edit_notes').value = asset.notes || '';
+                    document.getElementById('edit_warranty_status').value = (asset.warranty_status === 'Active') ? 'Active' : 'Inactive';
+                    document.getElementById('edit_warranty_start').value = asset.warranty_start || '';
+                    document.getElementById('edit_warranty_expiry').value = asset.warranty_expiry || '';
+                    document.getElementById('edit_warranty_notes').value = asset.warranty_notes || '';
+
+                    var swFields = document.getElementById('edit_software_fields');
+                    var hwFields = document.getElementById('edit_hardware_fields');
+                    var qtyWrap  = document.getElementById('edit_qty_wrap');
+                    var itemSel  = document.getElementById('edit_item_id');
+                    var swName   = document.getElementById('edit_software_name');
+
+                    if (isSoftware) {
+                        swFields.classList.remove('hidden');
+                        hwFields.classList.add('hidden');
+                        qtyWrap.classList.add('hidden');
+                        swName.value = asset.name || '';
+                        // Disabled inputs are not submitted, so the handler keeps its own defaults
+                        itemSel.disabled = true;
+                        swName.disabled = false;
+                    } else {
+                        swFields.classList.add('hidden');
+                        hwFields.classList.remove('hidden');
+                        qtyWrap.classList.remove('hidden');
+                        document.getElementById('edit_serial_number').value = asset.serial_number || '';
+                        itemSel.disabled = false;
+                        itemSel.value = asset.item_id || '';
+                        swName.disabled = true;
+                    }
+
+                    updateEditTotal();
+                    document.getElementById('editAssetModal').classList.remove('hidden');
+                }
+                function closeEditAssetModal() {
+                    document.getElementById('editAssetModal').classList.add('hidden');
+                }
+                function onEditHardwareItemChange() {
+                    var sel = document.getElementById('edit_item_id');
+                    var opt = sel.options[sel.selectedIndex];
+                    var price = opt ? opt.getAttribute('data-price') : null;
+                    if (price !== null && price !== '' && parseFloat(price) > 0) {
+                        document.getElementById('edit_unit_price').value = parseFloat(price).toFixed(2);
+                    }
+                    updateEditTotal();
+                }
+                function updateEditTotal() {
+                    var qty = parseInt(document.getElementById('edit_quantity').value, 10);
+                    var price = parseFloat(document.getElementById('edit_unit_price').value);
+                    if (isNaN(qty) || qty < 1) qty = 1;
+                    if (isNaN(price) || price < 0) price = 0;
+                    document.getElementById('edit_total').textContent = '₱' + (qty * price).toFixed(2);
+                }
+                function openDeleteAssetModal(id, name) {
+                    document.getElementById('delete_asset_id').value = id;
+                    document.getElementById('delete_asset_name').textContent = name;
+                    document.getElementById('deleteAssetModal').classList.remove('hidden');
+                }
+                function closeDeleteAssetModal() {
+                    document.getElementById('deleteAssetModal').classList.add('hidden');
                 }
                 </script>
                 <!-- EDIT ACCOUNT DETAILS MODAL -->

@@ -108,6 +108,10 @@ function init_inventory_tables() {
         `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
         `total_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
         `notes` TEXT NULL,
+        `warranty_status` VARCHAR(50) NOT NULL DEFAULT 'Inactive',
+        `warranty_start` DATE NULL,
+        `warranty_expiry` DATE NULL,
+        `warranty_notes` TEXT NULL,
         `recorded_by` VARCHAR(100) NULL,
         `created_at` DATETIME NOT NULL,
         `updated_at` DATETIME NOT NULL,
@@ -124,6 +128,23 @@ function init_inventory_tables() {
         $pdo->exec($sql4);
         $pdo->exec($sql5);
         $pdo->exec($sql6);
+
+        // Safe upgrade for per-item warranty fields in client_assets
+        try {
+            $pdo->exec("ALTER TABLE `client_assets` ADD COLUMN `warranty_status` VARCHAR(50) NOT NULL DEFAULT 'Inactive' AFTER `notes`");
+        } catch (PDOException $e_ca1) {}
+
+        try {
+            $pdo->exec("ALTER TABLE `client_assets` ADD COLUMN `warranty_start` DATE NULL AFTER `warranty_status`");
+        } catch (PDOException $e_ca1b) {}
+
+        try {
+            $pdo->exec("ALTER TABLE `client_assets` ADD COLUMN `warranty_expiry` DATE NULL AFTER `warranty_start`");
+        } catch (PDOException $e_ca2) {}
+
+        try {
+            $pdo->exec("ALTER TABLE `client_assets` ADD COLUMN `warranty_notes` TEXT NULL AFTER `warranty_expiry`");
+        } catch (PDOException $e_ca3) {}
 
         // Safe upgrade existing support_user_permissions schema
         try {
