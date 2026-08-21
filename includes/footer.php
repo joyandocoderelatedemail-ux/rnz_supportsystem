@@ -1,5 +1,49 @@
 <?php
 // Footer Component & Common Scripts
+$is_hw_page = (isset($active_page) && $active_page === 'hardware');
+$is_sw_page = (isset($active_page) && $active_page === 'software');
+
+if ($is_hw_page) {
+    $modal_categories = array(
+        'Thermal Printer' => 'Thermal Receipt Printer',
+        'Dot Matrix Printer' => 'Dot Matrix Impact Printer',
+        'Barcode Sticker / Label Printer' => 'Barcode Sticker / Label Printer',
+        '1D/2D Handheld Barcode Scanner' => '1D/2D Handheld Barcode Scanner',
+        'Customer Pole Display (VFD)' => 'Customer Pole Display (VFD)',
+        'POS Display Monitor' => 'POS Display Monitor / Touchscreen',
+        'Heavy Duty POS Cash Drawer' => 'Heavy Duty POS Cash Drawer',
+        'POS System Unit Chassis / PC' => 'POS System Unit / PC Server',
+        'Uninterruptible Power Supply (UPS)' => 'UPS / Power Backup',
+        'RFID Card Reader' => 'RFID Card Reader',
+        'Network Router / LAN / Wi-Fi' => 'Network Router / LAN Cable / Wi-Fi',
+        'POS Keyboard & Mouse' => 'POS Keyboard & Mouse',
+        'Hardware & Printer' => 'Hardware & Printer (General)',
+        'Other Hardware Issue' => 'Other Hardware Concern'
+    );
+} elseif ($is_sw_page) {
+    $modal_categories = array(
+        'POS Software' => 'POS Software (General)',
+        'Slow / Lagging POS Terminal' => 'Slow / Lagging POS Terminal',
+        'Database Connection Error' => 'Database Connection Error',
+        'POS Login & User Access Issue' => 'POS Login & User Access Issue',
+        'Report & Calculation Discrepancy' => 'Report & Calculation Discrepancy',
+        'Database Backup Failure' => 'Database Backup & Restore Issue',
+        'Multi-Terminal Data Sync Issue' => 'Multi-Terminal Data Sync Issue',
+        'Price / Product Encoding Issue' => 'Price / Product Encoding Issue',
+        'Receipt / Sales Posting Error' => 'Receipt / Sales Posting Error',
+        'Other Software Issue' => 'Other Software Issue'
+    );
+} else {
+    $modal_categories = array(
+        'POS Software' => 'POS Software',
+        'Hardware & Printer' => 'Hardware & Printer',
+        'Database & Network' => 'Database & Network',
+        'System Maintenance' => 'System Maintenance',
+        'Billing & Retainer' => 'Billing & Retainer',
+        'General Support' => 'General Support',
+        'Others' => 'Others'
+    );
+}
 ?>
 <!-- New Ticket Modal -->
 <div id="newTicketModal" class="fixed inset-0 z-50 flex items-center justify-center bg-[#430D07]/40 backdrop-blur-sm hidden transition-opacity">
@@ -18,8 +62,20 @@
                 </svg>
             </div>
             <div>
-                <h3 class="text-lg font-extrabold text-[#430D07]">Submit Support Ticket</h3>
-                <p class="text-xs text-[#7C2112]">Our technical team will review and respond promptly.</p>
+                <h3 class="text-lg font-extrabold text-[#430D07]">
+                    <?php 
+                        if ($is_hw_page) echo 'Submit Hardware Support Ticket';
+                        elseif ($is_sw_page) echo 'Submit Software Support Ticket';
+                        else echo 'Submit Support Ticket';
+                    ?>
+                </h3>
+                <p class="text-xs text-[#7C2112]">
+                    <?php 
+                        if ($is_hw_page) echo 'Hardware issues & replacement requests are prioritized promptly.';
+                        elseif ($is_sw_page) echo 'Software bug & database concerns are routed directly to technical staff.';
+                        else echo 'Our technical team will review and respond promptly.';
+                    ?>
+                </p>
             </div>
         </div>
 
@@ -28,20 +84,22 @@
             
             <div>
                 <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-1.5">Subject / Issue Summary</label>
-                <input type="text" name="subject" required placeholder="e.g., POS Thermal Printer Not Responding" class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-xl px-4 py-2.5 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                <input type="text" name="subject" required placeholder="<?php echo $is_hw_page ? 'e.g., Thermal Printer Not Powering On' : ($is_sw_page ? 'e.g., POS Database Connection Failed on Terminal 1' : 'e.g., POS Thermal Printer Not Responding'); ?>" class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-xl px-4 py-2.5 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
             </div>
 
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-1.5">Category</label>
-                    <select name="category" class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-xl px-3 py-2.5 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
-                        <option value="POS Software">POS Software</option>
-                        <option value="Hardware & Printer">Hardware & Printer</option>
-                        <option value="Database & Network">Database & Network</option>
-                        <option value="System Maintenance">System Maintenance</option>
-                        <option value="Billing & Retainer">Billing & Retainer</option>
-                        <option value="General Support">General Support</option>
-                        <option value="Others">Others</option>
+                    <label class="block text-xs font-bold text-[#430D07] uppercase tracking-wider mb-1.5">
+                        <?php 
+                            if ($is_hw_page) echo 'Hardware Device';
+                            elseif ($is_sw_page) echo 'Software Category';
+                            else echo 'Category';
+                        ?>
+                    </label>
+                    <select name="category" id="modalTicketCategorySelect" class="w-full bg-[#FFF5ED] border border-[#FECDAA] text-[#430D07] text-xs sm:text-sm rounded-xl px-3 py-2.5 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-semibold">
+                        <?php foreach ($modal_categories as $val => $label): ?>
+                            <option value="<?php echo sanitize($val); ?>"><?php echo sanitize($label); ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
 
@@ -98,8 +156,39 @@
 </div>
 
 <script>
-function openNewTicketModal() {
-    document.getElementById('newTicketModal').classList.remove('hidden');
+function openNewTicketModal(prefillCat, prefillSubj, prefillDesc) {
+    var modal = document.getElementById('newTicketModal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+    if (prefillCat) {
+        var catSelect = document.getElementById('modalTicketCategorySelect');
+        if (catSelect) {
+            var found = false;
+            for (var i = 0; i < catSelect.options.length; i++) {
+                if (catSelect.options[i].value === prefillCat || catSelect.options[i].text.toLowerCase().indexOf(prefillCat.toLowerCase()) !== -1) {
+                    catSelect.selectedIndex = i;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                var opt = document.createElement('option');
+                opt.value = prefillCat;
+                opt.text = prefillCat;
+                opt.selected = true;
+                catSelect.appendChild(opt);
+            }
+        }
+    }
+    if (prefillSubj) {
+        var subjInput = document.querySelector('#newTicketModal input[name="subject"]');
+        if (subjInput) subjInput.value = prefillSubj;
+    }
+    if (prefillDesc) {
+        var descInput = document.querySelector('#newTicketModal textarea[name="issue_description"]');
+        if (descInput) descInput.value = prefillDesc;
+    }
 }
 function closeNewTicketModal() {
     document.getElementById('newTicketModal').classList.add('hidden');

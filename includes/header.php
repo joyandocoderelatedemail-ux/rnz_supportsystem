@@ -164,13 +164,15 @@ $current_search_q = isset($_GET['q']) ? trim($_GET['q']) : '';
             </svg>
         </button>
 
-        <!-- Primary Action: New Ticket Pill Button -->
-        <button onclick="openNewTicketModal()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-3 sm:px-5 py-2 sm:py-2.5 rounded-full shadow-sm shadow-[#EB3E0B]/25 flex items-center space-x-1.5 transition-all active:scale-95">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
-            </svg>
-            <span class="hidden xs:inline sm:inline">New Ticket</span>
-        </button>
+        <!-- Primary Action: New Ticket Pill Button (Hidden on Client Dashboard) -->
+        <?php if (!isset($active_page) || $active_page !== 'dashboard'): ?>
+            <button onclick="openNewTicketModal()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-3 sm:px-5 py-2 sm:py-2.5 rounded-full shadow-sm shadow-[#EB3E0B]/25 flex items-center space-x-1.5 transition-all active:scale-95">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+                </svg>
+                <span class="hidden xs:inline sm:inline">New Ticket</span>
+            </button>
+        <?php endif; ?>
 
         <!-- Notification Bell Dropdown Container -->
         <div class="relative">

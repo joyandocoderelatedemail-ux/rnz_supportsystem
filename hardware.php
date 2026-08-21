@@ -597,17 +597,18 @@ $page_title = $device ? $device['name'] . ' Support' : 'Hardware Devices';
                         var devName = <?php echo json_encode($device['name']); ?>;
                         var issueText = <?php echo json_encode($isolated_issue); ?>;
                         var diagTrail = <?php echo $diag_trail_js; ?>;
+                        var subj = devName + " Issue: " + issueText;
 
                         if (typeof openNewTicketModal === 'function') {
-                            openNewTicketModal();
+                            openNewTicketModal(devName, subj, diagTrail);
                         } else {
                             var modal = document.getElementById('newTicketModal');
                             if (modal) modal.classList.remove('hidden');
+                            var subjInput = document.querySelector('#newTicketModal input[name="subject"]');
+                            var descInput = document.querySelector('#newTicketModal textarea[name="issue_description"]');
+                            if (subjInput) subjInput.value = subj;
+                            if (descInput) descInput.value = diagTrail;
                         }
-                        var subjInput = document.querySelector('#newTicketModal input[name="subject"]');
-                        var descInput = document.querySelector('#newTicketModal textarea[name="issue_description"]');
-                        if (subjInput) subjInput.value = devName + " Issue: " + issueText;
-                        if (descInput) descInput.value = diagTrail;
                     }
                     </script>
                 <?php endif; ?>

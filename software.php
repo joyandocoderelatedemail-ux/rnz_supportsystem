@@ -580,19 +580,18 @@ $page_title = $issue_item ? $issue_item['name'] . ' Support' : 'Software & POS I
                 function openNewSoftwareTicketModalWithPrefill() {
                     var issueName = <?php echo json_encode($issue_item['name']); ?>;
                     var diagTrail = <?php echo $diag_trail_js; ?>;
+                    var subj = "Software Issue: " + issueName;
 
                     if (typeof openNewTicketModal === 'function') {
-                        openNewTicketModal();
+                        openNewTicketModal(issueName, subj, diagTrail);
                     } else {
                         var modal = document.getElementById('newTicketModal');
                         if (modal) modal.classList.remove('hidden');
+                        var subjInput = document.querySelector('#newTicketModal input[name="subject"]');
+                        var descInput = document.querySelector('#newTicketModal textarea[name="issue_description"]');
+                        if (subjInput) subjInput.value = subj;
+                        if (descInput) descInput.value = diagTrail;
                     }
-                    var subjInput = document.querySelector('#newTicketModal input[name="subject"]');
-                    var catSelect = document.querySelector('#newTicketModal select[name="category"]');
-                    var descInput = document.querySelector('#newTicketModal textarea[name="issue_description"]');
-                    if (subjInput) subjInput.value = "Software Issue: " + issueName;
-                    if (catSelect) catSelect.value = "POS Software";
-                    if (descInput) descInput.value = diagTrail;
                 }
                 </script>
             <?php endif; ?>
