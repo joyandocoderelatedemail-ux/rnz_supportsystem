@@ -2,8 +2,10 @@
 // Manage Accounts Hub for Support Center (PHP 5.6 Compatible)
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/inventory_init.php';
 
 require_page_access('accounts');
+init_inventory_tables();
 
 $pdo = get_db_connection();
 
@@ -161,6 +163,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $update_error = "Error creating client: " . $e->getMessage();
                 }
             }
+        } elseif ($action === 'add_client_asset') {
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $asset_type = (isset($_POST['asset_type']) && $_POST['asset_type'] === 'Software') ? 'Software' : 'Hardware';
+            $serial_number = isset($_POST['serial_number']) ? trim($_POST['serial_number']) : '';
+            $notes = isset($_POST['notes']) ? trim($_POST['notes']) : '';
+            $unit_price = isset($_POST['unit_price']) ? floatval($_POST['unit_price']) : 0;
+            $quantity = isset($_POST['quantity']) ? intval($_POST['quantity']) : 1;
+            if ($quantity < 1) $quantity = 1;
+
+            $item_id = null;
+            $item_code = null;
+            $asset_name = '';
+
+            if ($asset_type === 'Software') {
+                // Software is free text - no inventory catalogue behind it
+                $asset_name = isset($_POST['software_name']) ? trim($_POST['software_name']) : '';
+                $quantity = 1;
+                $serial_number = '';
+            } else {
+                // Hardware is picked from the support_inventory_items catalogue
+                $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
+                if ($item_id > 0) {
+                    $stmt_item = $pdo->prepare("SELECT id, item_code, name FROM support_inventory_items WHERE id = :id LIMIT 1");
+                    $stmt_item->execute(array(':id' => $item_id));
+                    $inv_item = $stmt_item->fetch();
+                    if ($inv_item) {
+                        $item_code = $inv_item['item_code'];
+                        $asset_name = $inv_item['name'];
+                    } else {
+                        $item_id = null;
+                    }
+                } else {
+                    $item_id = null;
+                }
+            }
+
+            if (empty($accountnum)) {
+                $update_error = "No client account selected.";
+            } elseif ($asset_type === 'Software' && $asset_name === '') {
+                $update_error = "Please enter the software name.";
+            } elseif ($asset_type === 'Hardware' && $item_id === null) {
+                $update_error = "Please choose a hardware item from the inventory list.";
+            } else {
+                try {
+                    $now = date('Y-m-d H:i:s');
+                    $tech_now = get_logged_tech();
+                    $recorded_by = ($tech_now && isset($tech_now['fullname'])) ? $tech_now['fullname'] : 'Support Tech';
+
+                    $stmt_asset = $pdo->prepare("INSERT INTO client_assets 
+                        (accountnum, asset_type, item_id, item_code, name, serial_number, quantity, 
+                         unit_price, total_amount, notes, recorded_by, created_at, updated_at) 
+                        VALUES 
+                        (:acct, :atype, :iid, :icode, :name, :serial, :qty, 
+                         :price, :total, :notes, :by, :created, :updated)");
+
+                    $stmt_asset->execute(array(
+                        ':acct' => $accountnum,
+                        ':atype' => $asset_type,
+                        ':iid' => $item_id,
+                        ':icode' => $item_code,
+                        ':name' => $asset_name,
+                        ':serial' => $serial_number,
+                        ':qty' => $quantity,
+                        ':price' => $unit_price,
+                        ':total' => ($unit_price * $quantity),
+                        ':notes' => $notes,
+                        ':by' => $recorded_by,
+                        ':created' => $now,
+                        ':updated' => $now
+                    ));
+
+                    $update_msg = "$asset_type \"$asset_name\" recorded for Account #$accountnum.";
+                } catch (PDOException $e) {
+                    $update_error = "Error saving item: " . $e->getMessage();
+                }
+            }
         } elseif ($action === 'create_workorder') {
             $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
             $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
@@ -251,6 +329,9 @@ $active_tab = isset($_GET['tab']) ? trim($_GET['tab']) : 'logs';
 if (isset($_POST['action']) && in_array($_POST['action'], array('create_workorder', 'update_workorder', 'delete_workorder'))) {
     $active_tab = 'orders';
 }
+if (isset($_POST['action']) && $_POST['action'] === 'add_client_asset') {
+    $active_tab = 'assets';
+}
 
 $selected_client = null;
 $searched = !empty($search);
@@ -305,6 +386,12 @@ $tech_notes = array();
 $work_orders = array();
 
 $client_pullouts = array();
+$client_assets = array();
+
+// Active inventory items, used as the hardware picker in the "Add Item" modal
+$stmt_inv = $pdo->query("SELECT id, item_code, name, category, quantity, selling_price, unit_price 
+    FROM support_inventory_items WHERE status = 'Active' ORDER BY name ASC");
+$inventory_items = $stmt_inv ? $stmt_inv->fetchAll() : array();
 
 if ($selected_client) {
     // 1. Hardware Logs for this account
@@ -330,6 +417,11 @@ if ($selected_client) {
         ORDER BY l.created_at DESC");
     $stmt_pullouts->execute(array(':acct' => $client_acct));
     $client_pullouts = $stmt_pullouts->fetchAll();
+
+    // 5. Recorded Software & Hardware owned by this account
+    $stmt_assets = $pdo->prepare("SELECT * FROM client_assets WHERE accountnum = :acct ORDER BY id DESC");
+    $stmt_assets->execute(array(':acct' => $client_acct));
+    $client_assets = $stmt_assets->fetchAll();
 }
 
 // Fetch ALL client accounts for instant autocomplete dropdown
@@ -557,6 +649,14 @@ $page_title = 'Manage Accounts';
                         <!-- Action Buttons Group (Warranty & Profile) -->
                         <div class="flex items-center flex-wrap gap-2.5 self-start md:self-center">
                             <?php if ($my_tier >= 2): ?>
+                                <!-- Add Software / Hardware Item Button -->
+                                <button onclick="openAssetTypeModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    <span>Add Item</span>
+                                </button>
+
                                 <!-- Pull Out Hardware Item Button -->
                                 <a href="inventory.php?pullout_client=<?php echo urlencode($selected_client['accountnum']); ?>" 
                                    class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm shadow-amber-500/25 transition-all active:scale-95 flex items-center space-x-2">
@@ -691,6 +791,14 @@ $page_title = 'Manage Accounts';
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
                             </svg>
                             <span>Hardware Pull-Outs (<?php echo count($client_pullouts); ?>)</span>
+                        </a>
+
+                        <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=assets" 
+                           class="px-5 py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 shrink-0 <?php echo ($active_tab === 'assets') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                            </svg>
+                            <span>Software &amp; Hardware (<?php echo count($client_assets); ?>)</span>
                         </a>
                     </div>
 
@@ -980,10 +1088,345 @@ $page_title = 'Manage Accounts';
                                 </table>
                             </div>
                         </div>
+                    <?php elseif ($active_tab === 'assets'): ?>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between flex-wrap gap-3">
+                                <div>
+                                    <h3 class="text-base font-extrabold text-slate-900">Client Software &amp; Hardware</h3>
+                                    <p class="text-xs text-slate-500 mt-0.5">Software licences and hardware units on record for this account.</p>
+                                </div>
+                                <?php if ($my_tier >= 2): ?>
+                                    <button onclick="openAssetTypeModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-5 py-2.5 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2 shrink-0">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                        </svg>
+                                        <span>Add Item</span>
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+
+                            <?php
+                            $assets_total = 0;
+                            $count_software = 0;
+                            $count_hardware = 0;
+                            foreach ($client_assets as $ca) {
+                                $assets_total += floatval($ca['total_amount']);
+                                if ($ca['asset_type'] === 'Software') { $count_software++; } else { $count_hardware++; }
+                            }
+                            ?>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Software Records</p>
+                                    <p class="text-xl font-extrabold text-slate-900 font-mono mt-0.5"><?php echo $count_software; ?></p>
+                                </div>
+                                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                                    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Hardware Records</p>
+                                    <p class="text-xl font-extrabold text-slate-900 font-mono mt-0.5"><?php echo $count_hardware; ?></p>
+                                </div>
+                                <div class="bg-[#FFF5ED] border border-[#FECDAA] rounded-2xl p-4">
+                                    <p class="text-[10px] font-bold text-[#7C2112] uppercase tracking-wider">Total Value</p>
+                                    <p class="text-xl font-extrabold text-[#EB3E0B] font-mono mt-0.5">&#8369;<?php echo number_format($assets_total, 2); ?></p>
+                                </div>
+                            </div>
+
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                                            <th class="py-3 px-4">Type</th>
+                                            <th class="py-3 px-4">Item</th>
+                                            <th class="py-3 px-4">Serial Number</th>
+                                            <th class="py-3 px-4 text-center">Qty</th>
+                                            <th class="py-3 px-4 text-right">Unit Price</th>
+                                            <th class="py-3 px-4 text-right">Total</th>
+                                            <th class="py-3 px-4">Recorded</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 font-medium">
+                                        <?php if (empty($client_assets)): ?>
+                                            <tr>
+                                                <td colspan="7" class="py-8 text-center text-slate-400">
+                                                    No software or hardware recorded for this account yet.
+                                                </td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($client_assets as $ca): ?>
+                                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                                    <td class="py-3 px-4">
+                                                        <?php if ($ca['asset_type'] === 'Software'): ?>
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">Software</span>
+                                                        <?php else: ?>
+                                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-800 border border-amber-200">Hardware</span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="py-3 px-4">
+                                                        <span class="block font-bold text-slate-900"><?php echo sanitize($ca['name']); ?></span>
+                                                        <?php if (!empty($ca['item_code'])): ?>
+                                                            <span class="text-[11px] text-slate-500 font-mono"><?php echo sanitize($ca['item_code']); ?></span>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($ca['notes'])): ?>
+                                                            <span class="block text-[11px] text-slate-500 mt-0.5"><?php echo sanitize($ca['notes']); ?></span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 font-mono text-slate-600">
+                                                        <?php echo !empty($ca['serial_number']) ? sanitize($ca['serial_number']) : '<span class="text-slate-300">&mdash;</span>'; ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-center font-mono font-bold text-slate-800"><?php echo intval($ca['quantity']); ?></td>
+                                                    <td class="py-3 px-4 text-right font-mono text-slate-600">&#8369;<?php echo number_format($ca['unit_price'], 2); ?></td>
+                                                    <td class="py-3 px-4 text-right font-mono font-bold text-slate-900">&#8369;<?php echo number_format($ca['total_amount'], 2); ?></td>
+                                                    <td class="py-3 px-4 text-slate-500 whitespace-nowrap">
+                                                        <span class="block"><?php echo format_date($ca['created_at']); ?></span>
+                                                        <?php if (!empty($ca['recorded_by'])): ?>
+                                                            <span class="text-[11px] text-slate-400">by <?php echo sanitize($ca['recorded_by']); ?></span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     <?php endif; ?>
 
                 </div>
 
+
+                <!-- CHOOSE ITEM TYPE MODAL -->
+                <div id="assetTypeModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn">
+                        <button onclick="closeAssetTypeModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="mb-6">
+                            <h3 class="text-lg font-extrabold text-slate-900">Add Item to Client</h3>
+                            <p class="text-xs text-slate-500 mt-0.5">What are you recording for <strong><?php echo sanitize($selected_client['tradename']); ?></strong>?</p>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <button onclick="chooseAssetType('software')" class="group p-5 rounded-2xl border-2 border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-center space-y-2">
+                                <div class="w-12 h-12 rounded-2xl bg-blue-50 group-hover:bg-blue-500 text-blue-600 group-hover:text-white flex items-center justify-center mx-auto transition-colors">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                                    </svg>
+                                </div>
+                                <span class="block text-sm font-extrabold text-slate-900">Software</span>
+                                <span class="block text-[11px] text-slate-500">Name and price</span>
+                            </button>
+
+                            <button onclick="chooseAssetType('hardware')" class="group p-5 rounded-2xl border-2 border-slate-200 hover:border-amber-500 hover:bg-amber-50 transition-all text-center space-y-2">
+                                <div class="w-12 h-12 rounded-2xl bg-amber-50 group-hover:bg-amber-500 text-amber-600 group-hover:text-white flex items-center justify-center mx-auto transition-colors">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                    </svg>
+                                </div>
+                                <span class="block text-sm font-extrabold text-slate-900">Hardware</span>
+                                <span class="block text-[11px] text-slate-500">From inventory list</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ADD SOFTWARE MODAL -->
+                <div id="addSoftwareModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto">
+                        <button onclick="closeAddSoftwareModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 mb-6">
+                            <div class="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-sm">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Add Software</h3>
+                                <p class="text-xs text-slate-500">Recording for Account #<?php echo sanitize($client_acct); ?></p>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=assets" method="POST" class="space-y-4">
+                            <input type="hidden" name="action" value="add_client_asset">
+                            <input type="hidden" name="asset_type" value="Software">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Software Name *</label>
+                                <input type="text" name="software_name" required placeholder="e.g. RNZ POS System - 1 Terminal Licence" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-blue-500 focus:outline-none transition-all">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Software Price</label>
+                                <input type="number" step="0.01" min="0" name="unit_price" value="0.00" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-blue-500 focus:outline-none transition-all">
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Notes</label>
+                                <textarea name="notes" rows="2" placeholder="Optional remarks" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-blue-500 focus:outline-none transition-all"></textarea>
+                            </div>
+
+                            <?php if ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="pt-4 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeAddSoftwareModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">Save Software</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- ADD HARDWARE MODAL -->
+                <div id="addHardwareModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto">
+                        <button onclick="closeAddHardwareModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 mb-6">
+                            <div class="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-sm">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Add Hardware</h3>
+                                <p class="text-xs text-slate-500">Recording for Account #<?php echo sanitize($client_acct); ?></p>
+                            </div>
+                        </div>
+
+                        <?php if (empty($inventory_items)): ?>
+                            <div class="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs font-bold text-amber-900">
+                                No active inventory items found. Add hardware items in <a href="inventory.php" class="underline">Inventory</a> first.
+                            </div>
+                            <div class="pt-4 flex items-center justify-end">
+                                <button type="button" onclick="closeAddHardwareModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Close</button>
+                            </div>
+                        <?php else: ?>
+                            <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=assets" method="POST" class="space-y-4">
+                                <input type="hidden" name="action" value="add_client_asset">
+                                <input type="hidden" name="asset_type" value="Hardware">
+                                <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Hardware Type *</label>
+                                    <select name="item_id" id="hardware_item_select" required onchange="onHardwareItemChange()" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-amber-500 focus:outline-none transition-all">
+                                        <option value="">-- Select hardware from inventory --</option>
+                                        <?php foreach ($inventory_items as $inv): ?>
+                                            <?php $inv_price = ($inv['selling_price'] > 0) ? $inv['selling_price'] : $inv['unit_price']; ?>
+                                            <option value="<?php echo intval($inv['id']); ?>" data-price="<?php echo sanitize($inv_price); ?>">
+                                                <?php echo sanitize($inv['name']); ?> (<?php echo sanitize($inv['item_code']); ?>) &mdash; <?php echo intval($inv['quantity']); ?> in stock
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <p class="text-[10px] text-slate-400 mt-1">Stock counts are shown for reference only. Recording here does not deduct inventory &mdash; use Pull Out Item for that.</p>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Quantity *</label>
+                                        <input type="number" min="1" step="1" name="quantity" id="hardware_qty" value="1" required oninput="updateHardwareTotal()" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-amber-500 focus:outline-none transition-all">
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Unit Price</label>
+                                        <input type="number" step="0.01" min="0" name="unit_price" id="hardware_price" value="0.00" oninput="updateHardwareTotal()" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-amber-500 focus:outline-none transition-all">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Serial Number</label>
+                                    <input type="text" name="serial_number" placeholder="e.g. SN-4471-KD" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-amber-500 focus:outline-none transition-all">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Notes</label>
+                                    <textarea name="notes" rows="2" placeholder="Optional remarks" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-amber-500 focus:outline-none transition-all"></textarea>
+                                </div>
+
+                                <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                                    <span class="text-xs font-bold text-slate-600 uppercase tracking-wider">Total</span>
+                                    <span id="hardware_total" class="text-lg font-extrabold text-[#EB3E0B] font-mono">&#8369;0.00</span>
+                                </div>
+
+                                <?php if ($my_tier === 2): ?>
+                                    <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                        <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                            <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                            <span>Security Access Code Required (Level 2 Account)</span>
+                                        </label>
+                                        <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                    </div>
+                                <?php endif; ?>
+
+                                <div class="pt-4 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                    <button type="button" onclick="closeAddHardwareModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                                    <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">Save Hardware</button>
+                                </div>
+                            </form>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <script>
+                function openAssetTypeModal() {
+                    var m = document.getElementById('assetTypeModal');
+                    if (m) m.classList.remove('hidden');
+                }
+                function closeAssetTypeModal() {
+                    var m = document.getElementById('assetTypeModal');
+                    if (m) m.classList.add('hidden');
+                }
+                function chooseAssetType(kind) {
+                    closeAssetTypeModal();
+                    var m = document.getElementById(kind === 'software' ? 'addSoftwareModal' : 'addHardwareModal');
+                    if (m) m.classList.remove('hidden');
+                }
+                function closeAddSoftwareModal() {
+                    var m = document.getElementById('addSoftwareModal');
+                    if (m) m.classList.add('hidden');
+                }
+                function closeAddHardwareModal() {
+                    var m = document.getElementById('addHardwareModal');
+                    if (m) m.classList.add('hidden');
+                }
+                function onHardwareItemChange() {
+                    var sel = document.getElementById('hardware_item_select');
+                    var priceField = document.getElementById('hardware_price');
+                    if (!sel || !priceField) return;
+                    var opt = sel.options[sel.selectedIndex];
+                    var price = opt ? opt.getAttribute('data-price') : null;
+                    // Prefill from the inventory selling price, but leave it editable
+                    if (price !== null && price !== '') {
+                        priceField.value = parseFloat(price).toFixed(2);
+                    }
+                    updateHardwareTotal();
+                }
+                function updateHardwareTotal() {
+                    var qty = parseInt(document.getElementById('hardware_qty').value, 10);
+                    var price = parseFloat(document.getElementById('hardware_price').value);
+                    if (isNaN(qty) || qty < 1) qty = 0;
+                    if (isNaN(price) || price < 0) price = 0;
+                    var out = document.getElementById('hardware_total');
+                    if (out) out.textContent = '₱' + (qty * price).toFixed(2);
+                }
+                </script>
                 <!-- EDIT ACCOUNT DETAILS MODAL -->
                 <div id="editAccountModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
                     <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto">

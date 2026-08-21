@@ -96,12 +96,34 @@ function init_inventory_tables() {
         KEY `created_at` (`created_at`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
 
+    $sql6 = "CREATE TABLE IF NOT EXISTS `client_assets` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT,
+        `accountnum` VARCHAR(100) NOT NULL,
+        `asset_type` VARCHAR(20) NOT NULL DEFAULT 'Hardware',
+        `item_id` INT(11) NULL,
+        `item_code` VARCHAR(50) NULL,
+        `name` VARCHAR(150) NOT NULL,
+        `serial_number` VARCHAR(150) NULL,
+        `quantity` INT(11) NOT NULL DEFAULT 1,
+        `unit_price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        `total_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        `notes` TEXT NULL,
+        `recorded_by` VARCHAR(100) NULL,
+        `created_at` DATETIME NOT NULL,
+        `updated_at` DATETIME NOT NULL,
+        PRIMARY KEY (`id`),
+        KEY `accountnum` (`accountnum`),
+        KEY `asset_type` (`asset_type`),
+        KEY `item_id` (`item_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
     try {
         $pdo->exec($sql1);
         $pdo->exec($sql2);
         $pdo->exec($sql3);
         $pdo->exec($sql4);
         $pdo->exec($sql5);
+        $pdo->exec($sql6);
 
         // Safe upgrade existing support_user_permissions schema
         try {
