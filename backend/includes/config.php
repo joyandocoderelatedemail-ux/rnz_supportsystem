@@ -1,5 +1,8 @@
 <?php
 // Configuration & Database Connection for Support Center Backend (PHP 5.6 Compatible)
+
+// Application timezone (do not rely on php.ini; XAMPP defaults to Europe/Berlin)
+date_default_timezone_set('Asia/Manila');
 if (session_status() == PHP_SESSION_NONE) {
     session_name('RNZ_TECH_SESSID');
     session_start();
