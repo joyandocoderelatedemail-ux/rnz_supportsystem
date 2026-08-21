@@ -116,6 +116,16 @@ if ($pdo_sb) {
                     </a>
                 <?php endif; ?>
 
+                <!-- Pull-Out Reports -->
+                <?php if (user_has_page_access('inventory')): ?>
+                    <a href="pullout_reports.php" title="Pull-Out Reports" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'pullout_reports') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                        <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'pullout_reports') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Pull-Out Reports</span>
+                    </a>
+                <?php endif; ?>
+
                 <!-- POS Maintenance Requests -->
                 <?php if (user_has_page_access('maintenance')): ?>
                     <a href="maintenance.php" title="POS Maintenance" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'maintenance') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
@@ -249,6 +259,15 @@ if ($pdo_sb) {
             <?php endif; ?>
 
             <!-- POS Maintenance -->
+            <?php if (user_has_page_access('inventory')): ?>
+                <a href="pullout_reports.php" onclick="closeAdminMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'pullout_reports') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                    <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'pullout_reports') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <span>Pull-Out Reports</span>
+                </a>
+            <?php endif; ?>
+
             <?php if (user_has_page_access('maintenance')): ?>
                 <a href="maintenance.php" onclick="closeAdminMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'maintenance') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'maintenance') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">

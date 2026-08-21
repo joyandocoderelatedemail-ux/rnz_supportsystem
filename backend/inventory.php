@@ -158,6 +158,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':now' => $now
             ));
 
+            // 1b. Deploying to a client also records the unit in their Software & Hardware
+            //     list on accounts.php (client_assets), so the two views stay in step.
+            if ($pullout_direction === 'to_client') {
+                $stmt_price = $pdo->prepare("SELECT cost_price, selling_price, unit_price FROM support_inventory_items WHERE id = :id LIMIT 1");
+                $stmt_price->execute(array(':id' => $item_id));
+                $price_row = $stmt_price->fetch();
+
+                $asset_unit_price = 0.00;
+                if ($price_row) {
+                    if (isset($price_row['selling_price']) && floatval($price_row['selling_price']) > 0) {
+                        $asset_unit_price = floatval($price_row['selling_price']);
+                    } elseif (isset($price_row['unit_price'])) {
+                        $asset_unit_price = floatval($price_row['unit_price']);
+                    }
+                }
+
+                $asset_notes_parts = array('Deployed via inventory pull-out.');
+                if (!empty($reason)) {
+                    $asset_notes_parts[] = 'Reason: ' . $reason;
+                }
+                if (!empty($custom_notes)) {
+                    $asset_notes_parts[] = $custom_notes;
+                }
+
+                $stmt_ca = $pdo->prepare("INSERT INTO client_assets 
+                    (accountnum, asset_type, item_id, item_code, name, serial_number, quantity, 
+                     unit_price, total_amount, notes, warranty_status, recorded_by, created_at, updated_at) 
+                    VALUES 
+                    (:acct, 'Hardware', :iid, :icode, :name, :serial, :qty, 
+                     :price, :total, :notes, 'Inactive', :by, :created, :updated)");
+                $stmt_ca->execute(array(
+                    ':acct' => $accountnum,
+                    ':iid' => $item_id,
+                    ':icode' => $item_data['item_code'],
+                    ':name' => $item_data['name'],
+                    ':serial' => $serial_number,
+                    ':qty' => $amount,
+                    ':price' => $asset_unit_price,
+                    ':total' => ($asset_unit_price * $amount),
+                    ':notes' => implode(' ', $asset_notes_parts),
+                    ':by' => $tech_name,
+                    ':created' => $now,
+                    ':updated' => $now
+                ));
+            }
+
             // 2. Automatically insert into bucket_technotes (Client Service Notes)
             if ($auto_technote === 1) {
                 $tech_reason = "[Hardware Pull-Out] " . $item_data['item_code'] . " - " . $item_data['name'] . " (Qty: " . $amount . ")";
@@ -480,6 +526,29 @@ $total_inventory_profit = max(0, $total_selling_valuation - $total_cost_valuatio
 // Fetch all inventory items for quick dropdown selection in Pull Out Modal
 $stmt_all_inv = $pdo->query("SELECT id, item_code, name, quantity, min_threshold, cost_price, selling_price, unit_price, status FROM support_inventory_items WHERE status = 'Active' ORDER BY name ASC");
 $all_inventory_items = $stmt_all_inv ? $stmt_all_inv->fetchAll() : array();
+
+// Hardware already recorded against each client in accounts.php (client_assets),
+// used to narrow the Pull Out item list when pulling FROM a client.
+$client_hardware_map = array();
+$stmt_ca = $pdo->query("SELECT id, accountnum, item_id, item_code, name, serial_number, quantity, unit_price 
+    FROM client_assets WHERE asset_type = 'Hardware' AND item_id IS NOT NULL ORDER BY name ASC");
+if ($stmt_ca) {
+    foreach ($stmt_ca->fetchAll() as $ca_row) {
+        $ca_acct = $ca_row['accountnum'];
+        if (!isset($client_hardware_map[$ca_acct])) {
+            $client_hardware_map[$ca_acct] = array();
+        }
+        $client_hardware_map[$ca_acct][] = array(
+            'asset_id' => intval($ca_row['id']),
+            'item_id' => intval($ca_row['item_id']),
+            'item_code' => $ca_row['item_code'],
+            'name' => $ca_row['name'],
+            'serial_number' => $ca_row['serial_number'],
+            'quantity' => intval($ca_row['quantity']),
+            'unit_price' => floatval($ca_row['unit_price'])
+        );
+    }
+}
 
 // Fetch Clients for Tagging in Pull-outs and Adjustments
 $stmt_clients = $pdo->query("SELECT accountnum, tradename, clientname, address FROM bucket_client ORDER BY tradename ASC");
@@ -940,8 +1009,8 @@ $page_title = 'Hardware Inventory Hub';
 <!-- ========================================================================= -->
 <!-- MODAL: PULL OUT HARDWARE ITEM -->
 <!-- ========================================================================= -->
-<div id="pullOutModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 sm:p-8 space-y-6 my-8 animate-in fade-in zoom-in duration-150">
+<div id="pullOutModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-150">
         <div class="flex items-center justify-between border-b border-slate-100 pb-4">
             <div class="flex items-center space-x-3">
                 <div class="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-md shadow-amber-500/25">
@@ -983,33 +1052,7 @@ $page_title = 'Hardware Inventory Hub';
                 </div>
             </div>
 
-            <!-- 2. Hardware Item Selector -->
-            <div class="space-y-1">
-                <label class="text-xs font-bold text-slate-700">Hardware Item <span class="text-[#EB3E0B]">*</span></label>
-                <select name="item_id" id="pullout_item_id" required onchange="updatePullOutItem(this)" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-semibold">
-                    <option value="">-- Choose Hardware Item --</option>
-                    <?php foreach ($all_inventory_items as $inv_item): 
-                        $item_cost = isset($inv_item['cost_price']) ? floatval($inv_item['cost_price']) : 0.00;
-                        $item_price = isset($inv_item['selling_price']) && floatval($inv_item['selling_price']) > 0 ? floatval($inv_item['selling_price']) : floatval($inv_item['unit_price']);
-                    ?>
-                        <option value="<?php echo $inv_item['id']; ?>" 
-                                data-name="<?php echo sanitize($inv_item['name']); ?>" 
-                                data-code="<?php echo sanitize($inv_item['item_code']); ?>" 
-                                data-qty="<?php echo $inv_item['quantity']; ?>"
-                                data-cost="<?php echo $item_cost; ?>"
-                                data-price="<?php echo $item_price; ?>">
-                            <?php echo sanitize($inv_item['name'] . ' (' . $inv_item['item_code'] . ') — ' . $inv_item['quantity'] . ' in stock [Cost: ₱' . number_format($item_cost, 2) . ' | Sell: ₱' . number_format($item_price, 2) . ']'); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                <div id="pullout_item_info" class="hidden text-[11px] font-mono text-slate-500 pt-1 flex flex-wrap items-center justify-between gap-1">
-                    <span>Selected: <strong id="pullout_item_name_text" class="text-slate-800 font-sans"></strong></span>
-                    <span id="pullout_item_pricing_text" class="text-slate-600"></span>
-                    <span>Stock: <strong id="pullout_item_qty_text" class="text-amber-700"></strong> units</span>
-                </div>
-            </div>
-
-            <!-- 3. Client Selection -->
+            <!-- 2. Client Selection -->
             <div class="space-y-1">
                 <label class="text-xs font-bold text-slate-700">To / From Which Client Account <span class="text-[#EB3E0B]">*</span></label>
                 <select name="accountnum" id="pullout_accountnum" required onchange="updatePullOutClient(this)" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-semibold">
@@ -1026,6 +1069,20 @@ $page_title = 'Hardware Inventory Hub';
                 </select>
                 <input type="hidden" name="client_name" id="pullout_client_name" value="">
                 <input type="hidden" name="address" id="pullout_client_address" value="">
+            </div>
+
+            <!-- 3. Hardware Item Selector (list depends on direction + client) -->
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-700"><span id="pullout_item_label">Hardware Item</span> <span class="text-[#EB3E0B]">*</span></label>
+                <select name="item_id" id="pullout_item_id" required onchange="updatePullOutItem(this)" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-semibold">
+                    <option value="">-- Choose a client account first --</option>
+                </select>
+                <p id="pullout_item_hint" class="text-[10px] text-slate-500 pt-0.5">Choose a client account first &mdash; the list will show only the hardware recorded for them.</p>
+                <div id="pullout_item_info" class="hidden text-[11px] font-mono text-slate-500 pt-1 flex flex-wrap items-center justify-between gap-1">
+                    <span>Selected: <strong id="pullout_item_name_text" class="text-slate-800 font-sans"></strong></span>
+                    <span id="pullout_item_pricing_text" class="text-slate-600"></span>
+                    <span>Stock: <strong id="pullout_item_qty_text" class="text-amber-700"></strong> units</span>
+                </div>
             </div>
 
             <!-- 4. Quantity and Serial Number Grid -->
@@ -1131,7 +1188,7 @@ $page_title = 'Hardware Inventory Hub';
 <!-- MODAL: ADD NEW ITEM -->
 <!-- ========================================================================= -->
 <div id="addItemModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 sm:p-8 space-y-6 my-8 animate-in fade-in zoom-in duration-150">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-150">
         <div class="flex items-center justify-between border-b border-slate-100 pb-4">
             <div class="flex items-center space-x-3">
                 <div class="w-10 h-10 rounded-2xl bg-[#EB3E0B] text-white flex items-center justify-center font-bold">
@@ -1373,7 +1430,7 @@ $page_title = 'Hardware Inventory Hub';
 <!-- MODAL: EDIT ITEM -->
 <!-- ========================================================================= -->
 <div id="editModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 sm:p-8 space-y-6 my-8 animate-in fade-in zoom-in duration-150">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-150">
         <div class="flex items-center justify-between border-b border-slate-100 pb-4">
             <div class="flex items-center space-x-3">
                 <div class="w-10 h-10 rounded-2xl bg-slate-800 text-white flex items-center justify-center font-bold">
@@ -1491,7 +1548,7 @@ $page_title = 'Hardware Inventory Hub';
 <!-- MODAL: STOCK MOVEMENT AUDIT LOG -->
 <!-- ========================================================================= -->
 <div id="movementLogModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
-    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-3xl w-full p-6 sm:p-8 space-y-6 my-8 animate-in fade-in zoom-in duration-150">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-3xl w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-150">
         <div class="flex items-center justify-between border-b border-slate-100 pb-4">
             <div class="flex items-center space-x-3">
                 <div class="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
@@ -1597,19 +1654,130 @@ $page_title = 'Hardware Inventory Hub';
 
 <script>
 // Pull Out Modal Handlers
-function openPullOutModal(presetItemId, presetAcct) {
-    if (presetItemId) {
-        var selItem = document.getElementById('pullout_item_id');
-        if (selItem) {
-            selItem.value = presetItemId;
-            updatePullOutItem(selItem);
+
+// Full active inventory (used when deploying TO a client) and the hardware each
+// client already has on record in accounts.php (used when pulling FROM a client).
+var PULLOUT_INVENTORY = <?php
+    $js_inv = array();
+    foreach ($all_inventory_items as $inv_item) {
+        $ic = isset($inv_item['cost_price']) ? floatval($inv_item['cost_price']) : 0.00;
+        $ip = (isset($inv_item['selling_price']) && floatval($inv_item['selling_price']) > 0) ? floatval($inv_item['selling_price']) : floatval($inv_item['unit_price']);
+        $js_inv[] = array(
+            'id' => intval($inv_item['id']),
+            'name' => $inv_item['name'],
+            'code' => $inv_item['item_code'],
+            'qty' => intval($inv_item['quantity']),
+            'cost' => $ic,
+            'price' => $ip
+        );
+    }
+    echo json_encode($js_inv);
+?>;
+var PULLOUT_CLIENT_HARDWARE = <?php echo json_encode($client_hardware_map); ?>;
+
+function pesoFmt(n) {
+    return '₱' + parseFloat(n || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function pulloutDirectionValue() {
+    var checked = document.querySelector('input[name="pullout_direction"]:checked');
+    return checked ? checked.value : 'from_client';
+}
+
+// Rebuilds the Hardware Item dropdown to match the chosen direction and client.
+function refreshPulloutItemOptions(keepValue) {
+    var sel = document.getElementById('pullout_item_id');
+    if (!sel) return;
+
+    var direction = pulloutDirectionValue();
+    var acct = document.getElementById('pullout_accountnum').value;
+    var previous = (typeof keepValue !== 'undefined') ? keepValue : sel.value;
+    var label = document.getElementById('pullout_item_label');
+    var hint = document.getElementById('pullout_item_hint');
+
+    sel.innerHTML = '';
+
+    if (direction === 'to_client') {
+        if (label) label.textContent = 'Hardware Item (from warehouse inventory)';
+        if (hint) hint.textContent = 'Deploying will deduct warehouse stock and add this item to the client’s Software & Hardware records.';
+
+        sel.appendChild(new Option('-- Choose Hardware Item --', ''));
+        for (var i = 0; i < PULLOUT_INVENTORY.length; i++) {
+            var it = PULLOUT_INVENTORY[i];
+            var o = new Option(it.name + ' (' + it.code + ') — ' + it.qty + ' in stock [Cost: ' + pesoFmt(it.cost) + ' | Sell: ' + pesoFmt(it.price) + ']', it.id);
+            o.setAttribute('data-name', it.name);
+            o.setAttribute('data-code', it.code);
+            o.setAttribute('data-qty', it.qty);
+            o.setAttribute('data-cost', it.cost);
+            o.setAttribute('data-price', it.price);
+            sel.appendChild(o);
+        }
+    } else {
+        if (label) label.textContent = 'Hardware Item (recorded for this client)';
+
+        if (!acct) {
+            if (hint) hint.textContent = 'Choose a client account first — the list will show only the hardware recorded for them.';
+            sel.appendChild(new Option('-- Choose a client account first --', ''));
+            updatePullOutItem(sel);
+            return;
+        }
+
+        var owned = PULLOUT_CLIENT_HARDWARE[acct] || [];
+        if (owned.length === 0) {
+            if (hint) hint.textContent = 'This client has no hardware recorded in their account yet.';
+            sel.appendChild(new Option('-- No hardware recorded for this client --', ''));
+            updatePullOutItem(sel);
+            return;
+        }
+
+        if (hint) hint.textContent = 'Showing only hardware recorded on this client’s account.';
+        sel.appendChild(new Option('-- Choose Hardware Item --', ''));
+
+        for (var j = 0; j < owned.length; j++) {
+            var a = owned[j];
+            // Pull current stock/pricing from inventory when the item still exists there
+            var inv = null;
+            for (var k = 0; k < PULLOUT_INVENTORY.length; k++) {
+                if (PULLOUT_INVENTORY[k].id === a.item_id) { inv = PULLOUT_INVENTORY[k]; break; }
+            }
+            var text = a.name + ' (' + (a.item_code || '') + ')';
+            if (a.serial_number) text += ' — S/N ' + a.serial_number;
+            text += ' — ' + a.quantity + ' with client';
+
+            var opt = new Option(text, a.item_id);
+            opt.setAttribute('data-name', a.name);
+            opt.setAttribute('data-code', a.item_code || '');
+            opt.setAttribute('data-qty', inv ? inv.qty : 0);
+            opt.setAttribute('data-cost', inv ? inv.cost : 0);
+            opt.setAttribute('data-price', inv ? inv.price : a.unit_price);
+            opt.setAttribute('data-serial', a.serial_number || '');
+            opt.setAttribute('data-owned', a.quantity);
+            sel.appendChild(opt);
         }
     }
+
+    // Restore the previous choice when it is still available in the rebuilt list
+    if (previous) {
+        sel.value = previous;
+        if (sel.value !== previous) sel.value = '';
+    }
+    updatePullOutItem(sel);
+}
+
+function openPullOutModal(presetItemId, presetAcct) {
     if (presetAcct) {
         var selClient = document.getElementById('pullout_accountnum');
         if (selClient) {
             selClient.value = presetAcct;
             updatePullOutClient(selClient);
+        }
+    }
+    refreshPulloutItemOptions(presetItemId || '');
+    if (presetItemId) {
+        var selItem = document.getElementById('pullout_item_id');
+        if (selItem) {
+            selItem.value = presetItemId;
+            updatePullOutItem(selItem);
         }
     }
     var m = document.getElementById('pullOutModal');
@@ -1621,6 +1789,12 @@ function openPullOutModal(presetItemId, presetAcct) {
 
 function openPullOutModalForItem(item) {
     if (!item) return;
+    // Items opened from an inventory row are warehouse stock, so default to deploying
+    var toClient = document.querySelector('input[name="pullout_direction"][value="to_client"]');
+    if (toClient) {
+        toClient.checked = true;
+        togglePulloutDirection('to_client');
+    }
     openPullOutModal(item.id, null);
 }
 
@@ -1641,6 +1815,7 @@ function togglePulloutDirection(val) {
             restockBox.classList.remove('hidden');
         }
     }
+    refreshPulloutItemOptions('');
 }
 
 function updatePullOutItem(sel) {
@@ -1651,13 +1826,20 @@ function updatePullOutItem(sel) {
         var qty = opt.getAttribute('data-qty') || '0';
         var cost = parseFloat(opt.getAttribute('data-cost') || 0);
         var price = parseFloat(opt.getAttribute('data-price') || 0);
-        
+
         document.getElementById('pullout_item_name_text').textContent = name;
         document.getElementById('pullout_item_qty_text').textContent = qty;
-        
+
         var pricingEl = document.getElementById('pullout_item_pricing_text');
         if (pricingEl) {
-            pricingEl.textContent = 'Cost: ₱' + cost.toLocaleString('en-US', {minimumFractionDigits: 2}) + ' | Sell: ₱' + price.toLocaleString('en-US', {minimumFractionDigits: 2});
+            pricingEl.textContent = 'Cost: ' + pesoFmt(cost) + ' | Sell: ' + pesoFmt(price);
+        }
+
+        // When pulling from a client, prefill the serial recorded on their account
+        var serial = opt.getAttribute('data-serial');
+        var serialField = document.querySelector('#pullOutModal input[name="serial_number"]');
+        if (serial && serialField && !serialField.value) {
+            serialField.value = serial;
         }
         if (infoBox) infoBox.classList.remove('hidden');
     } else {
@@ -1671,6 +1853,10 @@ function updatePullOutClient(sel) {
     var address = opt ? (opt.getAttribute('data-address') || '') : '';
     document.getElementById('pullout_client_name').value = tradename;
     document.getElementById('pullout_client_address').value = address;
+    // The client's own hardware drives the item list when pulling FROM them
+    if (pulloutDirectionValue() === 'from_client') {
+        refreshPulloutItemOptions('');
+    }
 }
 
 // Real-time Profit & Margin Calculators
