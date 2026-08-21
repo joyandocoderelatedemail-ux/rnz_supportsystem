@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $custom_notes = isset($_POST['notes']) ? trim($_POST['notes']) : '';
         $serial_number = isset($_POST['serial_number']) ? trim($_POST['serial_number']) : '';
         $condition_status = isset($_POST['condition_status']) ? trim($_POST['condition_status']) : 'Defective / For Diagnostics';
-        $restock_item = isset($_POST['restock_item']) ? intval($_POST['restock_item']) : 0;
+
         $auto_technote = isset($_POST['auto_technote']) ? intval($_POST['auto_technote']) : 1;
 
         if ($item_id <= 0) {
@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
 
         try {
-            $stmt_cur = $pdo->prepare("SELECT id, item_code, name, quantity FROM support_inventory_items WHERE id = :id LIMIT 1");
+            $stmt_cur = $pdo->prepare("SELECT id, item_code, name, quantity, qty_good, qty_defective, qty_damaged, qty_diagnostic FROM support_inventory_items WHERE id = :id LIMIT 1");
             $stmt_cur->execute(array(':id' => $item_id));
             $item_data = $stmt_cur->fetch();
 
@@ -110,21 +110,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             if ($pullout_direction === 'to_client') {
-                $qty_change = -$amount;
-                $new_qty = max(0, $prev_qty - $amount);
-                $change_label = 'Pull Out (To Client)';
-                $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET quantity = :qty, updated_at = :now WHERE id = :id");
-                $stmt_up->execute(array(':qty' => $new_qty, ':now' => $now, ':id' => $item_id));
-            } else {
-                $change_label = 'Pull Out (From Client)';
-                if ($restock_item === 1) {
-                    $qty_change = $amount;
-                    $new_qty = $prev_qty + $amount;
-                    $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET quantity = :qty, updated_at = :now WHERE id = :id");
-                    $stmt_up->execute(array(':qty' => $new_qty, ':now' => $now, ':id' => $item_id));
-                } else {
-                    $qty_change = 0;
+                // Only good/functional units may be released to a client
+                $good_on_hand = intval($item_data['qty_good']);
+                if ($amount > $good_on_hand) {
+                    header("Location: inventory.php?msg=error&err_msg=" . urlencode(
+                        "Cannot deploy " . $amount . " unit(s) of " . $item_data['name'] . ": only " . $good_on_hand .
+                        " in Good / Functional stock. Repair or re-classify the units first."));
+                    exit;
                 }
+
+                $qty_change = -$amount;
+                $change_label = 'Pull Out (To Client)';
+                $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET qty_good = qty_good - :amt, updated_at = :now WHERE id = :id");
+                $stmt_up->execute(array(':amt' => $amount, ':now' => $now, ':id' => $item_id));
+                $new_qty = resync_item_total_quantity($pdo, $item_id);
+            } else {
+                // A unit pulled back is physically in the office, so it always enters
+                // stock - the chosen Item Condition decides which bucket it lands in.
+                $change_label = 'Pull Out (From Client)';
+                $target_column = condition_to_stock_column($condition_status);
+                $qty_change = $amount;
+                $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET `" . $target_column . "` = `" . $target_column . "` + :amt, updated_at = :now WHERE id = :id");
+                $stmt_up->execute(array(':amt' => $amount, ':now' => $now, ':id' => $item_id));
+                $new_qty = resync_item_total_quantity($pdo, $item_id);
+            }
+
+            // Pulling a unit back means the client no longer has it, so remove it
+            // from their Software & Hardware records (client_assets).
+            $assets_removed = 0;
+            $assets_shortfall = 0;
+            if ($pullout_direction !== 'to_client') {
+                $remaining = $amount;
+
+                // Prefer the exact record when a serial number was supplied,
+                // then work through the client's other records for this item.
+                $stmt_owned = $pdo->prepare("SELECT id, quantity, serial_number FROM client_assets
+                    WHERE accountnum = :acct AND item_id = :iid AND asset_type = 'Hardware'
+                    ORDER BY (serial_number = :serial) DESC, id ASC");
+                $stmt_owned->execute(array(
+                    ':acct' => $accountnum,
+                    ':iid' => $item_id,
+                    ':serial' => $serial_number
+                ));
+                $owned_rows = $stmt_owned->fetchAll();
+
+                foreach ($owned_rows as $owned) {
+                    if ($remaining <= 0) {
+                        break;
+                    }
+                    $owned_qty = intval($owned['quantity']);
+
+                    if ($owned_qty <= $remaining) {
+                        // Whole record consumed - drop it from the client's list
+                        $stmt_del = $pdo->prepare("DELETE FROM client_assets WHERE id = :id");
+                        $stmt_del->execute(array(':id' => $owned['id']));
+                        $remaining -= $owned_qty;
+                        $assets_removed += $owned_qty;
+                    } else {
+                        // Only part of the record was pulled out - keep the remainder
+                        $left = $owned_qty - $remaining;
+                        $stmt_dec = $pdo->prepare("UPDATE client_assets
+                            SET quantity = :qty, total_amount = unit_price * :qty2, updated_at = :now
+                            WHERE id = :id");
+                        $stmt_dec->execute(array(
+                            ':qty' => $left,
+                            ':qty2' => $left,
+                            ':now' => $now,
+                            ':id' => $owned['id']
+                        ));
+                        $assets_removed += $remaining;
+                        $remaining = 0;
+                    }
+                }
+
+                $assets_shortfall = $remaining;
             }
 
             // Build compiled notes for inventory movement log
@@ -135,6 +194,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
             if (!empty($condition_status)) {
                 $log_notes_parts[] = "Condition: " . $condition_status;
+            }
+            if ($pullout_direction !== 'to_client') {
+                $short_labels = get_stock_condition_short_labels();
+                $log_notes_parts[] = "Added to " . $short_labels[condition_to_stock_column($condition_status)] . " stock";
+                if ($assets_removed > 0) {
+                    $log_notes_parts[] = "Removed " . $assets_removed . " unit(s) from client records";
+                }
+                if ($assets_shortfall > 0) {
+                    $log_notes_parts[] = "NOTE: " . $assets_shortfall . " unit(s) were not on the client's record";
+                }
             }
             if (!empty($custom_notes)) {
                 $log_notes_parts[] = "Notes: " . $custom_notes;
@@ -276,8 +345,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             $stmt_in = $pdo->prepare("INSERT INTO support_inventory_items 
-                (item_code, name, category, description, image_path, quantity, min_threshold, cost_price, selling_price, unit_price, location, status, created_at, updated_at) 
-                VALUES (:code, :name, 'Hardware', :description, NULL, :qty, :min, :cost, :price, :price, 'Main Storage', 'Active', :now, :now)");
+                (item_code, name, category, description, image_path, quantity, qty_good, min_threshold, cost_price, selling_price, unit_price, location, status, created_at, updated_at) 
+                VALUES (:code, :name, 'Hardware', :description, NULL, :qty, :qty, :min, :cost, :price, :price, 'Main Storage', 'Active', :now, :now)");
             $stmt_in->execute(array(
                 ':code' => $item_code,
                 ':name' => $name,
@@ -313,6 +382,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     elseif ($action === 'adjust_quantity') {
         $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
         $adj_type = isset($_POST['adjustment_type']) ? $_POST['adjustment_type'] : 'add';
+        $adj_conditions = get_stock_conditions();
+        $adj_column = isset($_POST['stock_condition']) && isset($adj_conditions[$_POST['stock_condition']])
+            ? $_POST['stock_condition'] : 'qty_good';
         $amount = isset($_POST['amount']) ? intval($_POST['amount']) : 0;
         $reason = isset($_POST['reason']) ? trim($_POST['reason']) : 'Manual Adjustment';
         $custom_notes = isset($_POST['notes']) ? trim($_POST['notes']) : '';
@@ -325,7 +397,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
 
         try {
-            $stmt_cur = $pdo->prepare("SELECT id, name, quantity FROM support_inventory_items WHERE id = :id LIMIT 1");
+            $stmt_cur = $pdo->prepare("SELECT id, name, quantity, qty_good, qty_defective, qty_damaged, qty_diagnostic FROM support_inventory_items WHERE id = :id LIMIT 1");
             $stmt_cur->execute(array(':id' => $item_id));
             $item_data = $stmt_cur->fetch();
 
@@ -339,25 +411,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $qty_change = 0;
             $change_label = 'Manual Adjustment';
 
+            // Adjustments apply to one condition bucket; the total is derived from them
+            $prev_bucket = intval($item_data[$adj_column]);
+
             if ($adj_type === 'add') {
                 $qty_change = max(1, $amount);
-                $new_qty = $prev_qty + $qty_change;
+                $new_bucket = $prev_bucket + $qty_change;
                 $change_label = 'Stock In';
             } elseif ($adj_type === 'subtract') {
                 $qty_change = -max(1, $amount);
-                $new_qty = max(0, $prev_qty + $qty_change);
+                $new_bucket = max(0, $prev_bucket + $qty_change);
+                $qty_change = $new_bucket - $prev_bucket;
                 $change_label = 'Stock Out';
             } elseif ($adj_type === 'set') {
-                $new_qty = max(0, $amount);
-                $qty_change = $new_qty - $prev_qty;
+                $new_bucket = max(0, $amount);
+                $qty_change = $new_bucket - $prev_bucket;
+                $change_label = 'Stock Set';
+            } else {
+                $new_bucket = $prev_bucket;
+                $qty_change = 0;
                 $change_label = 'Stock Set';
             }
 
             $now = date('Y-m-d H:i:s');
-            $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET quantity = :qty, updated_at = :now WHERE id = :id");
-            $stmt_up->execute(array(':qty' => $new_qty, ':now' => $now, ':id' => $item_id));
+            $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET `" . $adj_column . "` = :bucket, updated_at = :now WHERE id = :id");
+            $stmt_up->execute(array(':bucket' => $new_bucket, ':now' => $now, ':id' => $item_id));
+            $new_qty = resync_item_total_quantity($pdo, $item_id);
 
-            $full_notes = $reason;
+            $short_labels = get_stock_condition_short_labels();
+            $full_notes = '[' . $short_labels[$adj_column] . '] ' . $reason;
             if (!empty($custom_notes)) {
                 $full_notes .= ' - ' . $custom_notes;
             }
@@ -399,6 +481,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $description = isset($_POST['description']) ? trim($_POST['description']) : '';
         $status = isset($_POST['status']) ? trim($_POST['status']) : 'Active';
 
+        // Per-condition stock is editable here; the total is derived from these
+        $qty_good       = isset($_POST['qty_good']) ? max(0, intval($_POST['qty_good'])) : 0;
+        $qty_defective  = isset($_POST['qty_defective']) ? max(0, intval($_POST['qty_defective'])) : 0;
+        $qty_damaged    = isset($_POST['qty_damaged']) ? max(0, intval($_POST['qty_damaged'])) : 0;
+        $qty_diagnostic = isset($_POST['qty_diagnostic']) ? max(0, intval($_POST['qty_diagnostic'])) : 0;
+
         if ($item_id <= 0 || empty($name)) {
             header("Location: inventory.php?msg=error&err_msg=" . urlencode("Invalid item parameters."));
             exit;
@@ -406,10 +494,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
         try {
             $now = date('Y-m-d H:i:s');
+
+            // Capture the current condition split so any stock change can be audited
+            $stmt_before = $pdo->prepare("SELECT quantity, qty_good, qty_defective, qty_damaged, qty_diagnostic FROM support_inventory_items WHERE id = :id LIMIT 1");
+            $stmt_before->execute(array(':id' => $item_id));
+            $before_row = $stmt_before->fetch();
+
+            if (!$before_row) {
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode("Item not found."));
+                exit;
+            }
+
             $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET 
                 item_code = :code, name = :name, min_threshold = :min, 
                 cost_price = :cost, selling_price = :selling, unit_price = :selling,
                 description = :description, 
+                qty_good = :q_good, qty_defective = :q_def, qty_damaged = :q_dam, qty_diagnostic = :q_diag,
                 status = :status, updated_at = :now WHERE id = :id");
             $stmt_up->execute(array(
                 ':code' => $item_code,
@@ -418,10 +518,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':cost' => $cost_price,
                 ':selling' => $selling_price,
                 ':description' => $description,
+                ':q_good' => $qty_good,
+                ':q_def' => $qty_defective,
+                ':q_dam' => $qty_damaged,
+                ':q_diag' => $qty_diagnostic,
                 ':status' => $status,
                 ':now' => $now,
                 ':id' => $item_id
             ));
+
+            $prev_total = intval($before_row['quantity']);
+            $new_total = resync_item_total_quantity($pdo, $item_id);
+
+            // Record a movement entry when the edit actually moved stock, so the
+            // audit log stays complete rather than only tracking the adjust modal.
+            $changed_parts = array();
+            $short_labels = get_stock_condition_short_labels();
+            $submitted = array(
+                'qty_good' => $qty_good,
+                'qty_defective' => $qty_defective,
+                'qty_damaged' => $qty_damaged,
+                'qty_diagnostic' => $qty_diagnostic
+            );
+            foreach ($short_labels as $col => $label) {
+                $was = intval($before_row[$col]);
+                $is = intval($submitted[$col]);
+                if ($was !== $is) {
+                    $changed_parts[] = $label . ': ' . $was . ' -> ' . $is;
+                }
+            }
+
+            if (!empty($changed_parts)) {
+                $stmt_log = $pdo->prepare("INSERT INTO support_inventory_logs 
+                    (item_id, tech_name, change_type, quantity_change, previous_quantity, new_quantity, notes, created_at) 
+                    VALUES (:item_id, :tech, 'Stock Set (Item Edit)', :change, :prev, :new, :notes, :now)");
+                $stmt_log->execute(array(
+                    ':item_id' => $item_id,
+                    ':tech' => $tech_name,
+                    ':change' => ($new_total - $prev_total),
+                    ':prev' => $prev_total,
+                    ':new' => $new_total,
+                    ':notes' => 'Condition stock edited - ' . implode(' | ', $changed_parts),
+                    ':now' => $now
+                ));
+            }
 
             header("Location: inventory.php?msg=item_updated");
             exit;
@@ -476,19 +616,21 @@ if (!empty($search)) {
     $params[':s3'] = "%" . $search . "%";
 }
 
+// Stock health is judged on deployable (good) stock, not the grand total -
+// a pile of defective units should never read as "in stock".
 if ($stock_status === 'low') {
-    $where_clauses[] = "quantity <= min_threshold AND quantity > 0";
+    $where_clauses[] = "qty_good <= min_threshold AND qty_good > 0";
 } elseif ($stock_status === 'out') {
-    $where_clauses[] = "quantity = 0";
+    $where_clauses[] = "qty_good = 0";
 } elseif ($stock_status === 'in_stock') {
-    $where_clauses[] = "quantity > min_threshold";
+    $where_clauses[] = "qty_good > min_threshold";
 }
 
 $order_by = "name ASC";
 if ($sort_by === 'qty_asc') {
-    $order_by = "quantity ASC";
+    $order_by = "qty_good ASC";
 } elseif ($sort_by === 'qty_desc') {
-    $order_by = "quantity DESC";
+    $order_by = "qty_good DESC";
 } elseif ($sort_by === 'price_desc') {
     $order_by = "IF(selling_price > 0, selling_price, unit_price) DESC";
 } elseif ($sort_by === 'price_asc') {
@@ -509,22 +651,28 @@ $items = $stmt_items->fetchAll();
 // KPI Stats
 $total_skus = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items")->fetchColumn());
 $total_units = intval($pdo->query("SELECT SUM(quantity) FROM support_inventory_items")->fetchColumn());
-$low_stock_count = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items WHERE quantity <= min_threshold AND quantity > 0")->fetchColumn());
-$out_of_stock_count = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items WHERE quantity = 0")->fetchColumn());
+$low_stock_count = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items WHERE qty_good <= min_threshold AND qty_good > 0")->fetchColumn());
+$out_of_stock_count = intval($pdo->query("SELECT COUNT(*) FROM support_inventory_items WHERE qty_good = 0")->fetchColumn());
 
-// Materials Cost Valuation
-$total_cost_row = $pdo->query("SELECT SUM(quantity * cost_price) FROM support_inventory_items")->fetchColumn();
+// Units held per condition, for the header KPI strip
+$cond_totals = array();
+foreach (array_keys(get_stock_conditions()) as $cond_key) {
+    $cond_totals[$cond_key] = intval($pdo->query("SELECT SUM(`" . $cond_key . "`) FROM support_inventory_items")->fetchColumn());
+}
+
+// Valuation counts deployable (good) stock only - scrap and defective units
+// are not sellable and would otherwise inflate the figures.
+$total_cost_row = $pdo->query("SELECT SUM(qty_good * cost_price) FROM support_inventory_items")->fetchColumn();
 $total_cost_valuation = floatval($total_cost_row ? $total_cost_row : 0);
 
-// Selling / Retail Valuation
-$total_val_row = $pdo->query("SELECT SUM(quantity * IF(selling_price > 0, selling_price, unit_price)) FROM support_inventory_items")->fetchColumn();
+$total_val_row = $pdo->query("SELECT SUM(qty_good * IF(selling_price > 0, selling_price, unit_price)) FROM support_inventory_items")->fetchColumn();
 $total_selling_valuation = floatval($total_val_row ? $total_val_row : 0);
 
 // Estimated Margin / Profit
 $total_inventory_profit = max(0, $total_selling_valuation - $total_cost_valuation);
 
 // Fetch all inventory items for quick dropdown selection in Pull Out Modal
-$stmt_all_inv = $pdo->query("SELECT id, item_code, name, quantity, min_threshold, cost_price, selling_price, unit_price, status FROM support_inventory_items WHERE status = 'Active' ORDER BY name ASC");
+$stmt_all_inv = $pdo->query("SELECT id, item_code, name, quantity, qty_good, qty_defective, qty_damaged, qty_diagnostic, min_threshold, cost_price, selling_price, unit_price, status FROM support_inventory_items WHERE status = 'Active' ORDER BY name ASC");
 $all_inventory_items = $stmt_all_inv ? $stmt_all_inv->fetchAll() : array();
 
 // Hardware already recorded against each client in accounts.php (client_assets),
@@ -826,7 +974,7 @@ $page_title = 'Hardware Inventory Hub';
                                 <th class="py-3.5 px-6">Hardware Item & Code</th>
                                 <th class="py-3.5 px-6">Description / Specs</th>
                                 <th class="py-3.5 px-6">Pricing & Margins</th>
-                                <th class="py-3.5 px-6 text-center">In Stock / Min</th>
+                                <th class="py-3.5 px-6 text-center">Stock by Condition</th>
                                 <th class="py-3.5 px-6 text-center">Quick Adjust</th>
                                 <th class="py-3.5 px-6 text-right">Actions</th>
                             </tr>
@@ -843,21 +991,31 @@ $page_title = 'Hardware Inventory Hub';
                                     </td>
                                 </tr>
                             <?php else: ?>
+                                <?php
+                                $cond_labels = get_stock_condition_short_labels();
+                                $cond_styles = array(
+                                    'qty_good'       => 'text-emerald-700',
+                                    'qty_defective'  => 'text-amber-700',
+                                    'qty_damaged'    => 'text-rose-700',
+                                    'qty_diagnostic' => 'text-slate-600'
+                                );
+                                ?>
                                 <?php foreach ($items as $item): 
                                     $qty = intval($item['quantity']);
+                                    $qty_good = intval($item['qty_good']);
                                     $min = intval($item['min_threshold']);
                                     $cost = isset($item['cost_price']) ? floatval($item['cost_price']) : 0.00;
                                     $selling = isset($item['selling_price']) && floatval($item['selling_price']) > 0 ? floatval($item['selling_price']) : floatval($item['unit_price']);
                                     $profit_unit = $selling - $cost;
                                     $margin_pct = ($cost > 0) ? round(($profit_unit / $cost) * 100, 1) : 0;
                                     
-                                    // Status Badge styling
-                                    if ($qty == 0) {
+                                    // Status badge reflects deployable (good) stock only
+                                    if ($qty_good == 0) {
                                         $stock_badge = 'bg-rose-100 text-rose-800 border-rose-300';
-                                        $stock_label = 'Out of Stock';
-                                    } elseif ($qty <= $min) {
+                                        $stock_label = 'No Good Stock';
+                                    } elseif ($qty_good <= $min) {
                                         $stock_badge = 'bg-amber-100 text-amber-800 border-amber-300';
-                                        $stock_label = 'Low Stock (' . $qty . ')';
+                                        $stock_label = 'Low Stock (' . $qty_good . ')';
                                     } else {
                                         $stock_badge = 'bg-emerald-100 text-emerald-800 border-emerald-300';
                                         $stock_label = 'In Stock';
@@ -916,16 +1074,32 @@ $page_title = 'Hardware Inventory Hub';
                                             </div>
                                         </td>
 
-                                        <!-- Current Quantity & Threshold -->
-                                        <td class="py-4 px-6 text-center">
-                                            <div class="inline-flex flex-col items-center">
-                                                <span class="text-base font-extrabold font-mono text-slate-900">
-                                                    <?php echo number_format($qty); ?>
-                                                </span>
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border mt-0.5 <?php echo $stock_badge; ?>">
+                                        <!-- Stock split by condition; total is the sum of the buckets -->
+                                        <td class="py-4 px-6">
+                                            <div class="flex flex-col items-center gap-1">
+                                                <div class="flex items-baseline gap-1.5">
+                                                    <span class="text-base font-extrabold font-mono text-emerald-700"><?php echo number_format($qty_good); ?></span>
+                                                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">good</span>
+                                                </div>
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border <?php echo $stock_badge; ?>">
                                                     <?php echo $stock_label; ?>
                                                 </span>
-                                                <span class="text-[10px] text-slate-400 font-mono mt-0.5">Min: <?php echo $min; ?></span>
+
+                                                <div class="w-full max-w-[150px] mt-1 pt-1.5 border-t border-slate-100 space-y-0.5">
+                                                    <?php foreach ($cond_labels as $cond_key => $cond_label): ?>
+                                                        <?php $cond_val = intval($item[$cond_key]); ?>
+                                                        <div class="flex items-center justify-between text-[10px] leading-tight">
+                                                            <span class="<?php echo ($cond_val > 0) ? $cond_styles[$cond_key] . ' font-bold' : 'text-slate-300'; ?>"><?php echo $cond_label; ?></span>
+                                                            <span class="font-mono <?php echo ($cond_val > 0) ? 'font-bold text-slate-800' : 'text-slate-300'; ?>"><?php echo $cond_val; ?></span>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                    <div class="flex items-center justify-between text-[10px] leading-tight pt-1 mt-0.5 border-t border-slate-100">
+                                                        <span class="text-slate-500 font-bold uppercase tracking-wider">Total</span>
+                                                        <span class="font-mono font-extrabold text-slate-900"><?php echo number_format($qty); ?></span>
+                                                    </div>
+                                                </div>
+
+                                                <span class="text-[10px] text-slate-400 font-mono">Min: <?php echo $min; ?></span>
                                             </div>
                                         </td>
 
@@ -940,7 +1114,7 @@ $page_title = 'Hardware Inventory Hub';
                                                         <input type="hidden" name="adjustment_type" value="subtract">
                                                         <input type="hidden" name="amount" value="1">
                                                         <input type="hidden" name="reason" value="Quick -1 Stock Out">
-                                                        <button type="submit" <?php echo ($qty <= 0) ? 'disabled' : ''; ?> class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 font-bold flex items-center justify-center transition-colors disabled:opacity-40" title="Quick Subtract 1">
+                                                        <button type="submit" <?php echo ($qty_good <= 0) ? 'disabled' : ''; ?> class="w-7 h-7 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 font-bold flex items-center justify-center transition-colors disabled:opacity-40" title="Quick Subtract 1 (Good stock)">
                                                             -
                                                         </button>
                                                     </form>
@@ -1081,7 +1255,7 @@ $page_title = 'Hardware Inventory Hub';
                 <div id="pullout_item_info" class="hidden text-[11px] font-mono text-slate-500 pt-1 flex flex-wrap items-center justify-between gap-1">
                     <span>Selected: <strong id="pullout_item_name_text" class="text-slate-800 font-sans"></strong></span>
                     <span id="pullout_item_pricing_text" class="text-slate-600"></span>
-                    <span>Stock: <strong id="pullout_item_qty_text" class="text-amber-700"></strong> units</span>
+                    <span>Good stock: <strong id="pullout_item_qty_text" class="text-amber-700"></strong> units</span>
                 </div>
             </div>
 
@@ -1115,7 +1289,7 @@ $page_title = 'Hardware Inventory Hub';
             <!-- 6. Item Condition / Diagnostic Status -->
             <div class="space-y-1">
                 <label class="text-xs font-bold text-slate-700">Item Condition / Hardware Status</label>
-                <select name="condition_status" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-2.5 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-medium">
+                <select name="condition_status" id="pullout_condition_status" onchange="updateRestockTarget()" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-2.5 rounded-2xl border border-slate-200 focus:border-amber-500 focus:bg-white focus:outline-none font-medium">
                     <option value="Defective / Needs Repair">Defective / Needs Repair</option>
                     <option value="Good / Functional (Working Unit)">Good / Functional (Working Unit)</option>
                     <option value="Damaged / Beyond Repair (Scrap)">Damaged / Beyond Repair (Scrap)</option>
@@ -1125,11 +1299,11 @@ $page_title = 'Hardware Inventory Hub';
 
             <!-- 7. Restock Option (Only if from client) -->
             <div id="restock_option_box" class="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-1">
-                <label class="flex items-center space-x-2.5 cursor-pointer text-xs font-bold text-amber-900">
-                    <input type="checkbox" name="restock_item" value="1" class="rounded text-amber-600 focus:ring-0">
-                    <span>Add pulled-out unit back to available warehouse inventory stock (+Qty)</span>
-                </label>
-                <p class="text-[10px] text-amber-700 ml-6">Check this if the item is functional/repaired and ready for immediate deployment.</p>
+                <p class="text-xs font-bold text-amber-900 flex items-start space-x-2">
+                    <svg class="w-4 h-4 shrink-0 mt-0.5 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span>This unit will be added to <strong id="restock_target_label" class="underline">Good</strong> stock for <strong id="restock_item_label">this item</strong>.</span>
+                </p>
+                <p class="text-[10px] text-amber-700 ml-6">The Item Condition above decides which stock bucket it lands in. Change the condition to send it elsewhere.</p>
             </div>
 
             <!-- 8. Auto Sync to Client Service Notes -->
@@ -1322,15 +1496,46 @@ $page_title = 'Hardware Inventory Hub';
             <input type="hidden" name="item_id" id="adj_item_id" value="0">
 
             <!-- Current Stock Display Box -->
-            <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between">
-                <div>
-                    <span class="text-xs text-slate-500 font-semibold">Current In Stock:</span>
-                    <h4 class="text-2xl font-extrabold font-mono text-slate-900" id="adj_current_qty">0</h4>
+            <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-slate-500 font-semibold">Total In Stock:</span>
+                        <h4 class="text-2xl font-extrabold font-mono text-slate-900" id="adj_current_qty">0</h4>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs text-slate-500 font-semibold">SKU Code:</span>
+                        <p class="text-xs font-mono font-bold text-[#EB3E0B]" id="adj_item_code">HW-000</p>
+                    </div>
                 </div>
-                <div class="text-right">
-                    <span class="text-xs text-slate-500 font-semibold">SKU Code:</span>
-                    <p class="text-xs font-mono font-bold text-[#EB3E0B]" id="adj_item_code">HW-000</p>
+                <div class="grid grid-cols-4 gap-2 pt-2 border-t border-slate-200 text-center">
+                    <div>
+                        <p class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Good</p>
+                        <p class="text-sm font-extrabold font-mono text-slate-900" id="adj_qty_good">0</p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Defective</p>
+                        <p class="text-sm font-extrabold font-mono text-slate-900" id="adj_qty_defective">0</p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Scrap</p>
+                        <p class="text-sm font-extrabold font-mono text-slate-900" id="adj_qty_damaged">0</p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Diagnostic</p>
+                        <p class="text-sm font-extrabold font-mono text-slate-900" id="adj_qty_diagnostic">0</p>
+                    </div>
                 </div>
+            </div>
+
+            <!-- Which condition bucket this adjustment applies to -->
+            <div class="space-y-1">
+                <label class="text-xs font-bold text-slate-700">Apply To Condition <span class="text-[#EB3E0B]">*</span></label>
+                <select name="stock_condition" id="adj_stock_condition" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
+                    <?php foreach (get_stock_conditions() as $cond_key => $cond_name): ?>
+                        <option value="<?php echo sanitize($cond_key); ?>"<?php echo ($cond_key === 'qty_good') ? ' selected' : ''; ?>><?php echo sanitize($cond_name); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="text-[10px] text-slate-500">The total stock is the sum of all four conditions and updates automatically.</p>
             </div>
 
             <!-- Adjustment Type -->
@@ -1503,6 +1708,33 @@ $page_title = 'Hardware Inventory Hub';
                     </select>
                 </div>
 
+                <!-- Stock split by condition -->
+                <div class="sm:col-span-2 space-y-2 pt-3 border-t border-slate-100">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-bold text-slate-700">Stock by Condition</label>
+                        <span class="text-[11px] text-slate-500">Total: <strong id="edit_qty_total" class="font-mono text-slate-900">0</strong></span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Good</label>
+                            <input type="number" name="qty_good" id="edit_qty_good" min="0" step="1" value="0" oninput="updateEditQtyTotal()" class="w-full bg-emerald-50/60 text-slate-800 text-xs px-3 py-2.5 rounded-2xl border border-emerald-200 focus:border-emerald-500 focus:bg-white focus:outline-none font-mono font-bold">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Defective</label>
+                            <input type="number" name="qty_defective" id="edit_qty_defective" min="0" step="1" value="0" oninput="updateEditQtyTotal()" class="w-full bg-amber-50/60 text-slate-800 text-xs px-3 py-2.5 rounded-2xl border border-amber-200 focus:border-amber-500 focus:bg-white focus:outline-none font-mono font-bold">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Scrap</label>
+                            <input type="number" name="qty_damaged" id="edit_qty_damaged" min="0" step="1" value="0" oninput="updateEditQtyTotal()" class="w-full bg-rose-50/60 text-slate-800 text-xs px-3 py-2.5 rounded-2xl border border-rose-200 focus:border-rose-500 focus:bg-white focus:outline-none font-mono font-bold">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Diagnostic</label>
+                            <input type="number" name="qty_diagnostic" id="edit_qty_diagnostic" min="0" step="1" value="0" oninput="updateEditQtyTotal()" class="w-full bg-slate-100 text-slate-800 text-xs px-3 py-2.5 rounded-2xl border border-slate-200 focus:border-slate-500 focus:bg-white focus:outline-none font-mono font-bold">
+                        </div>
+                    </div>
+                    <p class="text-[10px] text-slate-500">Total stock is the sum of these four. Any change here is written to the movement log.</p>
+                </div>
+
                 <!-- Description -->
                 <div class="sm:col-span-2 space-y-1">
                     <label class="text-xs font-bold text-slate-700">Description / Specs</label>
@@ -1666,7 +1898,7 @@ var PULLOUT_INVENTORY = <?php
             'id' => intval($inv_item['id']),
             'name' => $inv_item['name'],
             'code' => $inv_item['item_code'],
-            'qty' => intval($inv_item['quantity']),
+            'qty' => intval($inv_item['qty_good']),
             'cost' => $ic,
             'price' => $ip
         );
@@ -1704,7 +1936,7 @@ function refreshPulloutItemOptions(keepValue) {
         sel.appendChild(new Option('-- Choose Hardware Item --', ''));
         for (var i = 0; i < PULLOUT_INVENTORY.length; i++) {
             var it = PULLOUT_INVENTORY[i];
-            var o = new Option(it.name + ' (' + it.code + ') — ' + it.qty + ' in stock [Cost: ' + pesoFmt(it.cost) + ' | Sell: ' + pesoFmt(it.price) + ']', it.id);
+            var o = new Option(it.name + ' (' + it.code + ') — ' + it.qty + ' good in stock [Cost: ' + pesoFmt(it.cost) + ' | Sell: ' + pesoFmt(it.price) + ']', it.id);
             o.setAttribute('data-name', it.name);
             o.setAttribute('data-code', it.code);
             o.setAttribute('data-qty', it.qty);
@@ -1780,6 +2012,7 @@ function openPullOutModal(presetItemId, presetAcct) {
             updatePullOutItem(selItem);
         }
     }
+    updateRestockTarget();
     var m = document.getElementById('pullOutModal');
     if (m) {
         m.classList.remove('hidden');
@@ -1806,6 +2039,31 @@ function closePullOutModal() {
     }
 }
 
+// Mirrors condition_to_stock_column() in inventory_init.php so the modal can
+// show which stock bucket a pulled-out unit is about to land in.
+function conditionToBucketLabel(condition) {
+    var c = (condition || '').toLowerCase();
+    if (c.indexOf('damaged') !== -1 || c.indexOf('scrap') !== -1 || c.indexOf('beyond repair') !== -1) return 'Scrap';
+    if (c.indexOf('diagnostic') !== -1 || c.indexOf('bench') !== -1) return 'Diagnostic';
+    if (c.indexOf('defective') !== -1 || c.indexOf('needs repair') !== -1 || c.indexOf('for repair') !== -1) return 'Defective';
+    return 'Good';
+}
+
+function updateRestockTarget() {
+    var sel = document.getElementById('pullout_condition_status');
+    var label = document.getElementById('restock_target_label');
+    if (label && sel) {
+        label.textContent = conditionToBucketLabel(sel.value);
+    }
+    var itemSel = document.getElementById('pullout_item_id');
+    var itemLabel = document.getElementById('restock_item_label');
+    if (itemLabel && itemSel) {
+        var opt = itemSel.options[itemSel.selectedIndex];
+        var name = (opt && opt.value) ? (opt.getAttribute('data-name') || '') : '';
+        itemLabel.textContent = name !== '' ? name : 'this item';
+    }
+}
+
 function togglePulloutDirection(val) {
     var restockBox = document.getElementById('restock_option_box');
     if (restockBox) {
@@ -1816,6 +2074,7 @@ function togglePulloutDirection(val) {
         }
     }
     refreshPulloutItemOptions('');
+    updateRestockTarget();
 }
 
 function updatePullOutItem(sel) {
@@ -1845,6 +2104,7 @@ function updatePullOutItem(sel) {
     } else {
         if (infoBox) infoBox.classList.add('hidden');
     }
+    updateRestockTarget();
 }
 
 function updatePullOutClient(sel) {
@@ -1911,6 +2171,11 @@ function openAdjustModal(item) {
     document.getElementById('adj_item_name_display').textContent = item.name;
     document.getElementById('adj_current_qty').textContent = item.quantity;
     document.getElementById('adj_item_code').textContent = item.item_code;
+    document.getElementById('adj_qty_good').textContent = item.qty_good || 0;
+    document.getElementById('adj_qty_defective').textContent = item.qty_defective || 0;
+    document.getElementById('adj_qty_damaged').textContent = item.qty_damaged || 0;
+    document.getElementById('adj_qty_diagnostic').textContent = item.qty_diagnostic || 0;
+    document.getElementById('adj_stock_condition').value = 'qty_good';
     
     var m = document.getElementById('adjustModal');
     if (m) {
@@ -1932,6 +2197,19 @@ function updateClientName(sel) {
     document.getElementById('adj_client_name').value = tradename;
 }
 
+// Keeps the edit modal's total in step with the four condition inputs
+function updateEditQtyTotal() {
+    var ids = ['edit_qty_good', 'edit_qty_defective', 'edit_qty_damaged', 'edit_qty_diagnostic'];
+    var total = 0;
+    for (var i = 0; i < ids.length; i++) {
+        var v = parseInt(document.getElementById(ids[i]).value, 10);
+        if (isNaN(v) || v < 0) v = 0;
+        total += v;
+    }
+    var out = document.getElementById('edit_qty_total');
+    if (out) out.textContent = total;
+}
+
 function openEditModal(item) {
     if (!item) return;
     document.getElementById('edit_item_id').value = item.id;
@@ -1943,8 +2221,13 @@ function openEditModal(item) {
     document.getElementById('edit_min_threshold').value = item.min_threshold || 5;
     document.getElementById('edit_status').value = item.status || 'Active';
     document.getElementById('edit_description').value = item.description || '';
+    document.getElementById('edit_qty_good').value = parseInt(item.qty_good, 10) || 0;
+    document.getElementById('edit_qty_defective').value = parseInt(item.qty_defective, 10) || 0;
+    document.getElementById('edit_qty_damaged').value = parseInt(item.qty_damaged, 10) || 0;
+    document.getElementById('edit_qty_diagnostic').value = parseInt(item.qty_diagnostic, 10) || 0;
 
     calculateEditMargin();
+    updateEditQtyTotal();
 
     var m = document.getElementById('editModal');
     if (m) {

@@ -2,6 +2,75 @@
 // Support Center Inventory Database Initialization & Hardware Sync (PHP 5.6 Compatible)
 require_once __DIR__ . '/config.php';
 
+/**
+ * The stock condition buckets an inventory item is split across.
+ * Key = database column, value = human label used in the pull-out modal.
+ */
+function get_stock_conditions() {
+    return array(
+        'qty_good'       => 'Good / Functional (Working Unit)',
+        'qty_defective'  => 'Defective / Needs Repair',
+        'qty_damaged'    => 'Damaged / Beyond Repair (Scrap)',
+        'qty_diagnostic' => 'For Diagnostic / Bench Testing'
+    );
+}
+
+/**
+ * Short labels for compact display in the inventory table.
+ */
+function get_stock_condition_short_labels() {
+    return array(
+        'qty_good'       => 'Good',
+        'qty_defective'  => 'Defective',
+        'qty_damaged'    => 'Scrap',
+        'qty_diagnostic' => 'Diagnostic'
+    );
+}
+
+/**
+ * Map a free-form condition string from the pull-out form onto a stock column.
+ * Falls back to good stock when the text does not match a known condition.
+ * @param string $condition
+ * @return string column name
+ */
+function condition_to_stock_column($condition) {
+    $c = strtolower(trim($condition));
+    if ($c === '') {
+        return 'qty_good';
+    }
+    if (strpos($c, 'damaged') !== false || strpos($c, 'scrap') !== false || strpos($c, 'beyond repair') !== false) {
+        return 'qty_damaged';
+    }
+    if (strpos($c, 'diagnostic') !== false || strpos($c, 'bench') !== false) {
+        return 'qty_diagnostic';
+    }
+    if (strpos($c, 'defective') !== false || strpos($c, 'needs repair') !== false || strpos($c, 'for repair') !== false) {
+        return 'qty_defective';
+    }
+    return 'qty_good';
+}
+
+/**
+ * Recalculate an item's total quantity from its condition buckets so the two
+ * can never drift apart.
+ * @param PDO $pdo
+ * @param int $item_id
+ * @return int the new total
+ */
+function resync_item_total_quantity($pdo, $item_id) {
+    $item_id = intval($item_id);
+    if ($item_id <= 0) {
+        return 0;
+    }
+    $pdo->exec("UPDATE `support_inventory_items`
+        SET `quantity` = `qty_good` + `qty_defective` + `qty_damaged` + `qty_diagnostic`
+        WHERE `id` = " . $item_id);
+    $stmt = $pdo->prepare("SELECT quantity FROM support_inventory_items WHERE id = :id LIMIT 1");
+    $stmt->execute(array(':id' => $item_id));
+    $row = $stmt->fetch();
+    return $row ? intval($row['quantity']) : 0;
+}
+
 function init_inventory_tables() {
     $pdo = get_db_connection();
     if (!$pdo) {
@@ -128,6 +197,27 @@ function init_inventory_tables() {
         $pdo->exec($sql4);
         $pdo->exec($sql5);
         $pdo->exec($sql6);
+
+        // Safe upgrade: split inventory stock into separate per-condition buckets.
+        // `quantity` stays the authoritative total and is kept equal to their sum.
+        $condition_columns = array('qty_good', 'qty_defective', 'qty_damaged', 'qty_diagnostic');
+        $added_condition_column = false;
+        foreach ($condition_columns as $cond_col) {
+            try {
+                $pdo->exec("ALTER TABLE `support_inventory_items` ADD COLUMN `" . $cond_col . "` INT(11) NOT NULL DEFAULT 0 AFTER `quantity`");
+                $added_condition_column = true;
+            } catch (PDOException $e_cond) {}
+        }
+
+        // One-time backfill: everything already in stock counts as good/functional
+        try {
+            $bf_stmt = $pdo->query("SELECT `meta_value` FROM `support_system_meta` WHERE `meta_key` = 'condition_stock_migrated' LIMIT 1");
+            $bf_row = $bf_stmt ? $bf_stmt->fetch() : null;
+            if (!$bf_row) {
+                $pdo->exec("UPDATE `support_inventory_items` SET `qty_good` = `quantity` WHERE `qty_good` = 0 AND `quantity` > 0");
+                $pdo->exec("INSERT INTO `support_system_meta` (`meta_key`, `meta_value`) VALUES ('condition_stock_migrated', '1') ON DUPLICATE KEY UPDATE `meta_value` = '1'");
+            }
+        } catch (PDOException $e_bf) {}
 
         // Safe upgrade for per-item warranty fields in client_assets
         try {
