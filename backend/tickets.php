@@ -87,7 +87,15 @@ $sql = "SELECT t.*, c.tradename, c.clientname, c.contactnum, c.address
         FROM client_support_tickets t 
         LEFT JOIN bucket_client c ON t.accountnum = c.accountnum 
         $where_sql 
-        ORDER BY t.created_at DESC 
+        ORDER BY 
+            CASE 
+                WHEN t.status = 'Pending' THEN 1 
+                WHEN t.status = 'In Progress' THEN 2 
+                WHEN t.status = 'Open' THEN 3 
+                WHEN t.status IN ('Resolved', 'Closed') THEN 4 
+                ELSE 3 
+            END ASC, 
+            t.created_at DESC 
         LIMIT " . intval($offset) . ", " . intval($per_page);
 
 $stmt = $pdo->prepare($sql);
@@ -197,16 +205,53 @@ $page_title = 'Support Tickets Center';
                             <?php else: ?>
                                 <?php foreach ($tickets as $t): 
                                     $client_name = !empty($t['tradename']) ? $t['tradename'] : (!empty($t['clientname']) ? $t['clientname'] : 'Acct: ' . $t['accountnum']);
-                                    $badge_class = get_status_badge_class($t['status']);
+                                    $st = $t['status'];
+
+                                    if ($st === 'Resolved' || $st === 'Closed') {
+                                        // Resolved -> Green Row
+                                        $row_class   = 'bg-emerald-50/70 hover:bg-emerald-100/80 border-b border-emerald-100 text-emerald-950';
+                                        $num_color   = 'text-emerald-700';
+                                        $title_color = 'text-emerald-950';
+                                        $subj_color  = 'text-emerald-900';
+                                        $date_color  = 'text-emerald-700 font-mono';
+                                        $badge_class = 'bg-emerald-100 text-emerald-800 border border-emerald-300';
+                                        $btn_class   = 'bg-emerald-100/90 hover:bg-emerald-600 text-emerald-700 hover:text-white';
+                                    } elseif ($st === 'Pending' || $st === 'Open') {
+                                        // Pending -> Red Row
+                                        $row_class   = 'bg-rose-50/70 hover:bg-rose-100/80 border-b border-rose-100 text-rose-950';
+                                        $num_color   = 'text-rose-700';
+                                        $title_color = 'text-rose-950';
+                                        $subj_color  = 'text-rose-900';
+                                        $date_color  = 'text-rose-700 font-mono';
+                                        $badge_class = 'bg-rose-100 text-rose-800 border border-rose-300';
+                                        $btn_class   = 'bg-rose-100/90 hover:bg-rose-600 text-rose-700 hover:text-white';
+                                    } elseif ($st === 'In Progress') {
+                                        // In Progress -> Blue Row
+                                        $row_class   = 'bg-blue-50/70 hover:bg-blue-100/80 border-b border-blue-100 text-blue-950';
+                                        $num_color   = 'text-blue-700';
+                                        $title_color = 'text-blue-950';
+                                        $subj_color  = 'text-blue-900';
+                                        $date_color  = 'text-blue-700 font-mono';
+                                        $badge_class = 'bg-blue-100 text-blue-800 border border-blue-300';
+                                        $btn_class   = 'bg-blue-100/90 hover:bg-blue-600 text-blue-700 hover:text-white';
+                                    } else {
+                                        $row_class   = 'hover:bg-slate-50/80 text-slate-800';
+                                        $num_color   = 'text-[#EB3E0B]';
+                                        $title_color = 'text-slate-900';
+                                        $subj_color  = 'text-slate-800';
+                                        $date_color  = 'text-slate-500 font-mono';
+                                        $badge_class = get_status_badge_class($st);
+                                        $btn_class   = 'bg-slate-100 hover:bg-[#EB3E0B] text-slate-500 hover:text-white';
+                                    }
                                 ?>
-                                    <tr class="hover:bg-slate-50/80 transition-colors">
-                                        <td class="py-4 px-6 font-mono font-bold text-[#EB3E0B]">
+                                    <tr class="<?php echo $row_class; ?> transition-colors">
+                                        <td class="py-4 px-6 font-mono font-bold <?php echo $num_color; ?>">
                                             <?php echo sanitize($t['ticket_number']); ?>
                                         </td>
                                         <td class="py-4 px-6">
-                                            <div class="font-bold text-slate-900"><?php echo sanitize($client_name); ?></div>
+                                            <div class="font-bold <?php echo $title_color; ?>"><?php echo sanitize($client_name); ?></div>
                                         </td>
-                                        <td class="py-4 px-6 max-w-xs truncate font-semibold text-slate-800">
+                                        <td class="py-4 px-6 max-w-xs truncate font-semibold <?php echo $subj_color; ?>">
                                             <?php echo sanitize($t['subject']); ?>
                                         </td>
                                         <td class="py-4 px-6">
@@ -215,12 +260,12 @@ $page_title = 'Support Tickets Center';
                                             </span>
                                         </td>
 
-                                        <td class="py-4 px-6 text-slate-500">
+                                        <td class="py-4 px-6 <?php echo $date_color; ?>">
                                             <?php echo format_date($t['created_at']); ?>
                                         </td>
 
                                         <td class="py-4 px-6 text-right">
-                                            <a href="ticket_detail.php?id=<?php echo $t['id']; ?>" class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-slate-100 hover:bg-[#EB3E0B] text-slate-500 hover:text-white transition-colors" title="Manage Ticket">
+                                            <a href="ticket_detail.php?id=<?php echo $t['id']; ?>" class="inline-flex items-center justify-center w-9 h-9 rounded-full <?php echo $btn_class; ?> transition-colors shadow-xs" title="Manage Ticket">
                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
