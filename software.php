@@ -615,7 +615,7 @@ $page_title = $issue_item ? $issue_item['name'] . ' Support' : 'Software & POS I
                         </div>
 
                         <div class="pt-4 flex items-center justify-center space-x-3">
-                            <button onclick="openNewSoftwareTicketModalWithPrefill()" 
+                            <button type="button" onclick="openTeamViewerCheckModal()" 
                                     class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-8 py-3.5 rounded-full shadow-lg shadow-[#EB3E0B]/25 transition-all active:scale-95 flex items-center space-x-2">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -626,7 +626,135 @@ $page_title = $issue_item ? $issue_item['name'] . ' Support' : 'Software & POS I
                     </div>
                 </div>
 
+                <!-- TEAMVIEWER CHECK MODAL -->
+                <div id="teamViewerCheckModal" class="fixed inset-0 z-50 bg-[#430D07]/60 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
+                    <div class="bg-white rounded-3xl shadow-2xl border border-[#FECDAA] max-w-lg w-full p-6 sm:p-8 space-y-6 my-auto relative animate-in fade-in zoom-in duration-150 text-[#430D07]">
+                        <!-- Close Button -->
+                        <button type="button" onclick="closeTeamViewerModal()" class="absolute top-5 right-5 text-[#9A2512] hover:text-[#430D07] p-2 rounded-full hover:bg-[#FFE8D5] transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+
+                        <!-- VIEW 1: TeamViewer Question -->
+                        <div id="tvQuestionView" class="space-y-6 text-center">
+                            <div class="w-16 h-16 rounded-2xl bg-[#FFE8D5] text-[#EB3E0B] mx-auto flex items-center justify-center font-bold shadow-sm">
+                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                            
+                            <div class="space-y-2">
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold bg-[#FFF5ED] text-[#EB3E0B] border border-[#FECDAA]">
+                                    Remote Assistance Readiness
+                                </span>
+                                <h3 class="text-xl sm:text-2xl font-extrabold text-[#430D07]">Do you have TeamViewer installed on this computer?</h3>
+                                <p class="text-xs text-[#7C2112] leading-relaxed">
+                                    Our support technician will need to remotely access your POS terminal to inspect logs, repair configuration, and resolve this software issue.
+                                </p>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                                <button type="button" onclick="handleTeamViewerAnswer(true)" class="p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm shadow-md transition-all active:scale-95 flex items-center justify-center space-x-2">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                                    <span>Yes, I Have TeamViewer</span>
+                                </button>
+                                <button type="button" onclick="handleTeamViewerAnswer(false)" class="p-4 rounded-2xl bg-[#FFE8D5] hover:bg-[#FECDAA] text-[#430D07] font-extrabold text-xs sm:text-sm border border-[#FECDAA] transition-all active:scale-95 flex items-center justify-center space-x-2">
+                                    <svg class="w-5 h-5 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                    <span>No, Need to Download</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- VIEW 2: TeamViewer Download Guide (Shown when answered No) -->
+                        <div id="tvDownloadView" class="space-y-5 hidden text-left">
+                            <div class="flex items-center space-x-3 border-b border-[#FFE8D5] pb-4">
+                                <div class="w-12 h-12 rounded-2xl bg-blue-50 text-[#0066cc] flex items-center justify-center font-bold shrink-0">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-extrabold text-[#430D07]">Download TeamViewer for Windows</h3>
+                                    <p class="text-xs text-[#7C2112]">Required for remote technical assistance.</p>
+                                </div>
+                            </div>
+
+                            <div class="p-4 rounded-2xl bg-[#FFF5ED] border border-[#FECDAA] space-y-3">
+                                <p class="text-xs text-slate-700 leading-relaxed font-medium">
+                                    Please download and install TeamViewer so our technical team can connect directly to your POS terminal:
+                                </p>
+                                <div class="space-y-1.5">
+                                    <a href="https://www.teamviewer.com/apac/download/windows/" target="_blank" rel="noopener noreferrer" 
+                                       class="w-full bg-[#0066cc] hover:bg-[#004f9f] text-white font-extrabold text-xs sm:text-sm py-3.5 px-5 rounded-2xl flex items-center justify-center space-x-2 shadow-md transition-all">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                        <span>Download TeamViewer for Windows &rarr;</span>
+                                    </a>
+                                    <span class="block text-center text-[10px] text-slate-500 font-mono">
+                                        Link: https://www.teamviewer.com/apac/download/windows/
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-slate-700 space-y-1.5 font-medium">
+                                <span class="font-extrabold text-[#EB3E0B] uppercase text-[10px] block">Quick Next Steps:</span>
+                                <ol class="list-decimal list-inside space-y-1 text-[11px] text-slate-600">
+                                    <li>Click the button above to open the TeamViewer Windows download page.</li>
+                                    <li>Run the downloaded installer on your POS terminal.</li>
+                                    <li>Once installed or running, click below to submit your support ticket.</li>
+                                </ol>
+                            </div>
+
+                            <div class="pt-2 flex items-center justify-between border-t border-[#FFE8D5]">
+                                <button type="button" onclick="handleTeamViewerAnswer('back')" class="text-xs font-bold text-[#7C2112] hover:text-[#430D07]">
+                                    &larr; Back
+                                </button>
+                                <button type="button" onclick="proceedToTicketAfterTV()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-extrabold text-xs sm:text-sm px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95">
+                                    Proceed to Submit Ticket &rarr;
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <script>
+                function openTeamViewerCheckModal() {
+                    var m = document.getElementById('teamViewerCheckModal');
+                    var qView = document.getElementById('tvQuestionView');
+                    var dlView = document.getElementById('tvDownloadView');
+                    if (m) {
+                        if (qView) qView.classList.remove('hidden');
+                        if (dlView) dlView.classList.add('hidden');
+                        m.classList.remove('hidden');
+                        m.classList.add('flex');
+                    }
+                }
+
+                function closeTeamViewerModal() {
+                    var m = document.getElementById('teamViewerCheckModal');
+                    if (m) {
+                        m.classList.add('hidden');
+                        m.classList.remove('flex');
+                    }
+                }
+
+                function handleTeamViewerAnswer(hasTV) {
+                    if (hasTV === 'back') {
+                        document.getElementById('tvQuestionView').classList.remove('hidden');
+                        document.getElementById('tvDownloadView').classList.add('hidden');
+                        return;
+                    }
+
+                    if (hasTV === true) {
+                        closeTeamViewerModal();
+                        openNewSoftwareTicketModalWithPrefill();
+                    } else {
+                        document.getElementById('tvQuestionView').classList.add('hidden');
+                        document.getElementById('tvDownloadView').classList.remove('hidden');
+                    }
+                }
+
+                function proceedToTicketAfterTV() {
+                    closeTeamViewerModal();
+                    openNewSoftwareTicketModalWithPrefill();
+                }
+
                 function openNewSoftwareTicketModalWithPrefill() {
                     var issueName = <?php echo json_encode($issue_item['name']); ?>;
                     var diagTrail = <?php echo $diag_trail_js; ?>;
@@ -636,7 +764,10 @@ $page_title = $issue_item ? $issue_item['name'] . ' Support' : 'Software & POS I
                         openNewTicketModal(issueName, subj, diagTrail);
                     } else {
                         var modal = document.getElementById('newTicketModal');
-                        if (modal) modal.classList.remove('hidden');
+                        if (modal) {
+                            modal.classList.remove('hidden');
+                            modal.classList.add('flex');
+                        }
                         var subjInput = document.querySelector('#newTicketModal input[name="subject"]');
                         var descInput = document.querySelector('#newTicketModal textarea[name="issue_description"]');
                         if (subjInput) subjInput.value = subj;
