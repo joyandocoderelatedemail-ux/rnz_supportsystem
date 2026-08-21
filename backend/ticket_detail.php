@@ -29,6 +29,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $post_action = isset($_POST['action']) ? trim($_POST['action']) : '';
 
     if ($post_action === 'send_tech_reply') {
+        // Verify current status
+        $status_chk = $pdo->prepare("SELECT status FROM client_support_tickets WHERE id = :id LIMIT 1");
+        $status_chk->execute(array(':id' => $ticket_id));
+        $cur_st = $status_chk->fetchColumn();
+
+        if ($cur_st === 'Resolved' || $cur_st === 'Closed') {
+            header("Location: ticket_detail.php?id=" . $ticket_id . "&err=" . urlencode("This ticket is marked as $cur_st. Please update the status in the sidebar to resume communication."));
+            exit;
+        }
+
         $reply_msg = isset($_POST['reply_message']) ? trim($_POST['reply_message']) : '';
         $photo_attachments = upload_ticket_photos('attachments');
 
@@ -365,54 +375,71 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                         </div>
 
                         <!-- Reply Box -->
+                        <?php 
+                        $is_tech_closed = (isset($ticket['status']) && in_array($ticket['status'], array('Resolved', 'Closed')));
+                        ?>
                         <div class="pt-6 border-t border-slate-100">
-                            <form id="techReplyForm" action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
-                                <input type="hidden" name="action" value="send_tech_reply">
-                                <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
-
-                                <div>
-                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Send Support Reply to Client</label>
-                                    <textarea id="techReplyTextarea" name="reply_message" rows="3" placeholder="Type your technician response or instructions here..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                            <div id="backendClosedBanner" class="p-5 rounded-2xl bg-slate-100 border border-slate-200 text-center space-y-2 <?php if (!$is_tech_closed) echo 'hidden'; ?>">
+                                <div class="flex items-center justify-center space-x-2 text-slate-700 font-bold text-xs sm:text-sm">
+                                    <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                                    </svg>
+                                    <span>Ticket is Marked as <strong id="backendClosedStatusText"><?php echo sanitize($ticket['status']); ?></strong> (Chat Closed)</span>
                                 </div>
+                                <p class="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                                    The client chat thread is closed. To send a reply or resume communication, update the ticket status in the sidebar.
+                                </p>
+                            </div>
 
-                                <!-- Photo Attachment Input -->
-                                <div>
-                                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Attach Photos / Screenshots (Optional, Multiple Allowed)</label>
-                                    <div class="flex items-center space-x-3">
-                                        <label class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center space-x-2 transition-all shrink-0">
-                                            <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            <div id="backendReplyFormBox" class="<?php if ($is_tech_closed) echo 'hidden'; ?>">
+                                <form id="techReplyForm" action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
+                                    <input type="hidden" name="action" value="send_tech_reply">
+                                    <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
+
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Send Support Reply to Client</label>
+                                        <textarea id="techReplyTextarea" name="reply_message" rows="3" placeholder="Type your technician response or instructions here..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                                    </div>
+
+                                    <!-- Photo Attachment Input -->
+                                    <div>
+                                        <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Attach Photos / Screenshots (Optional, Multiple Allowed)</label>
+                                        <div class="flex items-center space-x-3">
+                                            <label class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center space-x-2 transition-all shrink-0">
+                                                <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                                </svg>
+                                                <span>Choose Photos</span>
+                                                <input type="file" name="attachments[]" id="techChatPhotoInput" accept=".png, .jpg, .jpeg, image/png, image/jpeg" multiple class="hidden" onchange="previewTechChatPhotos(this)">
+                                            </label>
+                                            <span id="techChatPhotoName" class="text-xs text-slate-500 truncate max-w-[220px]">No photos chosen</span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-500 mt-1.5 font-medium flex items-center gap-1">
+                                            <svg class="w-3.5 h-3.5 text-[#EB3E0B] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                            <span><strong class="text-[#EB3E0B]">Allowed formats:</strong> <strong class="text-slate-800">PNG, JPG, JPEG only</strong> (Max 15MB each)</span>
+                                        </p>
+                                        <div id="techChatPhotoPreviewBox" class="hidden mt-3 space-y-2">
+                                            <div class="flex items-center justify-between">
+                                                <span id="techChatPhotoCount" class="text-[11px] font-bold text-[#EB3E0B]">0 photos selected</span>
+                                                <button type="button" onclick="clearTechChatPhotos()" class="text-[11px] font-bold text-rose-600 hover:underline">Clear All</button>
+                                            </div>
+                                            <div id="techChatPhotoGrid" class="flex flex-wrap gap-2.5 max-h-36 overflow-y-auto p-2 bg-slate-50 border border-slate-200 rounded-2xl">
+                                                <!-- Previews injected via JS -->
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center justify-between pt-2">
+                                        <span class="text-[11px] text-slate-400">Replying as: <strong class="text-slate-700"><?php echo sanitize($tech_fullname); ?></strong></span>
+                                        <button type="submit" id="techReplySubmitBtn" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-3 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 flex items-center space-x-2">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
                                             </svg>
-                                            <span>Choose Photos</span>
-                                            <input type="file" name="attachments[]" id="techChatPhotoInput" accept=".png, .jpg, .jpeg, image/png, image/jpeg" multiple class="hidden" onchange="previewTechChatPhotos(this)">
-                                        </label>
-                                        <span id="techChatPhotoName" class="text-xs text-slate-500 truncate max-w-[220px]">No photos chosen</span>
+                                            <span>Post Support Reply</span>
+                                        </button>
                                     </div>
-                                    <p class="text-[11px] text-slate-500 mt-1.5 font-medium flex items-center gap-1">
-                                        <svg class="w-3.5 h-3.5 text-[#EB3E0B] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                        <span><strong class="text-[#EB3E0B]">Allowed formats:</strong> <strong class="text-slate-800">PNG, JPG, JPEG only</strong> (Max 15MB each)</span>
-                                    </p>
-                                    <div id="techChatPhotoPreviewBox" class="hidden mt-3 space-y-2">
-                                        <div class="flex items-center justify-between">
-                                            <span id="techChatPhotoCount" class="text-[11px] font-bold text-[#EB3E0B]">0 photos selected</span>
-                                            <button type="button" onclick="clearTechChatPhotos()" class="text-[11px] font-bold text-rose-600 hover:underline">Clear All</button>
-                                        </div>
-                                        <div id="techChatPhotoGrid" class="flex flex-wrap gap-2.5 max-h-36 overflow-y-auto p-2 bg-slate-50 border border-slate-200 rounded-2xl">
-                                            <!-- Previews injected via JS -->
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="flex items-center justify-between pt-2">
-                                    <span class="text-[11px] text-slate-400">Replying as: <strong class="text-slate-700"><?php echo sanitize($tech_fullname); ?></strong></span>
-                                    <button type="submit" id="techReplySubmitBtn" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-3 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 flex items-center space-x-2">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
-                                        </svg>
-                                        <span>Post Support Reply</span>
-                                    </button>
-                                </div>
-                            </form>
+                                </form>
+                            </div>
                         </div>
                     </div>
 
@@ -640,17 +667,33 @@ function pollTechReplies() {
     fetch('api_ticket_replies.php?id=' + currentTicketId + '&after_id=' + lastReplyId)
         .then(function(res) { return res.json(); })
         .then(function(data) {
-            if (data && data.success && data.replies && data.replies.length > 0) {
-                var container = document.getElementById('backendRepliesContainer');
-                data.replies.forEach(function(r) {
-                    if (!document.querySelector('.tech-reply-card[data-reply-id="' + r.id + '"]')) {
-                        var card = buildTechReplyCard(r);
-                        container.appendChild(card);
-                        if (r.id > lastReplyId) {
-                            lastReplyId = r.id;
+            if (data && data.success) {
+                if (data.replies && data.replies.length > 0) {
+                    var container = document.getElementById('backendRepliesContainer');
+                    data.replies.forEach(function(r) {
+                        if (!document.querySelector('.tech-reply-card[data-reply-id="' + r.id + '"]')) {
+                            var card = buildTechReplyCard(r);
+                            container.appendChild(card);
+                            if (r.id > lastReplyId) {
+                                lastReplyId = r.id;
+                            }
                         }
+                    });
+                }
+                if (data.ticket_status) {
+                    var isClosed = (data.ticket_status === 'Resolved' || data.ticket_status === 'Closed');
+                    var banner = document.getElementById('backendClosedBanner');
+                    var fBox = document.getElementById('backendReplyFormBox');
+                    var statusText = document.getElementById('backendClosedStatusText');
+                    if (isClosed) {
+                        if (banner) banner.classList.remove('hidden');
+                        if (fBox) fBox.classList.add('hidden');
+                        if (statusText) statusText.textContent = data.ticket_status;
+                    } else {
+                        if (banner) banner.classList.add('hidden');
+                        if (fBox) fBox.classList.remove('hidden');
                     }
-                });
+                }
             }
         })
         .catch(function(err) {

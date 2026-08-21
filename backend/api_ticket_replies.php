@@ -40,6 +40,11 @@ if (!$ticket) {
 // 1. POST: Send Tech Reply via AJAX
 // -----------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'send_tech_reply') {
+    if (isset($ticket['status']) && in_array($ticket['status'], array('Resolved', 'Closed'))) {
+        echo json_encode(array('success' => false, 'error' => 'This ticket is marked as ' . $ticket['status'] . '. Please change the ticket status to In Progress to resume communication.'));
+        exit;
+    }
+
     $reply_msg = isset($_POST['reply_message']) ? trim($_POST['reply_message']) : '';
     $photo_attachments = upload_ticket_photos('attachments');
 

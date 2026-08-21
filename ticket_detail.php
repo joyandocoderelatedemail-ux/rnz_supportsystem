@@ -30,28 +30,32 @@ $reply_error = '';
 
 // Handle Reply Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'post_reply') {
-    $reply_message = isset($_POST['message']) ? trim($_POST['message']) : '';
-    $photo_attachments = upload_ticket_photos('attachments');
-
-    if (empty($reply_message) && empty($photo_attachments)) {
-        $reply_error = 'Please enter a message or attach photo(s) before sending.';
+    if (isset($ticket['status']) && in_array($ticket['status'], array('Resolved', 'Closed'))) {
+        $reply_error = 'This ticket has been marked as ' . $ticket['status'] . '. The conversation is closed and no further replies can be sent.';
     } else {
-        $now = date('Y-m-d H:i:s');
-        $stmt_r = $pdo->prepare("INSERT INTO client_ticket_replies (ticket_id, sender_type, sender_name, message, attachment_path, created_at) VALUES (:tid, 'client', :sname, :msg, :att, :c_at)");
-        $stmt_r->execute(array(
-            ':tid' => $ticket_id,
-            ':sname' => $client['tradename'],
-            ':msg' => $reply_message,
-            ':att' => $photo_attachments ? $photo_attachments : null,
-            ':c_at' => $now
-        ));
+        $reply_message = isset($_POST['message']) ? trim($_POST['message']) : '';
+        $photo_attachments = upload_ticket_photos('attachments');
 
-        // Update ticket updated_at
-        $stmt_u = $pdo->prepare("UPDATE client_support_tickets SET updated_at = :now WHERE id = :id");
-        $stmt_u->execute(array(':now' => $now, ':id' => $ticket_id));
+        if (empty($reply_message) && empty($photo_attachments)) {
+            $reply_error = 'Please enter a message or attach photo(s) before sending.';
+        } else {
+            $now = date('Y-m-d H:i:s');
+            $stmt_r = $pdo->prepare("INSERT INTO client_ticket_replies (ticket_id, sender_type, sender_name, message, attachment_path, created_at) VALUES (:tid, 'client', :sname, :msg, :att, :c_at)");
+            $stmt_r->execute(array(
+                ':tid' => $ticket_id,
+                ':sname' => $client['tradename'],
+                ':msg' => $reply_message,
+                ':att' => $photo_attachments ? $photo_attachments : null,
+                ':c_at' => $now
+            ));
 
-        header("Location: ticket_detail.php?id=" . $ticket_id);
-        exit;
+            // Update ticket updated_at
+            $stmt_u = $pdo->prepare("UPDATE client_support_tickets SET updated_at = :now WHERE id = :id");
+            $stmt_u->execute(array(':now' => $now, ':id' => $ticket_id));
+
+            header("Location: ticket_detail.php?id=" . $ticket_id);
+            exit;
+        }
     }
 }
 
@@ -141,6 +145,13 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                 </svg>
                 <span>Back to Tickets List</span>
             </a>
+
+            <?php if (!empty($reply_error)): ?>
+                <div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center space-x-3">
+                    <svg class="w-5 h-5 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span><?php echo sanitize($reply_error); ?></span>
+                </div>
+            <?php endif; ?>
 
             <!-- Ticket Submission Notice Banner (24-48 hrs turnaround) -->
             <?php if (isset($_GET['submitted']) && $_GET['submitted'] == '1'): ?>
@@ -299,8 +310,32 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                 </div>
             </div>
 
+            <?php 
+            $is_ticket_closed = (isset($ticket['status']) && in_array($ticket['status'], array('Resolved', 'Closed')));
+            ?>
+            <!-- Closed/Resolved Notice Card -->
+            <div id="ticketClosedBanner" class="bg-white/90 rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm text-center space-y-4 <?php if (!$is_ticket_closed) echo 'hidden'; ?>">
+                <div class="w-14 h-14 rounded-full bg-slate-100 text-slate-500 mx-auto flex items-center justify-center font-bold shadow-inner">
+                    <svg class="w-7 h-7 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                </div>
+                <div class="space-y-1.5 max-w-md mx-auto">
+                    <h3 class="text-base sm:text-lg font-extrabold text-[#430D07]">This Ticket is Marked as <span id="closedBannerStatusText" class="text-[#EB3E0B]"><?php echo sanitize($ticket['status']); ?></span></h3>
+                    <p class="text-xs text-[#7C2112] leading-relaxed font-medium">
+                        The communication thread for this ticket has been closed. No further replies can be sent. If you have any new questions or issues, please submit a new ticket.
+                    </p>
+                </div>
+                <div class="pt-2">
+                    <button type="button" onclick="openNewTicketModal()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-6 py-2.5 rounded-full shadow-md shadow-[#EB3E0B]/25 transition-all active:scale-95 inline-flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+                        <span>Open New Support Ticket</span>
+                    </button>
+                </div>
+            </div>
+
             <!-- Reply Input Box -->
-            <div class="bg-white/90 rounded-3xl p-6 border border-[#FECDAA] shadow-sm">
+            <div id="replyBoxWrapper" class="bg-white/90 rounded-3xl p-6 border border-[#FECDAA] shadow-sm <?php if ($is_ticket_closed) echo 'hidden'; ?>">
                 <form id="replyForm" action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
                     <input type="hidden" name="action" value="post_reply">
                     <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
@@ -514,6 +549,19 @@ function pollReplies() {
                         if (data.status_badge_class) {
                             badge.className = 'inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold border ' + data.status_badge_class;
                         }
+                    }
+
+                    var isClosed = (data.ticket_status === 'Resolved' || data.ticket_status === 'Closed');
+                    var banner = document.getElementById('ticketClosedBanner');
+                    var rBox = document.getElementById('replyBoxWrapper');
+                    var statusText = document.getElementById('closedBannerStatusText');
+                    if (isClosed) {
+                        if (banner) banner.classList.remove('hidden');
+                        if (rBox) rBox.classList.add('hidden');
+                        if (statusText) statusText.textContent = data.ticket_status;
+                    } else {
+                        if (banner) banner.classList.add('hidden');
+                        if (rBox) rBox.classList.remove('hidden');
                     }
                 }
                 if (data.assigned_tech) {

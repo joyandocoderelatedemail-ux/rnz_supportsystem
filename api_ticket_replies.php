@@ -42,6 +42,11 @@ if (!$ticket) {
 // 1. POST: Send Reply via AJAX
 // -----------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'post_reply') {
+    if (isset($ticket['status']) && in_array($ticket['status'], array('Resolved', 'Closed'))) {
+        echo json_encode(array('success' => false, 'error' => 'This ticket has been marked as ' . $ticket['status'] . '. Conversation is closed.'));
+        exit;
+    }
+
     $reply_message = isset($_POST['message']) ? trim($_POST['message']) : '';
     $photo_attachments = upload_ticket_photos('attachments');
 
