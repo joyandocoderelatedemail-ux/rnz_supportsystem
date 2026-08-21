@@ -7,6 +7,9 @@ require_once __DIR__ . '/includes/inventory_init.php';
 require_page_access('accounts');
 init_inventory_tables();
 
+// Client spend figures are commercially sensitive: Super Admin (Master) only
+$can_view_spend = is_super_admin();
+
 $pdo = get_db_connection();
 
 // Handle Account Profile Update Form Submission
@@ -548,6 +551,8 @@ if ($selected_client) {
 
     // 5. Lifetime spend for this account, kept split by source so nothing is
     //    silently double counted between work orders, orders and equipment.
+    //    Super Admin (Master) only - not queried at all for anyone else.
+    if ($can_view_spend) {
     $stmt_wo_spend = $pdo->prepare("SELECT
             COUNT(*) AS n,
             COALESCE(SUM(amount), 0) AS total,
@@ -578,6 +583,7 @@ if ($selected_client) {
     $spend_unpaid = max(0, $spend_billed - $spend_paid);
     $spend_txns   = intval($spend_wo['n']) + intval($spend_orders['n']);
     $spend_avg    = ($spend_txns > 0) ? ($spend_billed / $spend_txns) : 0;
+    }
 
     // 6. Recorded Software & Hardware owned by this account
     $stmt_assets = $pdo->prepare("SELECT * FROM client_assets WHERE accountnum = :acct ORDER BY id DESC");
@@ -887,8 +893,13 @@ $page_title = 'Manage Accounts';
                         </div>
                     </div>
 
-                    <!-- Lifetime Spend Summary -->
+                    <!-- Lifetime Spend Summary (Super Admin / Master accounts only) -->
+                    <?php if ($can_view_spend): ?>
                     <div class="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 p-5 sm:p-6 space-y-5 shadow-sm">
+                        <div class="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-400/90">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                            <span>Super Admin Only</span>
+                        </div>
                         <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
                             <div>
                                 <span class="block text-slate-400 font-bold uppercase text-[10px] tracking-wider">Total Spend With RNZ</span>
@@ -971,6 +982,7 @@ $page_title = 'Manage Accounts';
                             </div>
                         <?php endif; ?>
                     </div>
+                    <?php endif; ?>
 
                     <!-- Store Address & Warranty Overview Row -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">

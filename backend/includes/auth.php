@@ -212,6 +212,21 @@ function get_user_permission_data($user_id, $accesslevel = '') {
  * @param string $accesslevel
  * @return int 1, 2, or 3
  */
+/**
+ * Is the logged-in technician a Super Admin (Master) account?
+ * Deliberately narrower than access tier 3, which also covers admin and
+ * senior programmer accounts. Use this to gate commercially sensitive data.
+ * @return bool
+ */
+function is_super_admin() {
+    $tech = get_logged_tech();
+    if (!$tech) {
+        return false;
+    }
+    $lvl = isset($tech['accesslevel']) ? strtolower(trim($tech['accesslevel'])) : '';
+    return ($lvl === 'master');
+}
+
 function get_user_access_tier($user_id, $accesslevel = '') {
     $perm = get_user_permission_data($user_id, $accesslevel);
     return isset($perm['access_tier']) ? intval($perm['access_tier']) : 3;
