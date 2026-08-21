@@ -944,12 +944,13 @@ $page_title = 'Manage Accounts';
                                             <th class="py-3 px-4">Steps Completed</th>
                                             <th class="py-3 px-4">Status</th>
                                             <th class="py-3 px-4">Timestamp</th>
+                                            <th class="py-3 px-4 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-100 font-medium">
                                         <?php if (empty($hw_logs)): ?>
                                             <tr>
-                                                <td colspan="6" class="py-8 text-center text-slate-400">No hardware troubleshooting logs found for this account.</td>
+                                                <td colspan="7" class="py-8 text-center text-slate-400">No hardware troubleshooting logs found for this account.</td>
                                             </tr>
                                         <?php else: ?>
                                             <?php foreach ($hw_logs as $hl): 
@@ -971,6 +972,15 @@ $page_title = 'Manage Accounts';
                                                         </span>
                                                     </td>
                                                     <td class="py-3 px-4 text-slate-500 font-mono"><?php echo format_date($hl['created_at']); ?></td>
+                                                    <td class="py-3 px-4 text-right">
+                                                        <a href="print_document.php?type=log&id=<?php echo $hl['id']; ?>&autoprint=1" target="_blank" 
+                                                           class="p-1.5 rounded-lg bg-slate-100 hover:bg-[#FFE8D5] text-slate-600 hover:text-[#EB3E0B] inline-flex items-center space-x-1 transition-colors" title="Print / Download Diagnostic Report PDF">
+                                                            <svg class="w-3.5 h-3.5 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                                            </svg>
+                                                            <span class="text-[11px] font-bold">Print</span>
+                                                        </a>
+                                                    </td>
                                                 </tr>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
@@ -1000,7 +1010,7 @@ $page_title = 'Manage Accounts';
                                             <th class="py-3 px-4">ID / Date</th>
                                             <th class="py-3 px-4">Technician</th>
                                             <th class="py-3 px-4">Status</th>
-                                            <th class="py-3 px-4 text-right">Action</th>
+                                            <th class="py-3 px-4 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-100 font-medium">
@@ -1036,15 +1046,24 @@ $page_title = 'Manage Accounts';
                                                         </span>
                                                     </td>
                                                     <td class="py-3 px-4 text-right">
-                                                        <button data-note="<?php echo htmlspecialchars(json_encode($tn), ENT_QUOTES, 'UTF-8'); ?>"
-                                                                onclick="openServiceNoteDetailsModal(this)" 
-                                                                class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-700 hover:text-[#EB3E0B] font-bold text-[11px] px-3 py-1.5 rounded-full inline-flex items-center space-x-1 transition-all">
-                                                            <svg class="w-4 h-4 text-[#FA5915]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                                            </svg>
-                                                            <span>View Details</span>
-                                                        </button>
+                                                        <div class="flex items-center justify-end space-x-1.5">
+                                                            <button data-note="<?php echo htmlspecialchars(json_encode($tn), ENT_QUOTES, 'UTF-8'); ?>"
+                                                                    onclick="openServiceNoteDetailsModal(this)" 
+                                                                    class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-700 hover:text-[#EB3E0B] font-bold text-[11px] px-3 py-1.5 rounded-full inline-flex items-center space-x-1 transition-all">
+                                                                <svg class="w-4 h-4 text-[#FA5915]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                                                </svg>
+                                                                <span>View</span>
+                                                            </button>
+                                                            <a href="print_document.php?type=technote&id=<?php echo $tn['id']; ?>&autoprint=1" target="_blank" 
+                                                               class="p-1.5 rounded-lg bg-slate-100 hover:bg-[#FFE8D5] text-slate-600 hover:text-[#EB3E0B] inline-flex items-center space-x-1 transition-colors" title="Print / Download Tech Note PDF">
+                                                                <svg class="w-3.5 h-3.5 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                                                </svg>
+                                                                <span class="text-[11px] font-bold">Print</span>
+                                                            </a>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -1108,8 +1127,15 @@ $page_title = 'Manage Accounts';
                                                         </span>
                                                     </td>
                                                     <td class="py-3 px-4 text-right">
-                                                        <?php if ($my_tier >= 2): ?>
-                                                            <div class="flex items-center justify-end space-x-1.5">
+                                                        <div class="flex items-center justify-end space-x-1.5">
+                                                            <a href="print_document.php?type=workorder&id=<?php echo $wo['id']; ?>&autoprint=1" target="_blank" 
+                                                               class="p-1.5 rounded-lg bg-slate-100 hover:bg-[#FFE8D5] text-slate-600 hover:text-[#EB3E0B] inline-flex items-center space-x-1 transition-colors" title="Print / Download Work Order PDF">
+                                                                <svg class="w-3.5 h-3.5 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                                                </svg>
+                                                                <span class="text-[11px] font-bold">Print</span>
+                                                            </a>
+                                                            <?php if ($my_tier >= 2): ?>
                                                                 <button data-wo="<?php echo htmlspecialchars(json_encode($wo), ENT_QUOTES, 'UTF-8'); ?>"
                                                                         onclick="openEditWorkOrderModal(this)" 
                                                                         class="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Edit Work Order">
@@ -1128,10 +1154,8 @@ $page_title = 'Manage Accounts';
                                                                         </svg>
                                                                     </button>
                                                                 </form>
-                                                            </div>
-                                                        <?php else: ?>
-                                                            <span class="text-[10px] font-bold text-slate-400">View Only</span>
-                                                        <?php endif; ?>
+                                                            <?php endif; ?>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -1146,7 +1170,7 @@ $page_title = 'Manage Accounts';
                         <div class="space-y-4">
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div>
-                                    <h3 class="text-base font-extrabold text-slate-900">Hardware Pull-Outs & Deployments</h3>
+                                    <h3 class="text-base font-extrabold text-slate-900">Hardware & Software Pull-Outs & Deployments</h3>
                                     <p class="text-xs text-slate-500">Equipment retrieval, warranty exchange, diagnostics, and stock deployments for Account #<?php echo sanitize($client_acct); ?></p>
                                 </div>
                                 <?php if ($my_tier >= 2): ?>
@@ -1165,18 +1189,19 @@ $page_title = 'Manage Accounts';
                                     <thead>
                                         <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                                             <th class="py-3 px-4">Date / Time</th>
-                                            <th class="py-3 px-4">Hardware Item</th>
+                                            <th class="py-3 px-4">Item Details</th>
                                             <th class="py-3 px-4 text-center">Movement Type</th>
                                             <th class="py-3 px-4 text-center">Quantity</th>
                                             <th class="py-3 px-4">Technician</th>
                                             <th class="py-3 px-4">Reason & Diagnostic Remarks</th>
+                                            <th class="py-3 px-4 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-100 font-medium">
                                         <?php if (empty($client_pullouts)): ?>
                                             <tr>
-                                                <td colspan="6" class="py-8 text-center text-slate-400">
-                                                    No hardware pull-outs or equipment movements recorded for this account.
+                                                <td colspan="7" class="py-8 text-center text-slate-400">
+                                                    No pull-outs or equipment movements recorded for this account.
                                                 </td>
                                             </tr>
                                         <?php else: ?>
@@ -1186,7 +1211,7 @@ $page_title = 'Manage Accounts';
                                                         <?php echo format_date($po['created_at']); ?>
                                                     </td>
                                                     <td class="py-3 px-4 font-bold text-slate-900">
-                                                        <?php echo sanitize(!empty($po['item_name']) ? $po['item_name'] : 'Hardware Item'); ?>
+                                                        <?php echo sanitize(!empty($po['item_name']) ? $po['item_name'] : 'Item Unit'); ?>
                                                         <?php if (!empty($po['item_code'])): ?>
                                                             <span class="block text-[10px] font-mono text-[#EB3E0B]"><?php echo sanitize($po['item_code']); ?></span>
                                                         <?php endif; ?>
@@ -1204,6 +1229,15 @@ $page_title = 'Manage Accounts';
                                                     </td>
                                                     <td class="py-3 px-4 text-slate-600 max-w-sm">
                                                         <span class="text-xs font-medium text-slate-800 block"><?php echo sanitize($po['notes']); ?></span>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-right">
+                                                        <a href="print_document.php?type=pullout&id=<?php echo $po['id']; ?>&autoprint=1" target="_blank" 
+                                                           class="p-1.5 rounded-lg bg-slate-100 hover:bg-[#FFE8D5] text-slate-600 hover:text-[#EB3E0B] inline-flex items-center space-x-1 transition-colors" title="Print / Download Pull-Out Receipt PDF">
+                                                            <svg class="w-3.5 h-3.5 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                                            </svg>
+                                                            <span class="text-[11px] font-bold">Print</span>
+                                                        </a>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -1336,22 +1370,31 @@ $page_title = 'Manage Accounts';
                                                         <?php endif; ?>
                                                     </td>
                                                     <td class="py-3 px-4 text-right whitespace-nowrap">
-                                                        <?php if ($my_tier >= 2): ?>
-                                                            <button type="button"
-                                                                    onclick='openEditAssetModal(<?php echo htmlspecialchars(json_encode($ca), ENT_QUOTES, "UTF-8"); ?>)'
-                                                                    class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-800 text-slate-600 hover:text-white border border-slate-200 font-bold text-[11px] transition-colors"
-                                                                    title="Edit this item">
-                                                                Edit
-                                                            </button>
-                                                            <button type="button"
-                                                                    onclick='openDeleteAssetModal(<?php echo intval($ca["id"]); ?>, <?php echo htmlspecialchars(json_encode($ca["name"]), ENT_QUOTES, "UTF-8"); ?>)'
-                                                                    class="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 font-bold text-[11px] transition-colors"
-                                                                    title="Delete this item">
-                                                                Delete
-                                                            </button>
-                                                        <?php else: ?>
-                                                            <span class="text-[11px] text-slate-300">View only</span>
-                                                        <?php endif; ?>
+                                                        <div class="flex items-center justify-end space-x-1.5">
+                                                            <a href="print_document.php?type=asset&id=<?php echo $ca['id']; ?>&autoprint=1" target="_blank" 
+                                                               class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-[#FFE8D5] text-slate-600 hover:text-[#EB3E0B] border border-slate-200 font-bold text-[11px] inline-flex items-center space-x-1 transition-colors" title="Print / Download Asset Certificate PDF">
+                                                                <svg class="w-3 h-3 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                                                </svg>
+                                                                <span>Print</span>
+                                                            </a>
+                                                            <?php if ($my_tier >= 2): ?>
+                                                                <button type="button"
+                                                                        onclick='openEditAssetModal(<?php echo htmlspecialchars(json_encode($ca), ENT_QUOTES, "UTF-8"); ?>)'
+                                                                        class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-800 text-slate-600 hover:text-white border border-slate-200 font-bold text-[11px] transition-colors"
+                                                                        title="Edit this item">
+                                                                    Edit
+                                                                </button>
+                                                                <button type="button"
+                                                                        onclick='openDeleteAssetModal(<?php echo intval($ca["id"]); ?>, <?php echo htmlspecialchars(json_encode($ca["name"]), ENT_QUOTES, "UTF-8"); ?>)'
+                                                                        class="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 font-bold text-[11px] transition-colors"
+                                                                        title="Delete this item">
+                                                                    Delete
+                                                                </button>
+                                                            <?php else: ?>
+                                                                <span class="text-[11px] text-slate-300">View only</span>
+                                                            <?php endif; ?>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -2176,7 +2219,14 @@ $page_title = 'Manage Accounts';
                             </div>
                         </div>
 
-                        <div class="pt-2 flex justify-end">
+                        <div class="pt-3 flex items-center justify-between border-t border-slate-100">
+                            <a id="v_note_print_btn" href="#" target="_blank" 
+                               class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-5 py-2.5 rounded-full shadow-md flex items-center space-x-1.5 transition-all">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                </svg>
+                                <span>Print / Download PDF</span>
+                            </a>
                             <button onclick="closeServiceNoteModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-sm">
                                 Close Details
                             </button>
@@ -2373,23 +2423,29 @@ $page_title = 'Manage Accounts';
                                 </div>
                             <?php endif; ?>
 
-                            <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
-                                <button type="button" onclick="closeEditWorkOrderModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
-                                    Cancel
-                                </button>
-                                <?php if ($my_tier === 1): ?>
-                                    <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
-                                        🔒 View Only
+                            <div class="pt-3 flex items-center justify-between border-t border-slate-100">
+                                <a id="edit_wo_print_btn" href="#" target="_blank" 
+                                   class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-700 hover:text-[#EB3E0B] font-bold text-xs px-4 py-2.5 rounded-full border border-slate-200 flex items-center space-x-1.5 transition-all">
+                                    <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                    </svg>
+                                    <span>Print PDF</span>
+                                </a>
+                                <div class="flex items-center space-x-2">
+                                    <button type="button" onclick="closeEditWorkOrderModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                        Cancel
                                     </button>
-                                <?php else: ?>
-                                    <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all">
-                                        Update Work Order
-                                    </button>
-                                <?php endif; ?>
+                                    <?php if ($my_tier === 1): ?>
+                                        <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
+                                            🔒 View Only
+                                        </button>
+                                    <?php else: ?>
+                                        <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all">
+                                            Update Work Order
+                                        </button>
+                                    <?php endif; ?>
+                                </div>
                             </div>
-                        </form>
-                    </div>
-                </div>
                         </form>
                     </div>
                 </div>
@@ -2415,6 +2471,12 @@ $page_title = 'Manage Accounts';
                         document.getElementById('v_note_reason').innerText = tn.reasonoftech ? tn.reasonoftech : 'N/A';
                         document.getElementById('v_note_cause').innerText = tn.causeoftheissue ? tn.causeoftheissue : 'N/A';
                         document.getElementById('v_note_resso').innerText = tn.resso ? tn.resso : 'N/A';
+                        
+                        var printBtn = document.getElementById('v_note_print_btn');
+                        if (printBtn && tn.id) {
+                            printBtn.href = 'print_document.php?type=technote&id=' + encodeURIComponent(tn.id) + '&autoprint=1';
+                        }
+                        
                         var modal = document.getElementById('viewServiceNoteModal');
                         if (modal) modal.classList.remove('hidden');
                     } catch(e) {
@@ -2464,6 +2526,12 @@ $page_title = 'Manage Accounts';
                         document.getElementById('edit_wo_amount').value = wo.amount || '0.00';
                         document.getElementById('edit_wo_ornum').value = wo.ornum || '';
                         document.getElementById('edit_wo_status').value = (wo.status || 'paid').toLowerCase();
+                        
+                        var printBtn = document.getElementById('edit_wo_print_btn');
+                        if (printBtn && wo.id) {
+                            printBtn.href = 'print_document.php?type=workorder&id=' + encodeURIComponent(wo.id) + '&autoprint=1';
+                        }
+                        
                         var modal = document.getElementById('editWorkOrderModal');
                         if (modal) modal.classList.remove('hidden');
                     } catch(e) {

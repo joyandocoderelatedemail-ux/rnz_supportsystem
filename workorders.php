@@ -114,7 +114,8 @@ $page_title = 'Work Orders';
                                     <th class="pb-3.5">Nature of Work / Particulars</th>
                                     <th class="pb-3.5">O.R. Number</th>
                                     <th class="pb-3.5">Amount</th>
-                                    <th class="pb-3.5 text-right pr-2">Payment Status</th>
+                                    <th class="pb-3.5 text-center">Payment Status</th>
+                                    <th class="pb-3.5 text-right pr-2">Action</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-[#FFE8D5] text-xs">
@@ -132,10 +133,19 @@ $page_title = 'Work Orders';
                                         <td class="py-4 font-extrabold text-[#430D07]">
                                             ₱<?php echo number_format(floatval($wo['amount']), 2); ?>
                                         </td>
-                                        <td class="py-4 text-right pr-2">
+                                        <td class="py-4 text-center">
                                             <span class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold border <?php echo get_status_badge_class($wo['status']); ?>">
                                                 <?php echo sanitize(ucfirst($wo['status'])); ?>
                                             </span>
+                                        </td>
+                                        <td class="py-4 text-right pr-2">
+                                            <a href="print_document.php?type=workorder&id=<?php echo $wo['id']; ?>&autoprint=1" target="_blank" 
+                                               class="p-1.5 rounded-xl bg-white hover:bg-[#FFE8D5] text-[#7C2112] hover:text-[#EB3E0B] border border-[#FECDAA] inline-flex items-center space-x-1 transition-colors shadow-xs" title="Print / Download Work Order PDF">
+                                                <svg class="w-3.5 h-3.5 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                                </svg>
+                                                <span class="text-[11px] font-bold">Print</span>
+                                            </a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

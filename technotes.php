@@ -158,15 +158,24 @@ $page_title = 'Tech Service History';
                                             </span>
                                         </td>
                                         <td class="py-3.5 px-4 text-right">
-                                            <button data-note="<?php echo htmlspecialchars(json_encode($note), ENT_QUOTES, 'UTF-8'); ?>"
-                                                    onclick="openClientNoteModal(this)" 
-                                                    class="bg-[#FFE8D5] hover:bg-[#EB3E0B] text-[#430D07] hover:text-white font-bold text-xs px-3.5 py-1.5 rounded-full inline-flex items-center space-x-1.5 transition-all shadow-sm">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                                                </svg>
-                                                <span>View Details</span>
-                                            </button>
+                                            <div class="flex items-center justify-end space-x-1.5">
+                                                <button data-note="<?php echo htmlspecialchars(json_encode($note), ENT_QUOTES, 'UTF-8'); ?>"
+                                                        onclick="openClientNoteModal(this)" 
+                                                        class="bg-[#FFE8D5] hover:bg-[#EB3E0B] text-[#430D07] hover:text-white font-bold text-xs px-3.5 py-1.5 rounded-full inline-flex items-center space-x-1.5 transition-all shadow-sm">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                                    </svg>
+                                                    <span>View</span>
+                                                </button>
+                                                <a href="print_document.php?type=technote&id=<?php echo $note['id']; ?>&autoprint=1" target="_blank" 
+                                                   class="p-1.5 rounded-full bg-white hover:bg-[#FFE8D5] text-[#7C2112] hover:text-[#EB3E0B] border border-[#FECDAA] inline-flex items-center space-x-1 transition-colors shadow-xs" title="Print / Download Service Note PDF">
+                                                    <svg class="w-3.5 h-3.5 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                                    </svg>
+                                                    <span class="text-[11px] font-bold">Print</span>
+                                                </a>
+                                            </div>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -233,7 +242,13 @@ $page_title = 'Tech Service History';
             </div>
         </div>
 
-        <div class="pt-2 flex justify-end">
+        <div class="pt-3 flex items-center justify-between border-t border-[#FFE8D5]">
+            <a id="c_note_print_btn" href="#" target="_blank" class="bg-white hover:bg-[#FFE8D5] text-[#7C2112] hover:text-[#EB3E0B] border border-[#FECDAA] font-bold text-xs px-4 py-2.5 rounded-full shadow-xs flex items-center space-x-1.5 transition-all">
+                <svg class="w-4 h-4 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                </svg>
+                <span>Print PDF</span>
+            </a>
             <button onclick="closeClientNoteModal()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md">
                 Close Details
             </button>
@@ -251,6 +266,12 @@ function openClientNoteModal(btn) {
     document.getElementById('c_note_reason').innerText = note.reasonoftech ? note.reasonoftech : 'N/A';
     document.getElementById('c_note_cause').innerText = note.causeoftheissue ? note.causeoftheissue : 'N/A';
     document.getElementById('c_note_resso').innerText = note.resso ? note.resso : 'N/A';
+    
+    var printBtn = document.getElementById('c_note_print_btn');
+    if (printBtn && note.id) {
+        printBtn.href = 'print_document.php?type=technote&id=' + encodeURIComponent(note.id) + '&autoprint=1';
+    }
+    
     document.getElementById('clientNoteModal').classList.remove('hidden');
 }
 
