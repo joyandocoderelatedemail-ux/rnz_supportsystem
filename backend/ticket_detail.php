@@ -387,7 +387,6 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                 <select name="status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-semibold">
                                     <option value="Pending" <?php echo ($ticket['status'] === 'Pending') ? 'selected' : ''; ?>>Pending</option>
                                     <option value="In Progress" <?php echo ($ticket['status'] === 'In Progress') ? 'selected' : ''; ?>>In Progress</option>
-                                    <option value="Resolved" <?php echo ($ticket['status'] === 'Resolved') ? 'selected' : ''; ?>>Resolved</option>
                                     <option value="Closed" <?php echo ($ticket['status'] === 'Closed') ? 'selected' : ''; ?>>Closed</option>
                                 </select>
                             </div>
