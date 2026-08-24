@@ -975,7 +975,7 @@ $page_title = 'Executive Analytics & BI';
                                             &#8369;<?php echo number_format($cl['total_billed'], 2); ?>
                                         </td>
                                         <td class="py-3.5 px-4 text-center no-print">
-                                            <a href="accounts.php?search=<?php echo urlencode($cl['accountnum']); ?>" class="bg-slate-800 hover:bg-[#EB3E0B] text-slate-200 hover:text-white px-2.5 py-1 rounded-xl font-bold text-[11px] transition-all inline-flex items-center gap-1">
+                                            <a href="accounts.php?q=<?php echo urlencode($cl['accountnum']); ?>" class="bg-slate-800 hover:bg-[#EB3E0B] text-slate-200 hover:text-white px-2.5 py-1 rounded-xl font-bold text-[11px] transition-all inline-flex items-center gap-1">
                                                 <span>Profile</span>
                                             </a>
                                         </td>
@@ -1037,7 +1037,7 @@ $page_title = 'Executive Analytics & BI';
                                             <?php echo format_date_only($wo['xdate']); ?>
                                         </td>
                                         <td class="py-3 px-4 font-bold text-white">
-                                            <a href="accounts.php?search=<?php echo urlencode($wo['accountnum']); ?>&tab=orders" class="hover:text-[#EB3E0B] transition-colors">
+                                            <a href="accounts.php?q=<?php echo urlencode($wo['accountnum']); ?>&tab=orders" class="hover:text-[#EB3E0B] transition-colors">
                                                 <?php echo sanitize($cl_name); ?>
                                             </a>
                                         </td>

@@ -451,8 +451,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 }
 
 // Search & Selected Account logic
-$search = isset($_GET['q']) ? trim($_GET['q']) : (isset($_GET['account']) ? trim($_GET['account']) : (isset($_POST['accountnum']) ? trim($_POST['accountnum']) : ''));
-$active_tab = isset($_GET['tab']) ? trim($_GET['tab']) : 'logs';
+$search = isset($_GET['q']) ? trim($_GET['q']) : (isset($_GET['account']) ? trim($_GET['account']) : (isset($_GET['search']) ? trim($_GET['search']) : (isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '')));
+$active_tab = isset($_GET['tab']) ? trim($_GET['tab']) : (isset($_GET['q']) || isset($_GET['account']) || isset($_GET['search']) ? 'logs' : 'orders');
 if (isset($_POST['action']) && in_array($_POST['action'], array('create_workorder', 'update_workorder', 'delete_workorder'))) {
     $active_tab = 'orders';
 }
@@ -472,6 +472,90 @@ if ($searched) {
         ':q' => '%' . strtolower($search) . '%'
     ));
     $selected_client = $stmt_c->fetch();
+}
+
+// Global master data when no client is selected
+$global_wo_list = array();
+$global_wo_summary = array('total_cnt' => 0, 'total_amt' => 0.0, 'paid_amt' => 0.0, 'unpaid_amt' => 0.0);
+$global_wo_status = isset($_GET['status']) ? trim($_GET['status']) : 'all';
+$global_wo_q = isset($_GET['wo_q']) ? trim($_GET['wo_q']) : '';
+
+$global_notes_list = array();
+$global_notes_q = isset($_GET['note_q']) ? trim($_GET['note_q']) : '';
+
+$global_logs_list = array();
+$global_logs_q = isset($_GET['log_q']) ? trim($_GET['log_q']) : '';
+
+if (!$selected_client) {
+    if ($active_tab === 'orders' || $active_tab === 'workorders') {
+        try {
+            $stmt_gwo_sum = $pdo->query("SELECT 
+                COUNT(*) as total_cnt,
+                COALESCE(SUM(amount), 0) as total_amt,
+                COALESCE(SUM(CASE WHEN LOWER(TRIM(status)) = 'paid' THEN amount ELSE 0 END), 0) as paid_amt,
+                COALESCE(SUM(CASE WHEN LOWER(TRIM(status)) != 'paid' THEN amount ELSE 0 END), 0) as unpaid_amt
+                FROM bucket_workorder");
+            if ($stmt_gwo_sum) {
+                $global_wo_summary = $stmt_gwo_sum->fetch(PDO::FETCH_ASSOC);
+            }
+
+            $gwo_sql = "SELECT w.*, c.tradename, c.clientname as cl_owner 
+                FROM bucket_workorder w 
+                LEFT JOIN bucket_client c ON w.accountnum = c.accountnum 
+                WHERE 1=1 ";
+            $gwo_p = array();
+
+            if ($global_wo_status === 'paid') {
+                $gwo_sql .= " AND LOWER(TRIM(w.status)) = 'paid' ";
+            } elseif ($global_wo_status === 'unpaid' || $global_wo_status === 'pending') {
+                $gwo_sql .= " AND LOWER(TRIM(w.status)) != 'paid' ";
+            }
+
+            if (!empty($global_wo_q)) {
+                $gwo_sql .= " AND (w.id LIKE :kw OR w.accountnum LIKE :kw OR LOWER(w.natureofwork) LIKE :kw OR LOWER(w.ornum) LIKE :kw OR LOWER(c.tradename) LIKE :kw OR LOWER(c.clientname) LIKE :kw) ";
+                $gwo_p[':kw'] = '%' . strtolower($global_wo_q) . '%';
+            }
+
+            $gwo_sql .= " ORDER BY w.xdate DESC, w.id DESC LIMIT 150 ";
+            $stmt_gwo = $pdo->prepare($gwo_sql);
+            $stmt_gwo->execute($gwo_p);
+            $global_wo_list = $stmt_gwo->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log("Global WO Error: " . $e->getMessage());
+        }
+    } elseif ($active_tab === 'notes' || $active_tab === 'technotes') {
+        try {
+            $n_sql = "SELECT n.*, c.tradename, c.clientname as cl_owner 
+                FROM bucket_technotes n 
+                LEFT JOIN bucket_client c ON n.accountnum = c.accountnum 
+                WHERE 1=1 ";
+            $n_p = array();
+            if (!empty($global_notes_q)) {
+                $n_sql .= " AND (n.accountnum LIKE :kw OR LOWER(n.techname) LIKE :kw OR LOWER(n.reasonoftech) LIKE :kw OR LOWER(n.solutionoftech) LIKE :kw OR LOWER(c.tradename) LIKE :kw) ";
+                $n_p[':kw'] = '%' . strtolower($global_notes_q) . '%';
+            }
+            $n_sql .= " ORDER BY n.xdate DESC, n.id DESC LIMIT 150 ";
+            $stmt_gn = $pdo->prepare($n_sql);
+            $stmt_gn->execute($n_p);
+            $global_notes_list = $stmt_gn->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {}
+    } elseif ($active_tab === 'logs') {
+        try {
+            $l_sql = "SELECT l.*, c.tradename, c.clientname as cl_owner 
+                FROM hardware_troubleshooting_logs l 
+                LEFT JOIN bucket_client c ON l.accountnum = c.accountnum 
+                WHERE 1=1 ";
+            $l_p = array();
+            if (!empty($global_logs_q)) {
+                $l_sql .= " AND (l.accountnum LIKE :kw OR LOWER(l.hardware_selected) LIKE :kw OR LOWER(l.issue_selected) LIKE :kw OR LOWER(c.tradename) LIKE :kw) ";
+                $l_p[':kw'] = '%' . strtolower($global_logs_q) . '%';
+            }
+            $l_sql .= " ORDER BY l.created_at DESC LIMIT 150 ";
+            $stmt_gl = $pdo->prepare($l_sql);
+            $stmt_gl->execute($l_p);
+            $global_logs_list = $stmt_gl->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {}
+    }
 }
 
 // Fetch top quick clients
@@ -744,7 +828,7 @@ $page_title = 'Manage Accounts';
                 <?php endif; ?>
             </div>
 
-            <!-- INITIAL STATE: NO ACCOUNT SEARCHED -->
+            <!-- INITIAL STATE: NO ACCOUNT SEARCHED OR MASTER VIEW SELECTED -->
             <?php if (!$searched || !$selected_client): ?>
                 
                 <?php if ($searched && !$selected_client): ?>
@@ -760,8 +844,306 @@ $page_title = 'Manage Accounts';
                             <p class="text-xs text-slate-500 max-w-md mx-auto">No client account matched your search <strong>"<?php echo sanitize($search); ?>"</strong>. Please try another account number or trade name.</p>
                         </div>
                     </div>
+                <?php endif; ?>
+
+                <!-- Global Master Hub Navigation Tabs (When no specific client is opened) -->
+                <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+                    <a href="accounts.php?tab=orders" class="px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 <?php echo ($active_tab === 'orders' || $active_tab === 'workorders') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'; ?>">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        <span>All Work Orders</span>
+                        <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-mono <?php echo ($active_tab === 'orders' || $active_tab === 'workorders') ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'; ?>">
+                            <?php echo number_format($global_wo_summary['total_cnt']); ?>
+                        </span>
+                    </a>
+                    <a href="accounts.php?tab=notes" class="px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 <?php echo ($active_tab === 'notes' || $active_tab === 'technotes') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'; ?>">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                        <span>All Service Notes</span>
+                    </a>
+                    <a href="accounts.php?tab=logs" class="px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 <?php echo ($active_tab === 'logs' && !$searched) ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'; ?>">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        <span>All Diagnostic Logs</span>
+                    </a>
+                    <a href="accounts.php?tab=clients" class="px-4 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 <?php echo ($active_tab === 'clients') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'; ?>">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                        <span>Search by Account</span>
+                    </a>
+                </div>
+
+                <!-- 1. MASTER WORK ORDERS VIEW -->
+                <?php if ($active_tab === 'orders' || $active_tab === 'workorders'): ?>
+                    <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+                        
+                        <!-- Top Summary Statistics -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Work Orders</span>
+                                <p class="font-mono text-2xl font-extrabold text-slate-900"><?php echo number_format($global_wo_summary['total_cnt']); ?></p>
+                                <span class="text-[11px] text-slate-500">Across all registered accounts</span>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Billed Revenue</span>
+                                <p class="font-mono text-2xl font-black text-slate-900">&#8369;<?php echo number_format(floatval($global_wo_summary['total_amt']), 2); ?></p>
+                                <span class="text-[11px] text-emerald-600 font-bold">Service &amp; Maintenance</span>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-1">
+                                <span class="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Settled Collections</span>
+                                <p class="font-mono text-2xl font-black text-emerald-700">&#8369;<?php echo number_format(floatval($global_wo_summary['paid_amt']), 2); ?></p>
+                                <span class="text-[11px] text-emerald-700 font-bold">Paid Work Orders</span>
+                            </div>
+                            <div class="p-4 rounded-2xl bg-amber-50/60 border border-amber-200 space-y-1">
+                                <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Pending Receivables</span>
+                                <p class="font-mono text-2xl font-black text-amber-700">&#8369;<?php echo number_format(floatval($global_wo_summary['unpaid_amt']), 2); ?></p>
+                                <span class="text-[11px] text-amber-800 font-bold">Unpaid / In Progress</span>
+                            </div>
+                        </div>
+
+                        <!-- Filter & Search Toolbar -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                            <div class="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-2xl">
+                                <a href="accounts.php?tab=orders&status=all<?php echo !empty($global_wo_q) ? '&wo_q=' . urlencode($global_wo_q) : ''; ?>" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($global_wo_status === 'all') ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'; ?>">
+                                    All (<?php echo count($global_wo_list); ?>)
+                                </a>
+                                <a href="accounts.php?tab=orders&status=paid<?php echo !empty($global_wo_q) ? '&wo_q=' . urlencode($global_wo_q) : ''; ?>" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($global_wo_status === 'paid') ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'; ?>">
+                                    Paid
+                                </a>
+                                <a href="accounts.php?tab=orders&status=unpaid<?php echo !empty($global_wo_q) ? '&wo_q=' . urlencode($global_wo_q) : ''; ?>" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($global_wo_status === 'unpaid' || $global_wo_status === 'pending') ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'; ?>">
+                                    Pending / Unpaid
+                                </a>
+                            </div>
+
+                            <form method="GET" action="accounts.php" class="flex items-center space-x-2 w-full sm:w-auto">
+                                <input type="hidden" name="tab" value="orders">
+                                <input type="hidden" name="status" value="<?php echo sanitize($global_wo_status); ?>">
+                                <div class="relative w-full sm:w-72">
+                                    <input type="text" name="wo_q" value="<?php echo sanitize($global_wo_q); ?>" placeholder="Search WO#, client, OR#, scope..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs pl-8 pr-3 py-2 rounded-xl focus:outline-none focus:border-[#EB3E0B] font-medium">
+                                    <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                </div>
+                                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all">Search</button>
+                                <?php if (!empty($global_wo_q) || $global_wo_status !== 'all'): ?>
+                                    <a href="accounts.php?tab=orders" class="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold px-2.5 py-2 rounded-xl transition-all">Clear</a>
+                                <?php endif; ?>
+                            </form>
+                        </div>
+
+                        <!-- Work Orders Master Table -->
+                        <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
+                                        <th class="py-3 px-4">WO Ref</th>
+                                        <th class="py-3 px-4">Date</th>
+                                        <th class="py-3 px-4">Client Business</th>
+                                        <th class="py-3 px-4">Scope of Work</th>
+                                        <th class="py-3 px-4 text-center">Status</th>
+                                        <th class="py-3 px-4 text-right">Amount (PHP)</th>
+                                        <th class="py-3 px-4 text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <?php if (!empty($global_wo_list)): ?>
+                                        <?php foreach ($global_wo_list as $wo): ?>
+                                            <?php 
+                                            $is_wo_paid = (strtolower(trim($wo['status'])) === 'paid');
+                                            $cl_name = !empty($wo['tradename']) ? $wo['tradename'] : (!empty($wo['clientname']) ? $wo['clientname'] : 'Acct #' . $wo['accountnum']);
+                                            ?>
+                                            <tr class="hover:bg-slate-50/80 transition-colors">
+                                                <td class="py-3 px-4 font-mono font-bold text-slate-900">
+                                                    WO-<?php echo str_pad($wo['id'], 6, '0', STR_PAD_LEFT); ?>
+                                                </td>
+                                                <td class="py-3 px-4 font-mono text-slate-500">
+                                                    <?php echo format_date_only($wo['xdate']); ?>
+                                                </td>
+                                                <td class="py-3 px-4">
+                                                    <a href="accounts.php?q=<?php echo urlencode($wo['accountnum']); ?>&tab=orders" class="font-bold text-slate-900 hover:text-[#EB3E0B] transition-colors block">
+                                                        <?php echo sanitize($cl_name); ?>
+                                                    </a>
+                                                    <span class="font-mono text-[10px] text-slate-400">#<?php echo sanitize($wo['accountnum']); ?></span>
+                                                </td>
+                                                <td class="py-3 px-4 text-slate-700 max-w-xs truncate" title="<?php echo sanitize($wo['natureofwork']); ?>">
+                                                    <?php echo sanitize($wo['natureofwork']); ?>
+                                                </td>
+                                                <td class="py-3 px-4 text-center">
+                                                    <?php if ($is_wo_paid): ?>
+                                                        <span class="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-200">
+                                                            Paid <?php echo !empty($wo['ornum']) ? '&bull; OR #' . sanitize($wo['ornum']) : ''; ?>
+                                                        </span>
+                                                    <?php else: ?>
+                                                        <span class="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-amber-200">
+                                                            Pending
+                                                        </span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="py-3 px-4 text-right font-mono font-extrabold text-slate-900 text-sm">
+                                                    &#8369;<?php echo number_format(floatval($wo['amount']), 2); ?>
+                                                </td>
+                                                <td class="py-3 px-4 text-center">
+                                                    <div class="flex items-center justify-center space-x-1.5">
+                                                        <a href="accounts.php?q=<?php echo urlencode($wo['accountnum']); ?>&tab=orders" class="bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all" title="Open in Client Account">
+                                                            View
+                                                        </a>
+                                                        <a href="print_document.php?type=workorder&id=<?php echo $wo['id']; ?>" target="_blank" class="bg-slate-900 hover:bg-[#EB3E0B] text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all inline-flex items-center gap-1" title="Print Work Order Statement">
+                                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                                            <span>Print</span>
+                                                        </a>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <tr>
+                                            <td colspan="7" class="py-12 text-center text-slate-400">No work orders found matching your search.</td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+
+                <!-- 2. MASTER TECHNICAL SERVICE NOTES VIEW -->
+                <?php elseif ($active_tab === 'notes' || $active_tab === 'technotes'): ?>
+                    <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">All Technical Service Notes</h3>
+                                <p class="text-xs text-slate-500">Service visits and technician field maintenance notes across all accounts</p>
+                            </div>
+                            <form method="GET" action="accounts.php" class="flex items-center space-x-2">
+                                <input type="hidden" name="tab" value="notes">
+                                <input type="text" name="note_q" value="<?php echo sanitize($global_notes_q); ?>" placeholder="Search technician, client, concern..." class="bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-[#EB3E0B] font-medium">
+                                <button type="submit" class="bg-[#EB3E0B] text-white text-xs font-bold px-3 py-2 rounded-xl">Search</button>
+                            </form>
+                        </div>
+
+                        <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
+                                        <th class="py-3 px-4">Ref</th>
+                                        <th class="py-3 px-4">Date</th>
+                                        <th class="py-3 px-4">Client Business</th>
+                                        <th class="py-3 px-4">Attending Tech</th>
+                                        <th class="py-3 px-4">Reason / Concern</th>
+                                        <th class="py-3 px-4">Technical Solution</th>
+                                        <th class="py-3 px-4 text-center">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <?php if (!empty($global_notes_list)): ?>
+                                        <?php foreach ($global_notes_list as $n): ?>
+                                            <tr class="hover:bg-slate-50/80 transition-colors">
+                                                <td class="py-3 px-4 font-mono font-bold text-slate-900">
+                                                    TSN-<?php echo str_pad($n['id'], 6, '0', STR_PAD_LEFT); ?>
+                                                </td>
+                                                <td class="py-3 px-4 font-mono text-slate-500">
+                                                    <?php echo format_date_only($n['xdate']); ?>
+                                                </td>
+                                                <td class="py-3 px-4">
+                                                    <a href="accounts.php?q=<?php echo urlencode($n['accountnum']); ?>&tab=notes" class="font-bold text-slate-900 hover:text-[#EB3E0B] transition-colors block">
+                                                        <?php echo sanitize(!empty($n['tradename']) ? $n['tradename'] : 'Acct #' . $n['accountnum']); ?>
+                                                    </a>
+                                                    <span class="font-mono text-[10px] text-slate-400">#<?php echo sanitize($n['accountnum']); ?></span>
+                                                </td>
+                                                <td class="py-3 px-4 font-bold text-slate-800">
+                                                    <?php echo sanitize($n['techname']); ?>
+                                                </td>
+                                                <td class="py-3 px-4 text-slate-600 max-w-xs truncate" title="<?php echo sanitize($n['reasonoftech']); ?>">
+                                                    <?php echo sanitize($n['reasonoftech']); ?>
+                                                </td>
+                                                <td class="py-3 px-4 text-slate-800 max-w-xs truncate" title="<?php echo sanitize($n['solutionoftech']); ?>">
+                                                    <?php echo sanitize($n['solutionoftech']); ?>
+                                                </td>
+                                                <td class="py-3 px-4 text-center">
+                                                    <a href="accounts.php?q=<?php echo urlencode($n['accountnum']); ?>&tab=notes" class="bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all">
+                                                        View
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <tr>
+                                            <td colspan="7" class="py-12 text-center text-slate-400">No service notes found.</td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                <!-- 3. MASTER DIAGNOSTIC LOGS VIEW -->
+                <?php elseif ($active_tab === 'logs'): ?>
+                    <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">All Diagnostic &amp; Troubleshooting Logs</h3>
+                                <p class="text-xs text-slate-500">Self-service hardware guided diagnostic trails across all accounts</p>
+                            </div>
+                            <form method="GET" action="accounts.php" class="flex items-center space-x-2">
+                                <input type="hidden" name="tab" value="logs">
+                                <input type="text" name="log_q" value="<?php echo sanitize($global_logs_q); ?>" placeholder="Search hardware, issue, client..." class="bg-slate-50 border border-slate-200 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-[#EB3E0B] font-medium">
+                                <button type="submit" class="bg-[#EB3E0B] text-white text-xs font-bold px-3 py-2 rounded-xl">Search</button>
+                            </form>
+                        </div>
+
+                        <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
+                                        <th class="py-3 px-4">Log Ref</th>
+                                        <th class="py-3 px-4">Date</th>
+                                        <th class="py-3 px-4">Client Business</th>
+                                        <th class="py-3 px-4">Hardware Tested</th>
+                                        <th class="py-3 px-4">Reported Issue</th>
+                                        <th class="py-3 px-4 text-center">Resolution</th>
+                                        <th class="py-3 px-4 text-center">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <?php if (!empty($global_logs_list)): ?>
+                                        <?php foreach ($global_logs_list as $l): ?>
+                                            <tr class="hover:bg-slate-50/80 transition-colors">
+                                                <td class="py-3 px-4 font-mono font-bold text-slate-900">
+                                                    DIAG-<?php echo str_pad($l['id'], 6, '0', STR_PAD_LEFT); ?>
+                                                </td>
+                                                <td class="py-3 px-4 font-mono text-slate-500">
+                                                    <?php echo format_date_only($l['created_at']); ?>
+                                                </td>
+                                                <td class="py-3 px-4">
+                                                    <a href="accounts.php?q=<?php echo urlencode($l['accountnum']); ?>&tab=logs" class="font-bold text-slate-900 hover:text-[#EB3E0B] transition-colors block">
+                                                        <?php echo sanitize(!empty($l['tradename']) ? $l['tradename'] : 'Acct #' . $l['accountnum']); ?>
+                                                    </a>
+                                                    <span class="font-mono text-[10px] text-slate-400">#<?php echo sanitize($l['accountnum']); ?></span>
+                                                </td>
+                                                <td class="py-3 px-4 font-bold text-slate-800">
+                                                    <?php echo sanitize($l['hardware_selected']); ?>
+                                                </td>
+                                                <td class="py-3 px-4 text-slate-600 max-w-xs truncate" title="<?php echo sanitize($l['issue_selected']); ?>">
+                                                    <?php echo sanitize($l['issue_selected']); ?>
+                                                </td>
+                                                <td class="py-3 px-4 text-center">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                                        <?php echo sanitize($l['resolution_status']); ?>
+                                                    </span>
+                                                </td>
+                                                <td class="py-3 px-4 text-center">
+                                                    <a href="accounts.php?q=<?php echo urlencode($l['accountnum']); ?>&tab=logs" class="bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all">
+                                                        View
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <tr>
+                                            <td colspan="7" class="py-12 text-center text-slate-400">No diagnostic logs found.</td>
+                                        </tr>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                <!-- 4. DEFAULT SEARCH ACCOUNT VIEW -->
                 <?php else: ?>
-                    <!-- Initial State Empty Card -->
                     <div class="bg-white rounded-3xl p-12 border border-slate-200 shadow-sm text-center space-y-4">
                         <div class="w-20 h-20 rounded-full bg-[#FFE8D5] text-[#EB3E0B] flex items-center justify-center mx-auto shadow-inner">
                             <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -771,6 +1153,14 @@ $page_title = 'Manage Accounts';
                         <div class="space-y-1">
                             <h3 class="text-lg font-extrabold text-slate-900">Search a Client Account First</h3>
                             <p class="text-xs text-slate-500 max-w-md mx-auto">Please enter an account number or client business name in the search bar above to manage profile information, diagnostic logs, service notes, and work orders.</p>
+                        </div>
+                        <div class="pt-3 flex flex-wrap items-center justify-center gap-2">
+                            <a href="accounts.php?tab=orders" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white text-xs font-bold px-4 py-2 rounded-2xl shadow-sm transition-all">
+                                Browse All Work Orders &rarr;
+                            </a>
+                            <a href="accounts.php?tab=notes" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-2xl transition-all">
+                                Browse All Service Notes
+                            </a>
                         </div>
                     </div>
                 <?php endif; ?>
