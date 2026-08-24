@@ -3,6 +3,9 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/../includes/hardware_data.php';
+require_once __DIR__ . '/includes/ticket_chat_init.php';
+
+init_ticket_chat_tables();
 
 header('Content-Type: application/json');
 header('Cache-Control: no-cache, no-store, must-revalidate');
@@ -53,11 +56,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
 
+    // Optional: this reply answers one specific message in the thread
+    $reply_to_id = isset($_POST['reply_to_id']) ? intval($_POST['reply_to_id']) : 0;
+    $reply_to_info = get_reply_parent_info($pdo, $reply_to_id, $ticket_id);
+    if (!$reply_to_info) {
+        $reply_to_id = 0; // Unknown or belongs to another ticket - send as a normal reply
+    }
+
     $now = date('Y-m-d H:i:s');
     try {
-        $stmt_rep = $pdo->prepare("INSERT INTO client_ticket_replies (ticket_id, sender_type, sender_name, message, attachment_path, created_at) VALUES (:tid, 'support', :sname, :msg, :att, :c_at)");
+        $stmt_rep = $pdo->prepare("INSERT INTO client_ticket_replies (ticket_id, reply_to_id, sender_type, sender_name, message, attachment_path, created_at) VALUES (:tid, :rto, 'support', :sname, :msg, :att, :c_at)");
         $stmt_rep->execute(array(
             ':tid' => $ticket_id,
+            ':rto' => ($reply_to_id > 0) ? $reply_to_id : null,
             ':sname' => $tech_name,
             ':msg' => $reply_msg,
             ':att' => $photo_attachments ? $photo_attachments : null,
@@ -82,6 +93,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 'attachment_path' => $photo_attachments ? $photo_attachments : null,
                 'attachments' => $parsed_attachments,
                 'formatted_date' => format_date($now),
+                'reply_snippet' => build_reply_snippet($reply_msg, $photo_attachments),
+                'reply_to' => $reply_to_info,
+                'reactions' => array(),
                 'diagnostic_log' => (strpos($reply_msg, '=== HARDWARE DIAGNOSTIC LOG ===') !== false) ? format_diagnostic_log_text($reply_msg) : null
             )
         ));
@@ -93,12 +107,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // -----------------------------------------------------------
-// 2. GET: Poll for New Replies
+// 2. POST: React / un-react to one message
+// -----------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_reaction') {
+    $reply_id = isset($_POST['reply_id']) ? intval($_POST['reply_id']) : 0;
+    $reaction = isset($_POST['reaction']) ? trim($_POST['reaction']) : '';
+
+    $result = toggle_ticket_reaction($pdo, $ticket_id, $reply_id, $reaction, 'support', $tech_name);
+    if (!$result['success']) {
+        echo json_encode(array('success' => false, 'error' => $result['error']));
+        exit;
+    }
+
+    $all_reactions = get_ticket_reply_reactions($pdo, $ticket_id, 'support', $tech_name);
+    echo json_encode(array(
+        'success' => true,
+        'reply_id' => $reply_id,
+        'reaction' => $reaction,
+        'active' => $result['active'],
+        'reactions' => isset($all_reactions[$reply_id]) ? $all_reactions[$reply_id] : array()
+    ));
+    exit;
+}
+
+// -----------------------------------------------------------
+// 3. GET: Poll for New Replies
 // -----------------------------------------------------------
 $after_id = isset($_GET['after_id']) ? intval($_GET['after_id']) : 0;
 
 try {
-    $stmt_replies = $pdo->prepare("SELECT id, ticket_id, sender_type, sender_name, message, attachment_path, created_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
+    $stmt_replies = $pdo->prepare("SELECT id, ticket_id, reply_to_id, sender_type, sender_name, message, attachment_path, created_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
     $stmt_replies->execute(array(':tid' => $ticket_id, ':after_id' => $after_id));
     $raw_replies = $stmt_replies->fetchAll();
 
@@ -120,9 +158,15 @@ try {
             'attachment_path' => !empty($r['attachment_path']) ? $r['attachment_path'] : null,
             'attachments' => parse_ticket_attachments($r['attachment_path']),
             'formatted_date' => format_date($r['created_at']),
+            'reply_snippet' => build_reply_snippet($msg_text, $r['attachment_path']),
+            'reply_to' => get_reply_parent_info($pdo, isset($r['reply_to_id']) ? $r['reply_to_id'] : 0, $ticket_id),
             'diagnostic_log' => $diag_log
         );
     }
+
+    // Reactions are sent for the whole thread on every poll, so a reaction added
+    // by someone else shows up on messages that are already on screen.
+    $reactions_map = get_ticket_reply_reactions($pdo, $ticket_id, 'support', $tech_name);
 
     echo json_encode(array(
         'success' => true,
@@ -130,7 +174,8 @@ try {
         'status_badge_class' => get_status_badge_class($ticket['status']),
         'assigned_tech' => $ticket['assigned_tech'],
         'last_updated' => format_date($ticket['updated_at']),
-        'replies' => $formatted_replies
+        'replies' => $formatted_replies,
+        'reactions' => $reactions_map ? $reactions_map : new stdClass()
     ));
     exit;
 } catch (PDOException $e) {

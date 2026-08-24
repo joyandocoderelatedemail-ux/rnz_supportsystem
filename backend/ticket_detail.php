@@ -3,8 +3,12 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/../includes/hardware_data.php';
+require_once __DIR__ . '/includes/ticket_chat_init.php';
 
 require_page_access('tickets');
+
+// Adds reply_to_id + the reactions table the first time this page is opened
+init_ticket_chat_tables();
 
 $tech = get_logged_tech();
 $tech_fullname = $tech['fullname'];
@@ -42,13 +46,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reply_msg = isset($_POST['reply_message']) ? trim($_POST['reply_message']) : '';
         $photo_attachments = upload_ticket_photos('attachments');
 
+        // Optional: this reply answers one specific message in the thread
+        $reply_to_id = isset($_POST['reply_to_id']) ? intval($_POST['reply_to_id']) : 0;
+        if ($reply_to_id > 0 && !get_reply_parent_info($pdo, $reply_to_id, $ticket_id)) {
+            $reply_to_id = 0; // Unknown message or another ticket - post as a normal reply
+        }
+
         if (!empty($reply_msg) || !empty($photo_attachments)) {
-            $stmt_rep = $pdo->prepare("INSERT INTO client_ticket_replies 
-                (ticket_id, sender_type, sender_name, message, attachment_path, created_at) 
-                VALUES (:tid, 'support', :sname, :msg, :att, :c_at)");
+            $stmt_rep = $pdo->prepare("INSERT INTO client_ticket_replies
+                (ticket_id, reply_to_id, sender_type, sender_name, message, attachment_path, created_at)
+                VALUES (:tid, :rto, 'support', :sname, :msg, :att, :c_at)");
 
             $stmt_rep->execute(array(
                 ':tid' => $ticket_id,
+                ':rto' => ($reply_to_id > 0) ? $reply_to_id : null,
                 ':sname' => $tech_fullname,
                 ':msg' => $reply_msg,
                 ':att' => $photo_attachments ? $photo_attachments : null,
@@ -116,11 +127,18 @@ if (empty($replies)) {
 }
 
 $max_reply_id = 0;
+$replies_by_id = array();
 foreach ($replies as $r) {
     if (isset($r['id']) && intval($r['id']) > $max_reply_id) {
         $max_reply_id = intval($r['id']);
     }
+    if (isset($r['id']) && intval($r['id']) > 0) {
+        $replies_by_id[intval($r['id'])] = $r;
+    }
 }
+
+// Heart reactions already on the messages in this ticket
+$reactions_map = get_ticket_reply_reactions($pdo, $ticket_id, 'support', $tech_fullname);
 
 // Fetch Technicians list
 $stmt_techs = $pdo->query("SELECT fname, lname, user FROM user ORDER BY fname ASC");
@@ -324,11 +342,39 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
 
                         <div id="backendRepliesContainer" class="space-y-4">
                             <!-- Replies -->
-                            <?php foreach ($replies as $rep): 
+                            <?php foreach ($replies as $rep):
                                 $is_tech = ($rep['sender_type'] === 'support');
                                 $r_id = isset($rep['id']) ? intval($rep['id']) : 0;
+
+                                // The message this one is answering, if any
+                                $parent_info = null;
+                                $parent_id = isset($rep['reply_to_id']) ? intval($rep['reply_to_id']) : 0;
+                                if ($parent_id > 0 && isset($replies_by_id[$parent_id])) {
+                                    $p_rep = $replies_by_id[$parent_id];
+                                    $parent_info = array(
+                                        'id' => $parent_id,
+                                        'is_tech' => ($p_rep['sender_type'] === 'support'),
+                                        'sender_name' => $p_rep['sender_name'],
+                                        'snippet' => build_reply_snippet($p_rep['message'], isset($p_rep['attachment_path']) ? $p_rep['attachment_path'] : '')
+                                    );
+                                }
+
+                                $own_snippet = build_reply_snippet($rep['message'], isset($rep['attachment_path']) ? $rep['attachment_path'] : '');
+                                $my_reactions = isset($reactions_map[$r_id]) ? $reactions_map[$r_id] : array();
                             ?>
                                 <div class="tech-reply-card p-4 sm:p-5 rounded-2xl text-xs space-y-2 <?php echo $is_tech ? 'bg-[#FFF5ED] border border-[#FECDAA] ml-4 sm:ml-8' : 'bg-slate-50 border border-slate-200 mr-4 sm:mr-8'; ?>" data-reply-id="<?php echo $r_id; ?>">
+                                    <?php if ($parent_info): ?>
+                                        <!-- Quoted message this reply answers -->
+                                        <button type="button" onclick="scrollToReply(<?php echo $parent_info['id']; ?>)" class="w-full text-left flex items-start gap-2 p-2.5 rounded-xl bg-white/80 hover:bg-white border-l-4 <?php echo $parent_info['is_tech'] ? 'border-[#EB3E0B]' : 'border-slate-400'; ?> transition-colors">
+                                            <svg class="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+                                            <span class="min-w-0">
+                                                <span class="block font-bold text-[10px] uppercase tracking-wider <?php echo $parent_info['is_tech'] ? 'text-[#EB3E0B]' : 'text-slate-500'; ?>">
+                                                    Replying to <?php echo sanitize($parent_info['sender_name']); ?>
+                                                </span>
+                                                <span class="block text-[11px] text-slate-600 truncate"><?php echo sanitize($parent_info['snippet']); ?></span>
+                                            </span>
+                                        </button>
+                                    <?php endif; ?>
                                     <div class="flex items-center justify-between">
                                         <span class="font-bold flex items-center gap-1.5 <?php echo $is_tech ? 'text-[#EB3E0B]' : 'text-slate-900'; ?>">
                                             <?php if ($is_tech): ?>
@@ -370,6 +416,32 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                             </div>
                                         </div>
                                     <?php endif; ?>
+
+                                    <?php if ($r_id > 0): ?>
+                                        <!-- Reactions + Reply actions -->
+                                        <div class="pt-2 mt-1 border-t <?php echo $is_tech ? 'border-[#FFE8D5]' : 'border-slate-200'; ?> flex items-center flex-wrap gap-1.5">
+                                            <div class="reaction-pills flex items-center flex-wrap gap-1.5" data-reactions-for="<?php echo $r_id; ?>">
+                                                <?php foreach ($my_reactions as $rx): ?>
+                                                    <button type="button" onclick="sendReaction(<?php echo $r_id; ?>, '<?php echo sanitize($rx['reaction']); ?>')" title="<?php echo sanitize($rx['who']); ?>"
+                                                            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold transition-colors <?php echo $rx['mine'] ? 'bg-[#FFE8D5] border-[#FECDAA] text-[#9A2512]' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'; ?>">
+                                                        <span><?php echo $rx['emoji']; ?></span><span><?php echo intval($rx['count']); ?></span>
+                                                    </button>
+                                                <?php endforeach; ?>
+                                            </div>
+
+                                            <button type="button" onclick="sendReaction(<?php echo $r_id; ?>, 'heart')" title="Love this message"
+                                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-slate-300 text-[11px] font-bold text-slate-500 hover:text-[#9A2512] hover:border-[#FECDAA] hover:bg-white transition-colors">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                                                <span>Like</span>
+                                            </button>
+
+                                            <button type="button" onclick='startReplyTo(<?php echo $r_id; ?>, <?php echo htmlspecialchars(json_encode($rep['sender_name']), ENT_QUOTES, 'UTF-8'); ?>, <?php echo htmlspecialchars(json_encode($own_snippet), ENT_QUOTES, 'UTF-8'); ?>)'
+                                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:text-[#EB3E0B] hover:border-[#FECDAA] transition-colors">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+                                                <span>Reply</span>
+                                            </button>
+                                        </div>
+                                    <?php endif; ?>
                                 </div>
                             <?php endforeach; ?>
                         </div>
@@ -395,10 +467,31 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                 <form id="techReplyForm" action="ticket_detail.php?id=<?php echo $ticket_id; ?>" method="POST" enctype="multipart/form-data" class="space-y-4">
                                     <input type="hidden" name="action" value="send_tech_reply">
                                     <input type="hidden" name="id" value="<?php echo $ticket_id; ?>">
+                                    <input type="hidden" name="reply_to_id" id="techReplyToId" value="0">
+
+                                    <!-- Shown when this reply answers one specific message -->
+                                    <div id="techReplyingToBar" class="hidden items-start justify-between gap-3 p-3 rounded-2xl bg-[#FFF5ED] border border-[#FECDAA]">
+                                        <div class="flex items-start gap-2 min-w-0">
+                                            <svg class="w-4 h-4 mt-0.5 shrink-0 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+                                            <div class="min-w-0">
+                                                <p class="text-[10px] font-bold uppercase tracking-wider text-[#9A2512]">
+                                                    Replying to <span id="techReplyingToName"></span>
+                                                </p>
+                                                <p id="techReplyingToSnippet" class="text-[11px] text-slate-600 truncate max-w-md"></p>
+                                            </div>
+                                        </div>
+                                        <button type="button" onclick="cancelReplyTo()" title="Cancel reply (Esc)" class="shrink-0 text-slate-400 hover:text-rose-600 p-1 rounded-full hover:bg-white transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                                        </button>
+                                    </div>
 
                                     <div>
                                         <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Send Support Reply to Client</label>
                                         <textarea id="techReplyTextarea" name="reply_message" rows="3" placeholder="Type your technician response or instructions here..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs sm:text-sm rounded-2xl p-4 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                                        <p class="text-[11px] text-slate-400 mt-1.5 font-medium">
+                                            Press <kbd class="px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-300 text-[10px] font-bold text-slate-700">Enter</kbd> to send,
+                                            <kbd class="px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-300 text-[10px] font-bold text-slate-700">Shift</kbd> + <kbd class="px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-300 text-[10px] font-bold text-slate-700">Enter</kbd> for a new line.
+                                        </p>
                                     </div>
 
                                     <!-- Photo Attachment Input -->
@@ -539,6 +632,11 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+// innerHTML escaping leaves quotes alone, so attribute values need more
+function escapeAttr(str) {
+    return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function previewTechChatPhotos(input) {
     var previewBox = document.getElementById('techChatPhotoPreviewBox');
     var grid = document.getElementById('techChatPhotoGrid');
@@ -647,19 +745,148 @@ function buildTechReplyCard(reply) {
         contentHtml += '</div></div>';
     }
 
+    // Quoted message this reply answers
+    var quoteHtml = '';
+    if (reply.reply_to && reply.reply_to.id) {
+        var qBorder = reply.reply_to.is_tech ? 'border-[#EB3E0B]' : 'border-slate-400';
+        var qColor = reply.reply_to.is_tech ? 'text-[#EB3E0B]' : 'text-slate-500';
+        quoteHtml =
+            '<button type="button" onclick="scrollToReply(' + parseInt(reply.reply_to.id, 10) + ')" class="w-full text-left flex items-start gap-2 p-2.5 rounded-xl bg-white/80 hover:bg-white border-l-4 ' + qBorder + ' transition-colors">' +
+                '<svg class="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>' +
+                '<span class="min-w-0">' +
+                    '<span class="block font-bold text-[10px] uppercase tracking-wider ' + qColor + '">Replying to ' + escapeHtml(reply.reply_to.sender_name) + '</span>' +
+                    '<span class="block text-[11px] text-slate-600 truncate">' + escapeHtml(reply.reply_to.snippet) + '</span>' +
+                '</span>' +
+            '</button>';
+    }
+
     var card = document.createElement('div');
     card.className = containerClass;
     card.setAttribute('data-reply-id', reply.id);
-    card.innerHTML = 
+    card.innerHTML = quoteHtml +
         '<div class="flex items-center justify-between">' +
             '<span class="font-bold flex items-center gap-1.5 ' + senderNameColor + '">' +
                 techIcon + escapeHtml(reply.sender_name) + ' ' + senderLabel +
             '</span>' +
             '<span class="text-slate-400">' + escapeHtml(reply.formatted_date) + '</span>' +
-        '</div>' + contentHtml;
+        '</div>' + contentHtml + buildReplyActionsHtml(reply, isTech);
 
+    // Pills are filled in by the caller once the card is in the DOM
     return card;
 }
+
+// Reaction pills + React / Reply buttons under a message
+function buildReplyActionsHtml(reply, isTech) {
+    var replyId = parseInt(reply.id, 10);
+    if (!replyId) return '';
+
+    var senderJson = JSON.stringify(reply.sender_name || '');
+    var snippetJson = JSON.stringify(reply.reply_snippet || reply.message || '');
+
+    return '<div class="pt-2 mt-1 border-t ' + (isTech ? 'border-[#FFE8D5]' : 'border-slate-200') + ' flex items-center flex-wrap gap-1.5">' +
+            '<div class="reaction-pills flex items-center flex-wrap gap-1.5" data-reactions-for="' + replyId + '"></div>' +
+            '<button type="button" onclick="sendReaction(' + replyId + ', \'heart\')" title="Love this message" ' +
+                'class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-slate-300 text-[11px] font-bold text-slate-500 hover:text-[#9A2512] hover:border-[#FECDAA] hover:bg-white transition-colors">' +
+                '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>' +
+                '<span>Like</span>' +
+            '</button>' +
+            '<button type="button" onclick=\'startReplyTo(' + replyId + ', ' + escapeAttr(senderJson) + ', ' + escapeAttr(snippetJson) + ')\' ' +
+                'class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:text-[#EB3E0B] hover:border-[#FECDAA] transition-colors">' +
+                '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>' +
+                '<span>Reply</span>' +
+            '</button>' +
+        '</div>';
+}
+
+// ---------------------------------------------------------------
+// Message reactions
+// ---------------------------------------------------------------
+function renderReactions(replyId, list) {
+    var box = document.querySelector('.reaction-pills[data-reactions-for="' + parseInt(replyId, 10) + '"]');
+    if (!box) return;
+
+    var html = '';
+    for (var i = 0; i < list.length; i++) {
+        var rx = list[i];
+        var cls = rx.mine
+            ? 'bg-[#FFE8D5] border-[#FECDAA] text-[#9A2512]'
+            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300';
+        html += '<button type="button" onclick="sendReaction(' + parseInt(replyId, 10) + ', \'' + rx.reaction + '\')" title="' + escapeAttr(rx.who || rx.label) + '" ' +
+            'class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold transition-colors ' + cls + '">' +
+            '<span>' + rx.emoji + '</span><span>' + rx.count + '</span></button>';
+    }
+    box.innerHTML = html;
+}
+
+// Clicking the Like button, or an existing heart pill, toggles the reaction
+function sendReaction(replyId, reaction) {
+    var body = new FormData();
+    body.append('action', 'toggle_reaction');
+    body.append('id', currentTicketId);
+    body.append('reply_id', replyId);
+    body.append('reaction', reaction);
+
+    fetch('api_ticket_replies.php', { method: 'POST', body: body })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data && data.success) {
+                renderReactions(replyId, data.reactions || []);
+            } else {
+                alert((data && data.error) ? data.error : 'Could not save your reaction.');
+            }
+        })
+        .catch(function(err) {
+            console.error('Reaction error:', err);
+        });
+}
+
+// ---------------------------------------------------------------
+// Replying to one specific message
+// ---------------------------------------------------------------
+function startReplyTo(replyId, senderName, snippet) {
+    var field = document.getElementById('techReplyToId');
+    var bar = document.getElementById('techReplyingToBar');
+    if (!field || !bar) return;
+
+    field.value = replyId;
+    document.getElementById('techReplyingToName').textContent = senderName || 'this message';
+    document.getElementById('techReplyingToSnippet').textContent = snippet || '';
+    bar.classList.remove('hidden');
+    bar.classList.add('flex');
+
+    var textarea = document.getElementById('techReplyTextarea');
+    if (textarea) {
+        textarea.focus();
+        textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+function cancelReplyTo() {
+    var field = document.getElementById('techReplyToId');
+    var bar = document.getElementById('techReplyingToBar');
+    if (field) field.value = '0';
+    if (bar) {
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+    }
+}
+
+// Jump to the quoted message and flash it so it is easy to spot
+function scrollToReply(replyId) {
+    var card = document.querySelector('.tech-reply-card[data-reply-id="' + parseInt(replyId, 10) + '"]');
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('ring-2', 'ring-[#FA5915]', 'ring-offset-2');
+    setTimeout(function() {
+        card.classList.remove('ring-2', 'ring-[#FA5915]', 'ring-offset-2');
+    }, 1600);
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        cancelReplyTo();
+    }
+});
 
 function pollTechReplies() {
     if (isTechSubmitting) return;
@@ -680,6 +907,17 @@ function pollTechReplies() {
                         }
                     });
                 }
+                // Reactions can change on messages already on screen, so every
+                // visible card is refreshed from the map the poll returns.
+                var reactionMap = data.reactions || {};
+                var cards = document.querySelectorAll('.tech-reply-card[data-reply-id]');
+                for (var c = 0; c < cards.length; c++) {
+                    var cid = cards[c].getAttribute('data-reply-id');
+                    if (parseInt(cid, 10) > 0) {
+                        renderReactions(cid, reactionMap[cid] || []);
+                    }
+                }
+
                 if (data.ticket_status) {
                     var isClosed = (data.ticket_status === 'Resolved' || data.ticket_status === 'Closed');
                     var banner = document.getElementById('backendClosedBanner');
@@ -737,10 +975,12 @@ if (techReplyForm && techReplyTextarea) {
             if (data && data.success && data.reply) {
                 techReplyTextarea.value = '';
                 clearTechChatPhotos();
+                cancelReplyTo();
                 var container = document.getElementById('backendRepliesContainer');
                 if (!document.querySelector('.tech-reply-card[data-reply-id="' + data.reply.id + '"]')) {
                     var card = buildTechReplyCard(data.reply);
                     container.appendChild(card);
+                    renderReactions(data.reply.id, data.reply.reactions || []);
                     if (data.reply.id > lastReplyId) {
                         lastReplyId = data.reply.id;
                     }
@@ -757,6 +997,38 @@ if (techReplyForm && techReplyTextarea) {
             console.error('Submit error:', err);
             techReplyForm.submit();
         });
+    });
+}
+
+// ---------------------------------------------------------------
+// Enter sends the reply; Shift + Enter (or Ctrl/Alt/Cmd + Enter)
+// keeps its normal behaviour of starting a new line.
+// ---------------------------------------------------------------
+function submitTechReply() {
+    if (!techReplyForm || isTechSubmitting) return;
+    if (typeof techReplyForm.requestSubmit === 'function') {
+        techReplyForm.requestSubmit();
+    } else {
+        // Older browsers: fire the submit event the AJAX handler listens for
+        var evt;
+        try {
+            evt = new Event('submit', { bubbles: true, cancelable: true });
+        } catch (err) {
+            evt = document.createEvent('Event');
+            evt.initEvent('submit', true, true);
+        }
+        techReplyForm.dispatchEvent(evt);
+    }
+}
+
+if (techReplyForm && techReplyTextarea) {
+    techReplyTextarea.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter' && e.keyCode !== 13) return;
+        if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return; // new line
+        if (e.isComposing || e.keyCode === 229) return; // IME still composing
+
+        e.preventDefault();
+        submitTechReply();
     });
 }
 </script>
