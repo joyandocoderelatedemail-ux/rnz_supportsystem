@@ -96,6 +96,16 @@ if ($pdo_sb) {
                     </a>
                 <?php endif; ?>
 
+                <!-- Events & Schedules Calendar -->
+                <?php if (user_has_page_access('events')): ?>
+                    <a href="events.php" title="Events & Schedules" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'events') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                        <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'events') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Events &amp; Schedules</span>
+                    </a>
+                <?php endif; ?>
+
                 <!-- Manage Accounts Hub -->
                 <?php if (user_has_page_access('accounts')): ?>
                     <a href="accounts.php" title="Manage Accounts" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'accounts') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
@@ -245,6 +255,16 @@ if ($pdo_sb) {
                             <?php echo $pending_orders_count; ?>
                         </span>
                     <?php endif; ?>
+                </a>
+            <?php endif; ?>
+
+            <!-- Events & Schedules -->
+            <?php if (user_has_page_access('events')): ?>
+                <a href="events.php" onclick="closeAdminMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'events') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                    <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'events') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    <span>Events &amp; Schedules</span>
                 </a>
             <?php endif; ?>
 
