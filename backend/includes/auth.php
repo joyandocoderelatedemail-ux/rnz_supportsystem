@@ -75,6 +75,7 @@ function get_all_backend_pages() {
         'accounts' => array('name' => 'Manage Accounts', 'url' => 'accounts.php', 'desc' => 'Client profiles, tech logs, work orders & technotes'),
         'inventory' => array('name' => 'Hardware Inventory', 'url' => 'inventory.php', 'desc' => 'Hardware stock levels, quick adjustments & log history'),
         'maintenance' => array('name' => 'POS Maintenance', 'url' => 'maintenance.php', 'desc' => 'Quarterly POS preventive maintenance requests'),
+        'analytics' => array('name' => 'Analytics', 'url' => 'analytics.php', 'desc' => 'Executive business analytics, revenue trends & performance KPIs (Super Admin)'),
         'settings' => array('name' => 'Admin Settings', 'url' => 'settings.php', 'desc' => 'User accounts management & permission level access')
     );
 }
@@ -87,9 +88,9 @@ function get_all_backend_pages() {
  */
 function get_user_allowed_pages($user_id, $accesslevel = '') {
     $lvl = strtolower(trim($accesslevel));
-    // Super Admin / Master always has full access to all pages
-    if ($lvl === 'master') {
-        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance', 'settings');
+    // Super Admin / Master always has full access to all pages including analytics
+    if ($lvl === 'master' || $lvl === 'super admin' || $lvl === 'superadmin') {
+        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance', 'analytics', 'settings');
     }
 
     $pdo = get_db_connection();
@@ -224,7 +225,7 @@ function is_super_admin() {
         return false;
     }
     $lvl = isset($tech['accesslevel']) ? strtolower(trim($tech['accesslevel'])) : '';
-    return ($lvl === 'master');
+    return ($lvl === 'master' || $lvl === 'super admin' || $lvl === 'superadmin');
 }
 
 function get_user_access_tier($user_id, $accesslevel = '') {
