@@ -2,8 +2,8 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/vovoco5/public_html/rnzsoftwareds.com
-    - /bin/mkdir -p $DEPLOYPATH
-    - /usr/bin/rsync -av --delete --exclude=".git" --exclude=".github" --exclude=".gitignore" --exclude=".cpanel.yml" ./ $DEPLOYPATH/
+    - /bin/mkdir -p $DEPLOYPATH/uploads/ticket_attachments
+    - /usr/bin/rsync -av --delete --exclude=".git" --exclude=".github" --exclude=".gitignore" --exclude=".cpanel.yml" --exclude="uploads" ./ $DEPLOYPATH/
     - /bin/chmod 755 $DEPLOYPATH
     - /usr/bin/find $DEPLOYPATH -type d -exec /bin/chmod 755 {} +
     - /usr/bin/find $DEPLOYPATH -type f -exec /bin/chmod 644 {} +
