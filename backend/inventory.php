@@ -470,6 +470,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // 3. Edit Item Details
     elseif ($action === 'edit_item') {
+        // --------------------------------------------------------------
+        // Security Access Code verification (Edit Hardware Item)
+        // Editing rewrites pricing and the per-condition stock split, so the
+        // Level 2 code is validated again here on its own: format first, then
+        // identity, with a short lockout so a wrong code cannot be guessed
+        // repeatedly from the edit modal.
+        // --------------------------------------------------------------
+        if (get_logged_tech_access_tier() === 2) {
+            $lock_until = isset($_SESSION['inv_edit_code_locked_until']) ? intval($_SESSION['inv_edit_code_locked_until']) : 0;
+            if ($lock_until > time()) {
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode(
+                    "Editing is temporarily locked after 3 incorrect Security Access Codes. Please wait " .
+                    ($lock_until - time()) . " second(s) and try again."));
+                exit;
+            }
+
+            // Format validation - these are typing mistakes, so they do not
+            // count against the failed attempt limit.
+            if ($action_code === '') {
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode(
+                    "Security Access Code is required before hardware item details can be updated."));
+                exit;
+            }
+            if (preg_match('/\s/', $action_code)) {
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode(
+                    "Invalid Security Access Code format: the code cannot contain spaces."));
+                exit;
+            }
+            if (strlen($action_code) < 4 || strlen($action_code) > 32) {
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode(
+                    "Invalid Security Access Code format: the code must be 4 to 32 characters long."));
+                exit;
+            }
+
+            // Identity verification against the technician's saved access code
+            $edit_tech = get_logged_tech();
+            $edit_uid = ($edit_tech && isset($edit_tech['id'])) ? intval($edit_tech['id']) : 0;
+            if (!verify_user_access_code($edit_uid, $action_code)) {
+                $tries = isset($_SESSION['inv_edit_code_tries']) ? intval($_SESSION['inv_edit_code_tries']) + 1 : 1;
+                $deny_msg = "Access Denied: Incorrect Security Access Code. The hardware item was NOT updated.";
+                if ($tries >= 3) {
+                    $_SESSION['inv_edit_code_tries'] = 0;
+                    $_SESSION['inv_edit_code_locked_until'] = time() + 60;
+                    $deny_msg .= " Editing is now locked for 60 seconds after 3 failed attempts.";
+                } else {
+                    $_SESSION['inv_edit_code_tries'] = $tries;
+                    $deny_msg .= " " . (3 - $tries) . " attempt(s) left before a 60 second lockout.";
+                }
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode($deny_msg));
+                exit;
+            }
+
+            // Verified - clear any earlier failed attempts for this session
+            $_SESSION['inv_edit_code_tries'] = 0;
+            $_SESSION['inv_edit_code_locked_until'] = 0;
+        }
+
         $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
         $name = isset($_POST['name']) ? trim($_POST['name']) : '';
         $item_code = isset($_POST['item_code']) ? trim($_POST['item_code']) : '';
@@ -1651,7 +1708,7 @@ $page_title = 'Hardware Inventory Hub';
             </button>
         </div>
 
-        <form method="POST" action="" class="space-y-4">
+        <form method="POST" action="" class="space-y-4" id="editItemForm" onsubmit="return validateEditItemForm();">
             <input type="hidden" name="action" value="edit_item">
             <input type="hidden" name="item_id" id="edit_item_id" value="0">
 
@@ -1750,11 +1807,13 @@ $page_title = 'Hardware Inventory Hub';
                 </div>
             <?php elseif ($my_tier === 2): ?>
                 <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
-                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                    <label for="edit_access_code" class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
                         <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                         <span>Security Access Code Required (Level 2 Account)</span>
                     </label>
-                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                    <input type="password" name="action_access_code" id="edit_access_code" required minlength="4" maxlength="32" autocomplete="off" spellcheck="false" oninput="clearEditCodeError()" onblur="validateEditAccessCode(false)" placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                    <p id="edit_access_code_error" class="hidden text-[11px] font-bold text-rose-700"></p>
+                    <p id="edit_access_code_hint" class="text-[10px] text-amber-800/80">Your code confirms this change and is verified again on the server. 3 incorrect codes lock editing for 60 seconds.</p>
                 </div>
             <?php endif; ?>
 
@@ -2210,6 +2269,74 @@ function updateEditQtyTotal() {
     if (out) out.textContent = total;
 }
 
+// ---------------------------------------------------------------
+// Security Access Code validation for Edit Hardware Item.
+// This only catches obvious mistakes before the round trip - the server
+// re-verifies the code in the edit_item handler either way.
+// ---------------------------------------------------------------
+function showEditCodeError(message) {
+    var box = document.getElementById('edit_access_code_error');
+    var input = document.getElementById('edit_access_code');
+    if (box) {
+        box.textContent = message || '';
+        if (message) {
+            box.classList.remove('hidden');
+        } else {
+            box.classList.add('hidden');
+        }
+    }
+    if (input) {
+        if (message) {
+            input.classList.add('border-rose-400', 'bg-rose-50');
+        } else {
+            input.classList.remove('border-rose-400', 'bg-rose-50');
+        }
+    }
+}
+
+function clearEditCodeError() {
+    showEditCodeError('');
+}
+
+// Returns true when the typed code looks usable. Pass strict = true when the
+// form is actually being submitted, so an empty field is also rejected.
+function validateEditAccessCode(strict) {
+    var input = document.getElementById('edit_access_code');
+    if (!input) return true; // Level 3 account: no code field is rendered
+
+    var code = input.value || '';
+    if (code === '') {
+        if (strict) {
+            showEditCodeError('Enter your security access code to save these changes.');
+            return false;
+        }
+        return true;
+    }
+    if (/\s/.test(code)) {
+        showEditCodeError('The security access code cannot contain spaces.');
+        return false;
+    }
+    if (code.length < 4) {
+        showEditCodeError('Security access code is too short - it must be at least 4 characters.');
+        return false;
+    }
+    if (code.length > 32) {
+        showEditCodeError('Security access code is too long - 32 characters maximum.');
+        return false;
+    }
+    showEditCodeError('');
+    return true;
+}
+
+function validateEditItemForm() {
+    if (!validateEditAccessCode(true)) {
+        var input = document.getElementById('edit_access_code');
+        if (input) input.focus();
+        return false;
+    }
+    return true;
+}
+
 function openEditModal(item) {
     if (!item) return;
     document.getElementById('edit_item_id').value = item.id;
@@ -2228,6 +2355,11 @@ function openEditModal(item) {
 
     calculateEditMargin();
     updateEditQtyTotal();
+
+    // Never carry a previously typed access code (or its error) into a new edit
+    var codeInput = document.getElementById('edit_access_code');
+    if (codeInput) codeInput.value = '';
+    showEditCodeError('');
 
     var m = document.getElementById('editModal');
     if (m) {
