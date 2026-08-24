@@ -265,14 +265,11 @@ $page_title = 'Order Hardware & Materials';
                                         </span>
                                     </div>
 
-                                    <!-- Title & Description -->
-                                    <div class="space-y-1.5">
-                                        <h3 class="font-extrabold text-base text-[#430D07] leading-snug line-clamp-1" title="<?php echo sanitize($item['name']); ?>">
+                                    <!-- Title -->
+                                    <div>
+                                        <h3 class="font-extrabold text-base text-[#430D07] leading-snug line-clamp-2" title="<?php echo sanitize($item['name']); ?>">
                                             <?php echo sanitize($item['name']); ?>
                                         </h3>
-                                        <p class="text-xs text-[#7C2112]/80 leading-relaxed line-clamp-2 min-h-[36px]" title="<?php echo sanitize($item['description']); ?>">
-                                            <?php echo !empty($item['description']) ? sanitize($item['description']) : 'Standard POS hardware peripheral and replacement accessories.'; ?>
-                                        </p>
                                     </div>
 
                                     <!-- Stock Availability -->
