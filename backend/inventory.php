@@ -29,12 +29,75 @@ if ($msg === 'item_added') {
     $msg_text = 'Item details successfully updated.';
 } elseif ($msg === 'item_deleted') {
     $msg_text = 'Inventory item removed successfully.';
+} elseif ($msg === 'item_disabled') {
+    $disabled_item = isset($_GET['item']) ? sanitize($_GET['item']) : 'Hardware item';
+    $msg_text = $disabled_item . ' is now DISABLED. It is hidden from the client ordering catalog, while its stock, pricing and movement history are kept. You can re-enable it anytime.';
+} elseif ($msg === 'item_enabled') {
+    $enabled_item = isset($_GET['item']) ? sanitize($_GET['item']) : 'Hardware item';
+    $msg_text = $enabled_item . ' is now ACTIVE again and visible to clients in the ordering catalog.';
 } elseif ($msg === 'synced') {
     $count = isset($_GET['count']) ? intval($_GET['count']) : 0;
     $msg_text = 'Synced with Client Portal Hardware catalog! ' . $count . ' new item(s) imported.';
 } elseif ($msg === 'error') {
     $msg_type = 'error';
     $msg_text = isset($_GET['err_msg']) ? sanitize($_GET['err_msg']) : 'An error occurred during the operation.';
+}
+
+/**
+ * Strict Security Access Code verification for the actions that change what an
+ * item is (editing details, disabling/enabling client visibility). Level 2
+ * accounts must supply a code that passes a format check and then matches their
+ * saved code; 3 wrong codes lock these actions for 60 seconds. Level 1 is
+ * already blocked earlier by check_tech_action_permission().
+ *
+ * @param string $action_code Raw code from $_POST['action_access_code']
+ * @param string $what        Short phrase for the messages, e.g. "update this hardware item"
+ * @return string Empty string when allowed, otherwise the reason to show the user
+ */
+function verify_inventory_action_code($action_code, $what) {
+    if (get_logged_tech_access_tier() !== 2) {
+        return ''; // Level 3 needs no code; Level 1 never reaches this point
+    }
+
+    $lock_until = isset($_SESSION['inv_action_code_locked_until']) ? intval($_SESSION['inv_action_code_locked_until']) : 0;
+    if ($lock_until > time()) {
+        return "Inventory changes are temporarily locked after 3 incorrect Security Access Codes. Please wait " .
+            ($lock_until - time()) . " second(s) and try again.";
+    }
+
+    // Format validation - these are typing mistakes, so they do not count
+    // against the failed attempt limit.
+    if ($action_code === '') {
+        return "Security Access Code is required to " . $what . ".";
+    }
+    if (preg_match('/\s/', $action_code)) {
+        return "Invalid Security Access Code format: the code cannot contain spaces.";
+    }
+    if (strlen($action_code) < 4 || strlen($action_code) > 32) {
+        return "Invalid Security Access Code format: the code must be 4 to 32 characters long.";
+    }
+
+    // Identity verification against the technician's saved access code
+    $code_tech = get_logged_tech();
+    $code_uid = ($code_tech && isset($code_tech['id'])) ? intval($code_tech['id']) : 0;
+    if (!verify_user_access_code($code_uid, $action_code)) {
+        $tries = isset($_SESSION['inv_action_code_tries']) ? intval($_SESSION['inv_action_code_tries']) + 1 : 1;
+        $deny_msg = "Access Denied: Incorrect Security Access Code. Nothing was changed.";
+        if ($tries >= 3) {
+            $_SESSION['inv_action_code_tries'] = 0;
+            $_SESSION['inv_action_code_locked_until'] = time() + 60;
+            $deny_msg .= " Inventory changes are now locked for 60 seconds after 3 failed attempts.";
+        } else {
+            $_SESSION['inv_action_code_tries'] = $tries;
+            $deny_msg .= " " . (3 - $tries) . " attempt(s) left before a 60 second lockout.";
+        }
+        return $deny_msg;
+    }
+
+    // Verified - clear any earlier failed attempts for this session
+    $_SESSION['inv_action_code_tries'] = 0;
+    $_SESSION['inv_action_code_locked_until'] = 0;
+    return '';
 }
 
 // ----------------------------------------------------
@@ -470,61 +533,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // 3. Edit Item Details
     elseif ($action === 'edit_item') {
-        // --------------------------------------------------------------
-        // Security Access Code verification (Edit Hardware Item)
         // Editing rewrites pricing and the per-condition stock split, so the
-        // Level 2 code is validated again here on its own: format first, then
-        // identity, with a short lockout so a wrong code cannot be guessed
-        // repeatedly from the edit modal.
-        // --------------------------------------------------------------
-        if (get_logged_tech_access_tier() === 2) {
-            $lock_until = isset($_SESSION['inv_edit_code_locked_until']) ? intval($_SESSION['inv_edit_code_locked_until']) : 0;
-            if ($lock_until > time()) {
-                header("Location: inventory.php?msg=error&err_msg=" . urlencode(
-                    "Editing is temporarily locked after 3 incorrect Security Access Codes. Please wait " .
-                    ($lock_until - time()) . " second(s) and try again."));
-                exit;
-            }
-
-            // Format validation - these are typing mistakes, so they do not
-            // count against the failed attempt limit.
-            if ($action_code === '') {
-                header("Location: inventory.php?msg=error&err_msg=" . urlencode(
-                    "Security Access Code is required before hardware item details can be updated."));
-                exit;
-            }
-            if (preg_match('/\s/', $action_code)) {
-                header("Location: inventory.php?msg=error&err_msg=" . urlencode(
-                    "Invalid Security Access Code format: the code cannot contain spaces."));
-                exit;
-            }
-            if (strlen($action_code) < 4 || strlen($action_code) > 32) {
-                header("Location: inventory.php?msg=error&err_msg=" . urlencode(
-                    "Invalid Security Access Code format: the code must be 4 to 32 characters long."));
-                exit;
-            }
-
-            // Identity verification against the technician's saved access code
-            $edit_tech = get_logged_tech();
-            $edit_uid = ($edit_tech && isset($edit_tech['id'])) ? intval($edit_tech['id']) : 0;
-            if (!verify_user_access_code($edit_uid, $action_code)) {
-                $tries = isset($_SESSION['inv_edit_code_tries']) ? intval($_SESSION['inv_edit_code_tries']) + 1 : 1;
-                $deny_msg = "Access Denied: Incorrect Security Access Code. The hardware item was NOT updated.";
-                if ($tries >= 3) {
-                    $_SESSION['inv_edit_code_tries'] = 0;
-                    $_SESSION['inv_edit_code_locked_until'] = time() + 60;
-                    $deny_msg .= " Editing is now locked for 60 seconds after 3 failed attempts.";
-                } else {
-                    $_SESSION['inv_edit_code_tries'] = $tries;
-                    $deny_msg .= " " . (3 - $tries) . " attempt(s) left before a 60 second lockout.";
-                }
-                header("Location: inventory.php?msg=error&err_msg=" . urlencode($deny_msg));
-                exit;
-            }
-
-            // Verified - clear any earlier failed attempts for this session
-            $_SESSION['inv_edit_code_tries'] = 0;
-            $_SESSION['inv_edit_code_locked_until'] = 0;
+        // Level 2 Security Access Code is verified again before anything is written.
+        $code_error = verify_inventory_action_code($action_code, 'update this hardware item');
+        if ($code_error !== '') {
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode($code_error));
+            exit;
         }
 
         $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
@@ -628,7 +642,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
-    // 4. Delete Item
+    // 4. Enable / Disable Item (client visibility switch - preferred over delete)
+    elseif ($action === 'set_item_status') {
+        $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
+        $new_status = isset($_POST['new_status']) ? trim($_POST['new_status']) : '';
+        $status_reason = isset($_POST['status_reason']) ? trim($_POST['status_reason']) : '';
+
+        $allowed_statuses = array('Active', 'Inactive', 'Discontinued');
+        if ($item_id <= 0 || !in_array($new_status, $allowed_statuses, true)) {
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode(
+                "Invalid request: choose a valid hardware item and availability status."));
+            exit;
+        }
+
+        // Hiding an item from clients is an availability decision, so it is held
+        // to the same Security Access Code check as editing the item.
+        $code_error = verify_inventory_action_code($action_code, ($new_status === 'Active' ? 'enable this hardware item' : 'disable this hardware item'));
+        if ($code_error !== '') {
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode($code_error));
+            exit;
+        }
+
+        try {
+            $stmt_cur = $pdo->prepare("SELECT id, name, status, quantity FROM support_inventory_items WHERE id = :id LIMIT 1");
+            $stmt_cur->execute(array(':id' => $item_id));
+            $status_item = $stmt_cur->fetch();
+
+            if (!$status_item) {
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode("Hardware item not found in inventory."));
+                exit;
+            }
+
+            $old_status = $status_item['status'];
+            if ($old_status === $new_status) {
+                header("Location: inventory.php?msg=error&err_msg=" . urlencode(
+                    $status_item['name'] . " is already set to " . $new_status . "."));
+                exit;
+            }
+
+            $now = date('Y-m-d H:i:s');
+            $stmt_up = $pdo->prepare("UPDATE support_inventory_items SET status = :status, updated_at = :now WHERE id = :id");
+            $stmt_up->execute(array(':status' => $new_status, ':now' => $now, ':id' => $item_id));
+
+            // Stock is untouched, but the availability switch still belongs in the
+            // audit log so the catalog change can be traced back to a technician.
+            $cur_qty = intval($status_item['quantity']);
+            $log_note = 'Client visibility changed: ' . $old_status . ' -> ' . $new_status .
+                ($new_status === 'Active'
+                    ? '. Item is visible again in the client ordering catalog.'
+                    : '. Item is hidden from the client ordering catalog.');
+            if ($status_reason !== '') {
+                $log_note .= ' Reason: ' . $status_reason;
+            }
+
+            $stmt_log = $pdo->prepare("INSERT INTO support_inventory_logs
+                (item_id, tech_name, change_type, quantity_change, previous_quantity, new_quantity, notes, created_at)
+                VALUES (:item_id, :tech, :ctype, 0, :prev, :new_q, :notes, :now)");
+            $stmt_log->execute(array(
+                ':item_id' => $item_id,
+                ':tech' => $tech_name,
+                ':ctype' => ($new_status === 'Active') ? 'Item Enabled' : 'Item Disabled',
+                ':prev' => $cur_qty,
+                ':new_q' => $cur_qty,
+                ':notes' => $log_note,
+                ':now' => $now
+            ));
+
+            $redirect_msg = ($new_status === 'Active') ? 'item_enabled' : 'item_disabled';
+            header("Location: inventory.php?msg=" . $redirect_msg . "&item=" . urlencode($status_item['name']));
+            exit;
+        } catch (PDOException $e) {
+            header("Location: inventory.php?msg=error&err_msg=" . urlencode($e->getMessage()));
+            exit;
+        }
+    }
+
+    // 5. Delete Item
     elseif ($action === 'delete_item') {
         $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
         if ($item_id > 0) {
@@ -648,7 +737,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
-    // 5. Sync Portal Hardware
+    // 6. Sync Portal Hardware
     elseif ($action === 'sync_portal_hardware') {
         $synced = seed_portal_hardware_inventory();
         header("Location: inventory.php?msg=synced&count=" . $synced);
@@ -1078,7 +1167,8 @@ $page_title = 'Hardware Inventory Hub';
                                         $stock_label = 'In Stock';
                                     }
                                 ?>
-                                    <tr class="hover:bg-slate-50/80 transition-colors">
+                                    <?php $is_disabled = ($item['status'] !== 'Active'); ?>
+                                    <tr class="hover:bg-slate-50/80 transition-colors <?php echo $is_disabled ? 'bg-slate-50/70 opacity-75' : ''; ?>">
                                         <!-- Item & Code -->
                                         <td class="py-4 px-6">
                                             <div class="min-w-0">
@@ -1089,9 +1179,10 @@ $page_title = 'Hardware Inventory Hub';
                                                     <span class="font-mono font-bold text-xs text-[#EB3E0B]">
                                                         <?php echo sanitize($item['item_code']); ?>
                                                     </span>
-                                                    <?php if ($item['status'] !== 'Active'): ?>
-                                                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-bold">
-                                                            <?php echo sanitize($item['status']); ?>
+                                                    <?php if ($is_disabled): ?>
+                                                        <span class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-white font-bold" title="Disabled items stay in inventory but are hidden from the client ordering catalog">
+                                                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                                                            <?php echo sanitize($item['status']); ?> - Hidden from clients
                                                         </span>
                                                     <?php endif; ?>
                                                 </div>
@@ -1212,8 +1303,19 @@ $page_title = 'Hardware Inventory Hub';
                                                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                                      </button>
 
+                                                     <!-- Disable / Enable Button (client catalog visibility) -->
+                                                     <button onclick='openStatusModal(<?php echo htmlspecialchars(json_encode($item), ENT_QUOTES, 'UTF-8'); ?>)'
+                                                             class="w-8 h-8 rounded-xl flex items-center justify-center transition-colors <?php echo $is_disabled ? 'bg-emerald-50 hover:bg-emerald-500 text-emerald-700 hover:text-white' : 'bg-slate-100 hover:bg-amber-100 text-slate-500 hover:text-amber-700'; ?>"
+                                                             title="<?php echo $is_disabled ? 'Enable this item so clients can order it again' : 'Disable this item (hide it from the client ordering catalog)'; ?>">
+                                                         <?php if ($is_disabled): ?>
+                                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                                         <?php else: ?>
+                                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                                                         <?php endif; ?>
+                                                     </button>
+
                                                      <!-- Delete Button -->
-                                                     <form method="POST" action="" onsubmit="return confirm('Are you sure you want to delete this inventory item (<?php echo addslashes($item['name']); ?>)?');" class="inline">
+                                                     <form method="POST" action="" onsubmit="return confirm('Are you sure you want to permanently DELETE this inventory item (<?php echo addslashes($item['name']); ?>)?\n\nDeleting also removes its movement history. If you only want to hide it from clients, cancel and use the Disable button instead.');" class="inline">
                                                          <input type="hidden" name="action" value="delete_item">
                                                          <input type="hidden" name="item_id" value="<?php echo $item['id']; ?>">
                                                          <button type="submit" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 flex items-center justify-center transition-colors" title="Delete Item">
@@ -1759,10 +1861,11 @@ $page_title = 'Hardware Inventory Hub';
                 <div class="space-y-1">
                     <label class="text-xs font-bold text-slate-700">Item Status</label>
                     <select name="status" id="edit_status" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                        <option value="Discontinued">Discontinued</option>
+                        <option value="Active">Active (visible to clients)</option>
+                        <option value="Inactive">Inactive (hidden from clients)</option>
+                        <option value="Discontinued">Discontinued (hidden from clients)</option>
                     </select>
+                    <p class="text-[10px] text-slate-500">Only Active items appear in the client ordering catalog.</p>
                 </div>
 
                 <!-- Stock split by condition -->
@@ -1828,6 +1931,85 @@ $page_title = 'Hardware Inventory Hub';
                 <?php else: ?>
                     <button type="submit" class="px-6 py-2.5 rounded-2xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-all">
                         Update Details
+                    </button>
+                <?php endif; ?>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- MODAL: DISABLE / ENABLE HARDWARE ITEM (CLIENT CATALOG VISIBILITY) -->
+<!-- ========================================================================= -->
+<div id="statusModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in duration-150">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div class="flex items-center space-x-3">
+                <div id="status_modal_icon" class="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                </div>
+                <div>
+                    <h3 id="status_modal_title" class="font-extrabold text-lg text-slate-900">Disable Hardware Item</h3>
+                    <p class="text-xs text-slate-500">Control whether clients can see and order this item.</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeStatusModal()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <form method="POST" action="" class="space-y-4" id="statusItemForm" onsubmit="return validateStatusForm();">
+            <input type="hidden" name="action" value="set_item_status">
+            <input type="hidden" name="item_id" id="status_item_id" value="0">
+            <input type="hidden" name="new_status" id="status_new_status" value="Inactive">
+
+            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Hardware Item</p>
+                <p id="status_item_name" class="font-extrabold text-sm text-slate-900">-</p>
+                <p class="text-[11px] font-mono text-[#EB3E0B]" id="status_item_code">-</p>
+                <p class="text-[11px] text-slate-500">Current availability: <strong id="status_current" class="text-slate-800">-</strong></p>
+            </div>
+
+            <div id="status_explainer" class="p-3.5 rounded-2xl text-xs leading-relaxed border bg-amber-50 border-amber-200 text-amber-900">
+                Disabling hides this item from the client ordering catalog, so no new orders can be placed for it.
+                Stock levels, pricing and movement history stay exactly as they are, and you can enable it again anytime.
+            </div>
+
+            <!-- Optional reason, stored in the movement audit log -->
+            <div class="space-y-1">
+                <label for="status_reason" class="text-xs font-bold text-slate-700">Reason <span class="text-slate-400 font-medium">(optional, saved to the audit log)</span></label>
+                <textarea name="status_reason" id="status_reason" rows="2" maxlength="255" placeholder="e.g. Supplier discontinued this model / out of stock indefinitely" class="w-full bg-slate-50 text-slate-800 text-xs p-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none"></textarea>
+            </div>
+
+            <!-- Access Level Tier Banner & Input -->
+            <?php if ($my_tier === 1): ?>
+                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot change item availability.</span>
+                </div>
+            <?php elseif ($my_tier === 2): ?>
+                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                    <label for="status_access_code" class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                        <span>Security Access Code Required (Level 2 Account)</span>
+                    </label>
+                    <input type="password" name="action_access_code" id="status_access_code" required minlength="4" maxlength="32" autocomplete="off" spellcheck="false" oninput="clearStatusCodeError()" onblur="validateStatusAccessCode(false)" placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                    <p id="status_access_code_error" class="hidden text-[11px] font-bold text-rose-700"></p>
+                    <p class="text-[10px] text-amber-800/80">Your code confirms this change and is verified again on the server. 3 incorrect codes lock inventory changes for 60 seconds.</p>
+                </div>
+            <?php endif; ?>
+
+            <div class="pt-4 border-t border-slate-100 flex items-center justify-end space-x-3">
+                <button type="button" onclick="closeStatusModal()" class="px-5 py-2.5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-colors">
+                    Cancel
+                </button>
+                <?php if ($my_tier === 1): ?>
+                    <button type="button" disabled class="px-6 py-2.5 rounded-2xl bg-slate-300 text-slate-500 font-bold text-xs cursor-not-allowed">
+                        &#128274; View Only
+                    </button>
+                <?php else: ?>
+                    <button type="submit" id="status_submit_btn" class="px-6 py-2.5 rounded-2xl bg-amber-500 text-white font-bold text-xs hover:bg-amber-600 transition-all">
+                        Disable Item
                     </button>
                 <?php endif; ?>
             </div>
@@ -2270,13 +2452,14 @@ function updateEditQtyTotal() {
 }
 
 // ---------------------------------------------------------------
-// Security Access Code validation for Edit Hardware Item.
+// Security Access Code validation, shared by the Edit and the
+// Disable / Enable modals ('edit' and 'status' field prefixes).
 // This only catches obvious mistakes before the round trip - the server
-// re-verifies the code in the edit_item handler either way.
+// re-verifies the code in verify_inventory_action_code() either way.
 // ---------------------------------------------------------------
-function showEditCodeError(message) {
-    var box = document.getElementById('edit_access_code_error');
-    var input = document.getElementById('edit_access_code');
+function showCodeError(prefix, message) {
+    var box = document.getElementById(prefix + '_access_code_error');
+    var input = document.getElementById(prefix + '_access_code');
     if (box) {
         box.textContent = message || '';
         if (message) {
@@ -2294,47 +2477,133 @@ function showEditCodeError(message) {
     }
 }
 
-function clearEditCodeError() {
-    showEditCodeError('');
-}
-
 // Returns true when the typed code looks usable. Pass strict = true when the
 // form is actually being submitted, so an empty field is also rejected.
-function validateEditAccessCode(strict) {
-    var input = document.getElementById('edit_access_code');
+function validateCodeField(prefix, strict, emptyMessage) {
+    var input = document.getElementById(prefix + '_access_code');
     if (!input) return true; // Level 3 account: no code field is rendered
 
     var code = input.value || '';
     if (code === '') {
         if (strict) {
-            showEditCodeError('Enter your security access code to save these changes.');
+            showCodeError(prefix, emptyMessage);
             return false;
         }
         return true;
     }
     if (/\s/.test(code)) {
-        showEditCodeError('The security access code cannot contain spaces.');
+        showCodeError(prefix, 'The security access code cannot contain spaces.');
         return false;
     }
     if (code.length < 4) {
-        showEditCodeError('Security access code is too short - it must be at least 4 characters.');
+        showCodeError(prefix, 'Security access code is too short - it must be at least 4 characters.');
         return false;
     }
     if (code.length > 32) {
-        showEditCodeError('Security access code is too long - 32 characters maximum.');
+        showCodeError(prefix, 'Security access code is too long - 32 characters maximum.');
         return false;
     }
-    showEditCodeError('');
+    showCodeError(prefix, '');
     return true;
 }
 
+function focusCodeField(prefix) {
+    var input = document.getElementById(prefix + '_access_code');
+    if (input) input.focus();
+}
+
+// --- Edit Hardware Item ---
+function showEditCodeError(message) {
+    showCodeError('edit', message);
+}
+function clearEditCodeError() {
+    showCodeError('edit', '');
+}
+function validateEditAccessCode(strict) {
+    return validateCodeField('edit', strict, 'Enter your security access code to save these changes.');
+}
 function validateEditItemForm() {
     if (!validateEditAccessCode(true)) {
-        var input = document.getElementById('edit_access_code');
-        if (input) input.focus();
+        focusCodeField('edit');
         return false;
     }
     return true;
+}
+
+// --- Disable / Enable Hardware Item ---
+function clearStatusCodeError() {
+    showCodeError('status', '');
+}
+function validateStatusAccessCode(strict) {
+    return validateCodeField('status', strict, 'Enter your security access code to confirm this change.');
+}
+function validateStatusForm() {
+    if (!validateStatusAccessCode(true)) {
+        focusCodeField('status');
+        return false;
+    }
+    return true;
+}
+
+// Opens the availability modal, pre-set to the opposite of the item's current
+// state: an Active item is offered for disabling, anything else for enabling.
+function openStatusModal(item) {
+    if (!item) return;
+    var current = item.status || 'Active';
+    var disabling = (current === 'Active');
+    var nextStatus = disabling ? 'Inactive' : 'Active';
+
+    document.getElementById('status_item_id').value = item.id;
+    document.getElementById('status_new_status').value = nextStatus;
+    document.getElementById('status_item_name').textContent = item.name || '-';
+    document.getElementById('status_item_code').textContent = item.item_code || '-';
+    document.getElementById('status_current').textContent = current + (disabling ? ' (visible to clients)' : ' (hidden from clients)');
+
+    var title = document.getElementById('status_modal_title');
+    var icon = document.getElementById('status_modal_icon');
+    var explainer = document.getElementById('status_explainer');
+    var btn = document.getElementById('status_submit_btn');
+
+    if (disabling) {
+        title.textContent = 'Disable Hardware Item';
+        icon.className = 'w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold';
+        explainer.className = 'p-3.5 rounded-2xl text-xs leading-relaxed border bg-amber-50 border-amber-200 text-amber-900';
+        explainer.textContent = 'Disabling hides this item from the client ordering catalog, so no new orders can be placed for it. Stock levels, pricing and movement history stay exactly as they are, and you can enable it again anytime.';
+        if (btn) {
+            btn.textContent = 'Disable Item';
+            btn.className = 'px-6 py-2.5 rounded-2xl bg-amber-500 text-white font-bold text-xs hover:bg-amber-600 transition-all';
+        }
+    } else {
+        title.textContent = 'Enable Hardware Item';
+        icon.className = 'w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold';
+        explainer.className = 'p-3.5 rounded-2xl text-xs leading-relaxed border bg-emerald-50 border-emerald-200 text-emerald-900';
+        explainer.textContent = 'Enabling puts this item back in the client ordering catalog, so clients can see and order it again.';
+        if (btn) {
+            btn.textContent = 'Enable Item';
+            btn.className = 'px-6 py-2.5 rounded-2xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition-all';
+        }
+    }
+
+    // Never carry a previous reason or access code into a new confirmation
+    var reason = document.getElementById('status_reason');
+    if (reason) reason.value = '';
+    var codeInput = document.getElementById('status_access_code');
+    if (codeInput) codeInput.value = '';
+    showCodeError('status', '');
+
+    var m = document.getElementById('statusModal');
+    if (m) {
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+    }
+}
+
+function closeStatusModal() {
+    var m = document.getElementById('statusModal');
+    if (m) {
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+    }
 }
 
 function openEditModal(item) {
@@ -2406,6 +2675,7 @@ document.addEventListener('keydown', function(e) {
         closeAddItemModal();
         closeAdjustModal();
         closeEditModal();
+        closeStatusModal();
         closeMovementLogModal();
     }
 });
