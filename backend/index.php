@@ -77,13 +77,7 @@ $active_page = 'dashboard';
 $page_title = 'Support Center Overview';
 
 $tech = get_logged_tech();
-$auto_open_popup = false;
-if (isset($_SESSION['show_schedule_popup']) && $_SESSION['show_schedule_popup'] === true) {
-    $auto_open_popup = true;
-    unset($_SESSION['show_schedule_popup']);
-} elseif (isset($_GET['schedule_popup']) && $_GET['schedule_popup'] == '1') {
-    $auto_open_popup = true;
-}
+$auto_open_popup = true;
 ?>
 <!DOCTYPE html>
 <html lang="en">
