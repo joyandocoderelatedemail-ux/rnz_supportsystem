@@ -1335,6 +1335,12 @@ document.addEventListener('keydown', function(e) {
         closeDeleteEventModal();
     }
 });
+
+<?php if (isset($_GET['new']) || (isset($_GET['action']) && $_GET['action'] === 'new')): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    openNewEventModal();
+});
+<?php endif; ?>
 </script>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>
