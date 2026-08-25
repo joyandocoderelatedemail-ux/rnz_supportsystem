@@ -582,6 +582,22 @@ function pollReplies() {
 // Start polling every 3 seconds
 var chatPollInterval = setInterval(pollReplies, 3000);
 
+// Let the support tech know we're typing (throttled so we don't ping on every keystroke)
+var lastTypingPingAt = 0;
+function pingTyping() {
+    var now = Date.now();
+    if (now - lastTypingPingAt < 2000) return;
+    lastTypingPingAt = now;
+
+    var body = new FormData();
+    body.append('action', 'typing');
+    body.append('id', currentTicketId);
+    fetch('api_ticket_replies.php', { method: 'POST', body: body }).catch(function() {});
+}
+if (replyTextarea) {
+    replyTextarea.addEventListener('input', pingTyping);
+}
+
 // AJAX Form Submit for instant message sending without refresh
 var replyForm = document.getElementById('replyForm');
 var replyTextarea = document.getElementById('replyTextarea');

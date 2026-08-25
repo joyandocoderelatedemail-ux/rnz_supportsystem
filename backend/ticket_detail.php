@@ -190,6 +190,10 @@ foreach ($replies as $r) {
 // Heart reactions already on the messages in this ticket
 $reactions_map = get_ticket_reply_reactions($pdo, $ticket_id, 'support', $tech_fullname);
 
+// Viewing the ticket now counts as having read everything currently in the thread
+mark_ticket_seen($pdo, $ticket_id, 'support', $max_reply_id);
+$seen_ids = get_ticket_seen_ids($pdo, $ticket_id);
+
 // Fetch Technicians list
 $stmt_techs = $pdo->query("SELECT fname, lname, user FROM user ORDER BY fname ASC");
 $tech_users = $stmt_techs->fetchAll();
@@ -415,7 +419,7 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                 $own_snippet = build_reply_snippet($rep['message'], isset($rep['attachment_path']) ? $rep['attachment_path'] : '');
                                 $my_reactions = isset($reactions_map[$r_id]) ? $reactions_map[$r_id] : array();
                             ?>
-                                <div class="tech-reply-card p-4 sm:p-5 rounded-2xl text-xs space-y-2 <?php echo $is_tech ? 'bg-[#FFF5ED] border border-[#FECDAA] ml-4 sm:ml-8' : 'bg-slate-50 border border-slate-200 mr-4 sm:mr-8'; ?>" data-reply-id="<?php echo $r_id; ?>">
+                                <div class="tech-reply-card p-4 sm:p-5 rounded-2xl text-xs space-y-2 <?php echo $is_tech ? 'bg-[#FFF5ED] border border-[#FECDAA] ml-4 sm:ml-8' : 'bg-slate-50 border border-slate-200 mr-4 sm:mr-8'; ?>" data-reply-id="<?php echo $r_id; ?>" data-sender-type="<?php echo $is_tech ? 'support' : 'client'; ?>">
                                     <?php if ($parent_info): ?>
                                         <!-- Quoted message this reply answers -->
                                         <button type="button" onclick="scrollToReply(<?php echo $parent_info['id']; ?>)" class="w-full text-left flex items-start gap-2 p-2.5 rounded-xl bg-white/80 hover:bg-white border-l-4 <?php echo $parent_info['is_tech'] ? 'border-[#EB3E0B]' : 'border-slate-400'; ?> transition-colors">
@@ -439,6 +443,9 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                         </span>
                                         <span class="text-slate-400"><?php echo format_date($rep['created_at']); ?></span>
                                     </div>
+                                    <?php if ($is_tech && $r_id > 0): ?>
+                                        <div class="msg-seen-status hidden items-center justify-end gap-1 text-[10px] font-bold text-slate-400 -mt-1.5" data-reply-id="<?php echo $r_id; ?>"></div>
+                                    <?php endif; ?>
                                     <?php if (strpos($rep['message'], '=== HARDWARE DIAGNOSTIC LOG ===') !== false): ?>
                                         <p class="font-extrabold text-slate-900 text-xs sm:text-sm">This client is requesting assistance</p>
                                         <details class="mt-1 text-xs">
@@ -499,8 +506,18 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                             <?php endforeach; ?>
                         </div>
 
+                        <!-- Client typing indicator -->
+                        <div id="clientTypingIndicator" class="hidden items-center gap-2 px-1 text-xs font-semibold text-slate-500">
+                            <span class="flex gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style="animation-delay:0ms"></span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style="animation-delay:150ms"></span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style="animation-delay:300ms"></span>
+                            </span>
+                            <span><?php echo sanitize($client_display); ?> is typing...</span>
+                        </div>
+
                         <!-- Reply Box -->
-                        <?php 
+                        <?php
                         $is_tech_closed = (isset($ticket['status']) && in_array($ticket['status'], array('Resolved', 'Closed')));
                         ?>
                         <div class="pt-6 border-t border-slate-100">
@@ -685,6 +702,50 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
 var currentTicketId = <?php echo intval($ticket_id); ?>;
 var lastReplyId = <?php echo intval($max_reply_id); ?>;
 var isTechSubmitting = false;
+var lastKnownClientSeenId = <?php echo intval($seen_ids['client']); ?>;
+
+// ---------------------------------------------------------------
+// Seen / Read receipts
+// ---------------------------------------------------------------
+// Only the most recent tech-sent message gets a "Seen" tag under it,
+// matching the usual chat-app convention (one indicator per side, not per message).
+function renderSeenStatus(clientSeenId) {
+    lastKnownClientSeenId = clientSeenId;
+
+    var techCards = document.querySelectorAll('.tech-reply-card[data-sender-type="support"][data-reply-id]');
+    var lastTechId = 0;
+    for (var i = 0; i < techCards.length; i++) {
+        var rid = parseInt(techCards[i].getAttribute('data-reply-id'), 10);
+        if (rid > lastTechId) lastTechId = rid;
+    }
+
+    var statusEls = document.querySelectorAll('.msg-seen-status');
+    for (var s = 0; s < statusEls.length; s++) {
+        var el = statusEls[s];
+        var elId = parseInt(el.getAttribute('data-reply-id'), 10);
+        if (elId > 0 && elId === lastTechId && lastTechId <= clientSeenId) {
+            el.innerHTML = '<svg class="w-3 h-3 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4.5 12.75l6 6 9-13.5M1.5 12.75l6 6L9 17.25"/></svg><span>Seen</span>';
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+        } else {
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+            el.innerHTML = '';
+        }
+    }
+}
+
+function updateClientTypingIndicator(isTyping) {
+    var el = document.getElementById('clientTypingIndicator');
+    if (!el) return;
+    if (isTyping) {
+        el.classList.remove('hidden');
+        el.classList.add('flex');
+    } else {
+        el.classList.add('hidden');
+        el.classList.remove('flex');
+    }
+}
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -859,16 +920,21 @@ function buildTechReplyCard(reply) {
             '</button>';
     }
 
+    var seenStatusHtml = (isTech && reply.id)
+        ? '<div class="msg-seen-status hidden items-center justify-end gap-1 text-[10px] font-bold text-slate-400 -mt-1.5" data-reply-id="' + parseInt(reply.id, 10) + '"></div>'
+        : '';
+
     var card = document.createElement('div');
     card.className = containerClass;
     card.setAttribute('data-reply-id', reply.id);
+    card.setAttribute('data-sender-type', isTech ? 'support' : 'client');
     card.innerHTML = quoteHtml +
         '<div class="flex items-center justify-between">' +
             '<span class="font-bold flex items-center gap-1.5 ' + senderNameColor + '">' +
                 techIcon + escapeHtml(reply.sender_name) + ' ' + senderLabel +
             '</span>' +
             '<span class="text-slate-400">' + escapeHtml(reply.formatted_date) + '</span>' +
-        '</div>' + contentHtml + buildReplyActionsHtml(reply, isTech);
+        '</div>' + seenStatusHtml + contentHtml + buildReplyActionsHtml(reply, isTech);
 
     // Pills are filled in by the caller once the card is in the DOM
     return card;
@@ -1031,12 +1097,20 @@ function pollTechReplies() {
                         if (fBox) fBox.classList.remove('hidden');
                     }
                 }
+
+                if (typeof data.client_seen_id !== 'undefined') {
+                    renderSeenStatus(parseInt(data.client_seen_id, 10) || 0);
+                }
+                updateClientTypingIndicator(!!data.client_typing);
             }
         })
         .catch(function(err) {
             console.warn('Tech chat poll error:', err);
         });
 }
+
+// Paint the initial "Seen" state rendered from PHP before the first poll lands
+renderSeenStatus(lastKnownClientSeenId);
 
 // Start polling every 3 seconds
 var techChatPollInterval = setInterval(pollTechReplies, 3000);
@@ -1083,6 +1157,7 @@ if (techReplyForm && techReplyTextarea) {
                     if (data.reply.id > lastReplyId) {
                         lastReplyId = data.reply.id;
                     }
+                    renderSeenStatus(lastKnownClientSeenId);
                     card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 }
             } else {
@@ -1131,6 +1206,20 @@ if (techReplyForm && techReplyTextarea) {
     });
 
     techReplyTextarea.addEventListener('paste', handleTechChatPhotoPaste);
+    techReplyTextarea.addEventListener('input', pingTechTyping);
+}
+
+// Let the client know the tech is typing (throttled so we don't ping on every keystroke)
+var lastTechTypingPingAt = 0;
+function pingTechTyping() {
+    var now = Date.now();
+    if (now - lastTechTypingPingAt < 2000) return;
+    lastTechTypingPingAt = now;
+
+    var body = new FormData();
+    body.append('action', 'typing');
+    body.append('id', currentTicketId);
+    fetch('api_ticket_replies.php', { method: 'POST', body: body }).catch(function() {});
 }
 
 function openDeleteTicketModal() {

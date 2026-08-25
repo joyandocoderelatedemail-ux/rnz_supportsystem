@@ -3,6 +3,9 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/hardware_data.php';
+require_once __DIR__ . '/includes/ticket_chat_shared.php';
+
+init_ticket_seen_typing_schema();
 
 header('Content-Type: application/json');
 header('Cache-Control: no-cache, no-store, must-revalidate');
@@ -71,6 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $stmt_u = $pdo->prepare("UPDATE client_support_tickets SET updated_at = :now WHERE id = :id");
         $stmt_u->execute(array(':now' => $now, ':id' => $ticket_id));
 
+        // Sending a message implies this side has read up to here, and is no longer typing
+        mark_ticket_seen($pdo, $ticket_id, 'client', $new_reply_id);
+        clear_ticket_typing($pdo, $ticket_id, 'client');
+
         $parsed_attachments = parse_ticket_attachments($photo_attachments);
 
         echo json_encode(array(
@@ -95,7 +102,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // -----------------------------------------------------------
-// 2. GET: Poll for New Replies
+// 2. POST: Typing indicator ping
+// -----------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'typing') {
+    set_ticket_typing($pdo, $ticket_id, 'client', $tradename);
+    echo json_encode(array('success' => true));
+    exit;
+}
+
+// -----------------------------------------------------------
+// 3. GET: Poll for New Replies
 // -----------------------------------------------------------
 $after_id = isset($_GET['after_id']) ? intval($_GET['after_id']) : 0;
 
@@ -103,6 +119,15 @@ try {
     $stmt_replies = $pdo->prepare("SELECT id, ticket_id, sender_type, sender_name, message, attachment_path, created_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
     $stmt_replies->execute(array(':tid' => $ticket_id, ':after_id' => $after_id));
     $raw_replies = $stmt_replies->fetchAll();
+
+    // Viewing/polling the thread counts as having read everything currently in it
+    $stmt_max = $pdo->prepare("SELECT MAX(id) FROM client_ticket_replies WHERE ticket_id = :tid");
+    $stmt_max->execute(array(':tid' => $ticket_id));
+    $max_reply_id_now = intval($stmt_max->fetchColumn());
+    if ($max_reply_id_now > 0) {
+        mark_ticket_seen($pdo, $ticket_id, 'client', $max_reply_id_now);
+    }
+    $support_is_typing = is_other_side_typing($pdo, $ticket_id, 'client');
 
     $formatted_replies = array();
     foreach ($raw_replies as $r) {
@@ -132,7 +157,8 @@ try {
         'status_badge_class' => get_status_badge_class($ticket['status']),
         'assigned_tech' => $ticket['assigned_tech'],
         'last_updated' => format_date($ticket['updated_at']),
-        'replies' => $formatted_replies
+        'replies' => $formatted_replies,
+        'support_typing' => $support_is_typing
     ));
     exit;
 } catch (PDOException $e) {

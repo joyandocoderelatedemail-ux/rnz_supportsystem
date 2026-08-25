@@ -80,6 +80,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $pdo->prepare("UPDATE client_support_tickets SET status = 'In Progress', updated_at = :now WHERE id = :tid AND status = 'Pending'")
             ->execute(array(':now' => $now, ':tid' => $ticket_id));
 
+        // Sending a message implies this side has read up to here, and is no longer typing
+        mark_ticket_seen($pdo, $ticket_id, 'support', $new_reply_id);
+        clear_ticket_typing($pdo, $ticket_id, 'support');
+
         $parsed_attachments = parse_ticket_attachments($photo_attachments);
 
         echo json_encode(array(
@@ -131,7 +135,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // -----------------------------------------------------------
-// 3. GET: Poll for New Replies
+// 3. POST: Typing indicator ping
+// -----------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'typing') {
+    set_ticket_typing($pdo, $ticket_id, 'support', $tech_name);
+    echo json_encode(array('success' => true));
+    exit;
+}
+
+// -----------------------------------------------------------
+// 4. GET: Poll for New Replies
 // -----------------------------------------------------------
 $after_id = isset($_GET['after_id']) ? intval($_GET['after_id']) : 0;
 
@@ -139,6 +152,16 @@ try {
     $stmt_replies = $pdo->prepare("SELECT id, ticket_id, reply_to_id, sender_type, sender_name, message, attachment_path, created_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
     $stmt_replies->execute(array(':tid' => $ticket_id, ':after_id' => $after_id));
     $raw_replies = $stmt_replies->fetchAll();
+
+    // Viewing/polling the thread counts as having read everything currently in it
+    $stmt_max = $pdo->prepare("SELECT MAX(id) FROM client_ticket_replies WHERE ticket_id = :tid");
+    $stmt_max->execute(array(':tid' => $ticket_id));
+    $max_reply_id_now = intval($stmt_max->fetchColumn());
+    if ($max_reply_id_now > 0) {
+        mark_ticket_seen($pdo, $ticket_id, 'support', $max_reply_id_now);
+    }
+    $seen_ids = get_ticket_seen_ids($pdo, $ticket_id);
+    $client_is_typing = is_other_side_typing($pdo, $ticket_id, 'support');
 
     $formatted_replies = array();
     foreach ($raw_replies as $r) {
@@ -175,7 +198,9 @@ try {
         'assigned_tech' => $ticket['assigned_tech'],
         'last_updated' => format_date($ticket['updated_at']),
         'replies' => $formatted_replies,
-        'reactions' => $reactions_map ? $reactions_map : new stdClass()
+        'reactions' => $reactions_map ? $reactions_map : new stdClass(),
+        'client_seen_id' => $seen_ids['client'],
+        'client_typing' => $client_is_typing
     ));
     exit;
 } catch (PDOException $e) {
