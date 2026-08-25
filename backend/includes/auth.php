@@ -46,6 +46,7 @@ function login_tech($username, $password) {
 
         // Set session data
         $_SESSION['tech_logged_in'] = true;
+        $_SESSION['show_schedule_popup'] = true;
         $_SESSION['tech_data'] = array(
             'id' => isset($user_row['id']) ? $user_row['id'] : 0,
             'fname' => isset($user_row['fname']) ? $user_row['fname'] : '',
