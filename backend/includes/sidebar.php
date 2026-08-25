@@ -96,6 +96,16 @@ if ($pdo_sb) {
                     </a>
                 <?php endif; ?>
 
+                <!-- Events & Schedules Calendar -->
+                <?php if (user_has_page_access('events')): ?>
+                    <a href="events.php" title="Events & Schedules" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'events') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                        <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'events') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Events &amp; Schedules</span>
+                    </a>
+                <?php endif; ?>
+
                 <!-- Manage Accounts Hub -->
                 <?php if (user_has_page_access('accounts')): ?>
                     <a href="accounts.php" title="Manage Accounts" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'accounts') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
@@ -133,6 +143,16 @@ if ($pdo_sb) {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
                         </svg>
                         <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">POS Maintenance</span>
+                    </a>
+                <?php endif; ?>
+
+                <!-- Executive Analytics (Super Admin) -->
+                <?php if (is_super_admin() || user_has_page_access('analytics')): ?>
+                    <a href="analytics.php" title="Analytics" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'analytics') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                        <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'analytics') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                        <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Analytics</span>
                     </a>
                 <?php endif; ?>
 
@@ -238,6 +258,16 @@ if ($pdo_sb) {
                 </a>
             <?php endif; ?>
 
+            <!-- Events & Schedules -->
+            <?php if (user_has_page_access('events')): ?>
+                <a href="events.php" onclick="closeAdminMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'events') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                    <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'events') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    <span>Events &amp; Schedules</span>
+                </a>
+            <?php endif; ?>
+
             <!-- Manage Accounts -->
             <?php if (user_has_page_access('accounts')): ?>
                 <a href="accounts.php" onclick="closeAdminMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'accounts') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
@@ -274,6 +304,16 @@ if ($pdo_sb) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
                     </svg>
                     <span>POS Maintenance</span>
+                </a>
+            <?php endif; ?>
+
+            <!-- Executive Analytics (Super Admin) -->
+            <?php if (is_super_admin() || user_has_page_access('analytics')): ?>
+                <a href="analytics.php" onclick="closeAdminMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'analytics') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                    <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'analytics') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <span>Analytics</span>
                 </a>
             <?php endif; ?>
 

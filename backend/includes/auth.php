@@ -72,9 +72,11 @@ function get_all_backend_pages() {
         'dashboard' => array('name' => 'Dashboard', 'url' => 'index.php', 'desc' => 'Overview stats, recent tickets & activity summary'),
         'tickets' => array('name' => 'Support Tickets', 'url' => 'tickets.php', 'desc' => 'Customer support ticket list & live reply thread'),
         'orders' => array('name' => 'Orders', 'url' => 'orders.php', 'desc' => 'Client hardware and materials order fulfillment & tracking'),
+        'events' => array('name' => 'Events & Schedules', 'url' => 'events.php', 'desc' => 'Interactive calendar, schedule visits & maintenance dispatch'),
         'accounts' => array('name' => 'Manage Accounts', 'url' => 'accounts.php', 'desc' => 'Client profiles, tech logs, work orders & technotes'),
         'inventory' => array('name' => 'Hardware Inventory', 'url' => 'inventory.php', 'desc' => 'Hardware stock levels, quick adjustments & log history'),
         'maintenance' => array('name' => 'POS Maintenance', 'url' => 'maintenance.php', 'desc' => 'Quarterly POS preventive maintenance requests'),
+        'analytics' => array('name' => 'Analytics', 'url' => 'analytics.php', 'desc' => 'Executive business analytics, revenue trends & performance KPIs (Super Admin)'),
         'settings' => array('name' => 'Admin Settings', 'url' => 'settings.php', 'desc' => 'User accounts management & permission level access')
     );
 }
@@ -87,9 +89,9 @@ function get_all_backend_pages() {
  */
 function get_user_allowed_pages($user_id, $accesslevel = '') {
     $lvl = strtolower(trim($accesslevel));
-    // Super Admin / Master always has full access to all pages
-    if ($lvl === 'master') {
-        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance', 'settings');
+    // Super Admin / Master always has full access to all pages including analytics
+    if ($lvl === 'master' || $lvl === 'super admin' || $lvl === 'superadmin') {
+        return array('dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance', 'analytics', 'settings');
     }
 
     $pdo = get_db_connection();
@@ -116,19 +118,19 @@ function get_user_allowed_pages($user_id, $accesslevel = '') {
 
     // Role-based defaults if no custom record in support_user_permissions
     if ($lvl === 'admin' || $lvl === 'administrator') {
-        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance', 'settings');
+        return array('dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance', 'settings');
     } elseif ($lvl === 'senior programmer' || $lvl === 'senior_programmer') {
-        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance', 'settings');
+        return array('dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance', 'settings');
     } elseif ($lvl === 'junior programmer' || $lvl === 'junior_programmer') {
-        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance');
+        return array('dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance');
     } elseif ($lvl === 'tech support' || $lvl === 'technician') {
-        return array('dashboard', 'tickets', 'orders', 'accounts', 'inventory', 'maintenance');
+        return array('dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance');
     } elseif ($lvl === 'ojt') {
-        return array('dashboard', 'tickets', 'orders', 'accounts');
+        return array('dashboard', 'tickets', 'orders', 'events', 'accounts');
     } elseif ($lvl === 'support') {
-        return array('dashboard', 'tickets', 'orders', 'accounts');
+        return array('dashboard', 'tickets', 'orders', 'events', 'accounts');
     } else {
-        return array('dashboard', 'tickets', 'orders');
+        return array('dashboard', 'tickets', 'orders', 'events');
     }
 }
 
@@ -224,7 +226,7 @@ function is_super_admin() {
         return false;
     }
     $lvl = isset($tech['accesslevel']) ? strtolower(trim($tech['accesslevel'])) : '';
-    return ($lvl === 'master');
+    return ($lvl === 'master' || $lvl === 'super admin' || $lvl === 'superadmin');
 }
 
 function get_user_access_tier($user_id, $accesslevel = '') {
