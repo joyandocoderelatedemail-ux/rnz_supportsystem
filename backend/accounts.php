@@ -411,6 +411,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         } elseif ($action === 'update_workorder') {
             $wo_id = isset($_POST['wo_id']) ? intval($_POST['wo_id']) : 0;
+            $clientname = isset($_POST['clientname']) ? trim($_POST['clientname']) : '';
+            $address = isset($_POST['address']) ? trim($_POST['address']) : '';
             $xdate = isset($_POST['xdate']) ? trim($_POST['xdate']) : date('Y-m-d');
             $natureofwork = isset($_POST['natureofwork']) ? trim($_POST['natureofwork']) : '';
             $amount = isset($_POST['amount']) ? trim($_POST['amount']) : '0';
@@ -420,9 +422,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             if ($wo_id > 0 && !empty($natureofwork)) {
                 try {
                     $stmt_up = $pdo->prepare("UPDATE bucket_workorder 
-                        SET xdate = :xdate, natureofwork = :nature, amount = :amount, status = :status, ornum = :ornum 
+                        SET clientname = :cname, address = :addr, xdate = :xdate, natureofwork = :nature, amount = :amount, status = :status, ornum = :ornum 
                         WHERE id = :id");
                     $stmt_up->execute(array(
+                        ':cname' => $clientname,
+                        ':addr' => $address,
                         ':xdate' => $xdate,
                         ':nature' => $natureofwork,
                         ':amount' => $amount,
@@ -1606,7 +1610,11 @@ $page_title = 'Manage Accounts';
                                     <p class="text-xs text-slate-500">Service statements, supplies, hardware repairs, and billing for Account #<?php echo sanitize($client_acct); ?></p>
                                 </div>
                                 <?php if ($my_tier >= 2): ?>
-                                <button onclick="openCreateWorkOrderModal('<?php echo addslashes($client_acct); ?>', '<?php echo addslashes(!empty($selected_client['tradename']) ? $selected_client['tradename'] : $selected_client['clientname']); ?>', '<?php echo addslashes($selected_client['address']); ?>')" 
+                                <button type="button"
+                                        data-acct="<?php echo htmlspecialchars($client_acct, ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-name="<?php echo htmlspecialchars(!empty($selected_client['tradename']) ? $selected_client['tradename'] : $selected_client['clientname'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-addr="<?php echo htmlspecialchars(!empty($selected_client['address']) ? $selected_client['address'] : '', ENT_QUOTES, 'UTF-8'); ?>"
+                                        onclick="openCreateWorkOrderModalFromBtn(this)" 
                                         class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-4 py-2 rounded-full shadow-sm flex items-center space-x-1.5 transition-all active:scale-95">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
@@ -1642,7 +1650,15 @@ $page_title = 'Manage Accounts';
                                                         <div class="font-mono font-bold text-[#EB3E0B]">WO-<?php echo $wo['id']; ?></div>
                                                         <div class="text-slate-500 font-mono text-[11px]"><?php echo format_date($wo['xdate']); ?></div>
                                                     </td>
-                                                    <td class="py-3 px-4 max-w-sm font-semibold text-slate-800 leading-relaxed"><?php echo sanitize($wo['natureofwork']); ?></td>
+                                                    <td class="py-3 px-4 max-w-sm font-semibold text-slate-800 leading-relaxed">
+                                                        <div><?php echo sanitize($wo['natureofwork']); ?></div>
+                                                        <?php if (!empty($wo['address'])): ?>
+                                                            <div class="text-[11px] text-slate-500 font-normal flex items-center gap-1 mt-1">
+                                                                <svg class="w-3 h-3 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                                                <span class="truncate" title="<?php echo sanitize($wo['address']); ?>"><?php echo sanitize($wo['address']); ?></span>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </td>
                                                     <td class="py-3 px-4 font-mono font-bold text-slate-900 text-sm">₱<?php echo number_format(floatval($wo['amount']), 2); ?></td>
                                                     <td class="py-3 px-4 font-mono text-slate-600"><?php echo !empty($wo['ornum']) ? 'OR #' . sanitize($wo['ornum']) : 'N/A'; ?></td>
                                                     <td class="py-3 px-4">
@@ -2900,14 +2916,19 @@ $page_title = 'Manage Accounts';
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Work Order Date</label>
-                                    <input type="date" name="xdate" id="edit_wo_xdate" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono font-bold">
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Client Name / Trade Name</label>
+                                    <input type="text" name="clientname" id="edit_wo_clientname" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-semibold">
                                 </div>
 
                                 <div>
-                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">O.R. Number (Optional)</label>
-                                    <input type="text" name="ornum" id="edit_wo_ornum" placeholder="e.g. 01795" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono">
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Work Order Date</label>
+                                    <input type="date" name="xdate" id="edit_wo_xdate" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono font-bold">
                                 </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Client Address / Service Location</label>
+                                <input type="text" name="address" id="edit_wo_address" placeholder="Enter service address or location" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
                             </div>
 
                             <div>
@@ -2915,10 +2936,15 @@ $page_title = 'Manage Accounts';
                                 <textarea name="natureofwork" id="edit_wo_natureofwork" rows="3" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all leading-relaxed"></textarea>
                             </div>
 
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                     <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Amount (₱)</label>
                                     <input type="number" step="0.01" min="0" name="amount" id="edit_wo_amount" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">O.R. Number (Optional)</label>
+                                    <input type="text" name="ornum" id="edit_wo_ornum" placeholder="e.g. 01795" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono">
                                 </div>
 
                                 <div>
@@ -3013,6 +3039,13 @@ $page_title = 'Manage Accounts';
                     if (modal) modal.classList.add('hidden');
                 }
 
+                function openCreateWorkOrderModalFromBtn(btn) {
+                    var acct = btn ? btn.getAttribute('data-acct') : '';
+                    var name = btn ? btn.getAttribute('data-name') : '';
+                    var addr = btn ? btn.getAttribute('data-addr') : '';
+                    openCreateWorkOrderModal(acct, name, addr);
+                }
+
                 function openCreateWorkOrderModal(acct, name, addr) {
                     var mAcct = document.getElementById('create_wo_accountnum');
                     var mName = document.getElementById('create_wo_clientname');
@@ -3045,6 +3078,13 @@ $page_title = 'Manage Accounts';
                         var wo = typeof raw === 'string' ? JSON.parse(raw) : raw;
                         document.getElementById('edit_wo_id').value = wo.id || '0';
                         document.getElementById('edit_wo_title_id').innerText = '#WO-' + (wo.id || '0');
+                        
+                        var mClient = document.getElementById('edit_wo_clientname');
+                        if (mClient) mClient.value = wo.clientname || '';
+                        
+                        var mAddr = document.getElementById('edit_wo_address');
+                        if (mAddr) mAddr.value = wo.address || '';
+
                         document.getElementById('edit_wo_xdate').value = wo.xdate || '';
                         document.getElementById('edit_wo_natureofwork').value = wo.natureofwork || '';
                         document.getElementById('edit_wo_amount').value = wo.amount || '0.00';

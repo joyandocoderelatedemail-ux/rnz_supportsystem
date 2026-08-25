@@ -175,9 +175,15 @@ if (!empty($client_acct)) {
     $client = $stmt_c->fetch();
 }
 
-$client_tradename = !empty($client['tradename']) ? $client['tradename'] : (!empty($data['tradename']) ? $data['tradename'] : (!empty($data['clientname']) ? $data['clientname'] : 'N/A'));
-$client_owner = !empty($client['clientname']) ? $client['clientname'] : (!empty($data['clientname']) ? $data['clientname'] : 'N/A');
-$client_address = !empty($client['address']) ? $client['address'] : (!empty($data['address']) ? $data['address'] : (!empty($data['xaddress']) ? $data['xaddress'] : 'N/A'));
+if ($doc_type === 'workorder') {
+    $client_tradename = !empty($data['clientname']) ? $data['clientname'] : (!empty($client['tradename']) ? $client['tradename'] : (!empty($client['clientname']) ? $client['clientname'] : 'N/A'));
+    $client_owner = !empty($client['clientname']) ? $client['clientname'] : (!empty($data['clientname']) ? $data['clientname'] : 'N/A');
+    $client_address = !empty($data['address']) ? $data['address'] : (!empty($client['address']) ? $client['address'] : (!empty($data['xaddress']) ? $data['xaddress'] : 'N/A'));
+} else {
+    $client_tradename = !empty($client['tradename']) ? $client['tradename'] : (!empty($data['tradename']) ? $data['tradename'] : (!empty($data['clientname']) ? $data['clientname'] : 'N/A'));
+    $client_owner = !empty($client['clientname']) ? $client['clientname'] : (!empty($data['clientname']) ? $data['clientname'] : 'N/A');
+    $client_address = !empty($client['address']) ? $client['address'] : (!empty($data['address']) ? $data['address'] : (!empty($data['xaddress']) ? $data['xaddress'] : 'N/A'));
+}
 $client_contact = (!empty($client['contactnum']) && strtoupper(trim($client['contactnum'])) !== 'NA') ? $client['contactnum'] : '—';
 $client_email = (!empty($client['emailaddress']) && strtoupper(trim($client['emailaddress'])) !== 'NA') ? $client['emailaddress'] : '—';
 $client_warranty_status = !empty($client['warranty_status']) ? $client['warranty_status'] : 'Inactive';
