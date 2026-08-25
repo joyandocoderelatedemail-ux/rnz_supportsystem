@@ -692,6 +692,44 @@ function clearTechChatPhotos() {
     document.getElementById('techChatPhotoGrid').innerHTML = '';
 }
 
+// Ctrl+V / Cmd+V a screenshot straight into the reply box: merge it with
+// any already-chosen files (a plain FileList can't be appended to directly).
+function handleTechChatPhotoPaste(e) {
+    var items = (e.clipboardData || window.clipboardData || {}).items;
+    if (!items) return;
+
+    var pastedFiles = [];
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file' && items[i].type.indexOf('image/') === 0) {
+            var file = items[i].getAsFile();
+            if (file) pastedFiles.push(file);
+        }
+    }
+    if (pastedFiles.length === 0) return;
+
+    e.preventDefault();
+
+    var input = document.getElementById('techChatPhotoInput');
+    if (!input) return;
+
+    var dataTransfer = new DataTransfer();
+    if (input.files) {
+        for (var f = 0; f < input.files.length; f++) {
+            dataTransfer.items.add(input.files[f]);
+        }
+    }
+
+    var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    pastedFiles.forEach(function(file, idx) {
+        var ext = file.type === 'image/jpeg' ? 'jpg' : 'png';
+        var named = new File([file], 'pasted-image-' + stamp + '-' + idx + '.' + ext, { type: file.type });
+        dataTransfer.items.add(named);
+    });
+
+    input.files = dataTransfer.files;
+    previewTechChatPhotos(input);
+}
+
 function buildTechReplyCard(reply) {
     var isTech = reply.is_tech;
     var containerClass = isTech 
@@ -1030,6 +1068,8 @@ if (techReplyForm && techReplyTextarea) {
         e.preventDefault();
         submitTechReply();
     });
+
+    techReplyTextarea.addEventListener('paste', handleTechChatPhotoPaste);
 }
 </script>
 
