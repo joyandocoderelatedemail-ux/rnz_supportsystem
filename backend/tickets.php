@@ -377,9 +377,7 @@ $page_title = 'Support Tickets Center';
                                             <?php echo sanitize($t['subject']); ?>
                                         </td>
                                         <td class="py-4 px-6">
-                                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border <?php echo $badge_class; ?>">
-                                                <?php echo sanitize($t['status']); ?>
-                                            </span>
+                                            <span class="inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold border <?php echo $badge_class; ?>"><?php echo sanitize($t['status']); ?></span>
                                         </td>
 
                                         <td class="py-4 px-6 <?php echo $date_color; ?>">
@@ -879,7 +877,7 @@ function applyTicketChatStatus(status, badgeClass) {
         if (rowBadge) {
             rowBadge.textContent = status;
             if (badgeClass) {
-                rowBadge.className = 'inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ' + badgeClass;
+                rowBadge.className = 'inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold border ' + badgeClass;
             }
         }
     }
