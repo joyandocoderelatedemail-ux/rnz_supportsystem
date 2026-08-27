@@ -36,15 +36,15 @@ try {
     $in_progress_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'In Progress'")->fetchColumn());
     $resolved_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status IN ('Resolved', 'Closed')")->fetchColumn());
 
-    // Events Stats Queries
-    $today_events_count = intval($pdo->query("SELECT COUNT(*) FROM support_events WHERE DATE(start_datetime) = CURDATE() AND status != 'Cancelled'")->fetchColumn());
+    // Events Stats Queries (Completed & Cancelled items don't belong on the dashboard)
+    $today_events_count = intval($pdo->query("SELECT COUNT(*) FROM support_events WHERE DATE(start_datetime) = CURDATE() AND status NOT IN ('Cancelled', 'Completed')")->fetchColumn());
     $upcoming_events_count = intval($pdo->query("SELECT COUNT(*) FROM support_events WHERE DATE(start_datetime) >= CURDATE() AND status IN ('Scheduled', 'In Progress', 'Rescheduled')")->fetchColumn());
 
-    // Fetch Today's & Upcoming Events (Limit 6)
-    $stmt_dash_events = $pdo->query("SELECT * FROM support_events 
+    // Fetch Today's & Upcoming Events (Limit 6) - only what's still actionable
+    $stmt_dash_events = $pdo->query("SELECT * FROM support_events
         WHERE (DATE(start_datetime) >= CURDATE() OR DATE(end_datetime) >= CURDATE() OR status = 'In Progress')
-          AND status != 'Cancelled'
-        ORDER BY 
+          AND status NOT IN ('Cancelled', 'Completed')
+        ORDER BY
             CASE 
                 WHEN DATE(start_datetime) = CURDATE() THEN 1 
                 WHEN DATE(start_datetime) > CURDATE() THEN 2 

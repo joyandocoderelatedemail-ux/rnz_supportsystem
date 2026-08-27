@@ -120,15 +120,18 @@ $current_admin_search_q = isset($_GET['q']) ? trim($_GET['q']) : '';
         </button>
 
         <!-- Add Service Note Button -->
-        <button onclick="openNewServiceNoteModal()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-medium text-xs sm:text-sm px-3 sm:px-5 py-2 sm:py-2.5 rounded-full shadow-sm shadow-[#EB3E0B]/25 flex items-center space-x-1.5 transition-all active:scale-95">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
-            </svg>
-            <span class="hidden xs:inline sm:inline">Log Service Note</span>
-        </button>
+        <!-- The tickets list logs notes per ticket instead, from the row action button -->
+        <?php if (basename($_SERVER['SCRIPT_NAME']) !== 'tickets.php'): ?>
+            <button onclick="openNewServiceNoteModal()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-medium text-xs sm:text-sm px-3 sm:px-5 py-2 sm:py-2.5 rounded-full shadow-sm shadow-[#EB3E0B]/25 flex items-center space-x-1.5 transition-all active:scale-95">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+                </svg>
+                <span class="hidden xs:inline sm:inline">Log Service Note</span>
+            </button>
+        <?php endif; ?>
 
         <!-- Audio Test Button -->
-        <button type="button" onclick="playNewTicketChime(); alert('🔔 Notification Sound Test: Audio working!');" class="text-slate-500 hover:text-[#EB3E0B] p-2 rounded-full hover:bg-slate-100 transition-colors flex items-center space-x-1" title="Test Notification Sound">
+        <button type="button" onclick="testNotificationSound()" class="text-slate-500 hover:text-[#EB3E0B] p-2 rounded-full hover:bg-slate-100 transition-colors flex items-center space-x-1" title="Test Notification Sound">
             <svg class="w-4 h-4 text-slate-500 hover:text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
             </svg>

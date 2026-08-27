@@ -144,7 +144,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // -----------------------------------------------------------
-// 4. GET: Poll for New Replies
+// 4. POST: Change the ticket status from the chat pop-up
+// -----------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_status') {
+    // Same tier rules as every other record change: level 1 cannot edit,
+    // level 2 must confirm with a security access code.
+    $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+    $perm_check = check_tech_action_permission($action_code);
+    if (!$perm_check['allowed']) {
+        echo json_encode(array(
+            'success' => false,
+            'error' => $perm_check['message'],
+            'needs_code' => (get_logged_tech_access_tier() === 2)
+        ));
+        exit;
+    }
+
+    $new_status = isset($_POST['status']) ? trim($_POST['status']) : '';
+    $allowed_statuses = array('Pending', 'In Progress', 'Resolved', 'Closed');
+    if (!in_array($new_status, $allowed_statuses, true)) {
+        echo json_encode(array('success' => false, 'error' => 'Unknown ticket status.'));
+        exit;
+    }
+
+    try {
+        $stmt_st = $pdo->prepare("UPDATE client_support_tickets SET status = :status, updated_at = :now WHERE id = :tid");
+        $stmt_st->execute(array(
+            ':status' => $new_status,
+            ':now' => date('Y-m-d H:i:s'),
+            ':tid' => $ticket_id
+        ));
+    } catch (PDOException $e) {
+        echo json_encode(array('success' => false, 'error' => $e->getMessage()));
+        exit;
+    }
+
+    echo json_encode(array(
+        'success' => true,
+        'status' => $new_status,
+        'status_badge_class' => get_status_badge_class($new_status)
+    ));
+    exit;
+}
+
+// -----------------------------------------------------------
+// 5. GET: Poll for New Replies
 // -----------------------------------------------------------
 $after_id = isset($_GET['after_id']) ? intval($_GET['after_id']) : 0;
 

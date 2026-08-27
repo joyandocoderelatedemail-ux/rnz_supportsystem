@@ -1047,6 +1047,60 @@ function scrollToReply(replyId) {
     }, 1600);
 }
 
+// ---------------------------------------------------------------
+// Opening the console lands on the newest message, so the thread
+// reads like a chat app instead of starting at the oldest reply.
+// ---------------------------------------------------------------
+var techThreadUserScrolled = false;
+
+function markTechThreadScrolled() {
+    techThreadUserScrolled = true;
+}
+['wheel', 'touchmove', 'mousedown'].forEach(function(evt) {
+    window.addEventListener(evt, markTechThreadScrolled, { passive: true });
+});
+window.addEventListener('keydown', function(e) {
+    // Only the keys people actually scroll with, and never while typing a reply
+    var tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return;
+    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].indexOf(e.key) !== -1) {
+        markTechThreadScrolled();
+    }
+}, true);
+
+function jumpToLatestReply() {
+    var cards = document.querySelectorAll('.tech-reply-card[data-reply-id]');
+    if (!cards.length) return;
+
+    // Land on the composer (or the closed-chat banner) when it is on screen:
+    // it sits directly under the thread, so the newest messages stay in view
+    // and a reply can be typed without scrolling again.
+    var anchor = null;
+    var formBox = document.getElementById('backendReplyFormBox');
+    var closedBanner = document.getElementById('backendClosedBanner');
+    if (formBox && !formBox.classList.contains('hidden')) {
+        anchor = formBox;
+    } else if (closedBanner && !closedBanner.classList.contains('hidden')) {
+        anchor = closedBanner;
+    }
+    if (!anchor) {
+        anchor = cards[cards.length - 1];
+    }
+    anchor.scrollIntoView({ behavior: 'auto', block: 'end' });
+}
+
+// A link straight to one message (#hash) wins over the newest-first jump
+if (!window.location.hash) {
+    jumpToLatestReply();
+    // Attachments finish loading after this script runs and change the thread
+    // height, so land on the newest message again unless the user moved first.
+    window.addEventListener('load', function() {
+        if (!techThreadUserScrolled) {
+            jumpToLatestReply();
+        }
+    });
+}
+
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         cancelReplyTo();

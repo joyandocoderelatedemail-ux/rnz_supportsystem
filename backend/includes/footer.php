@@ -1,5 +1,8 @@
 <?php
 // Support Center Admin Footer Component & Service Note Modal
+require_once __DIR__ . '/technote_init.php';
+
+init_technote_tables();
 
 // Handle Service Note Form Submission if posted
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'save_tech_note') {
@@ -10,6 +13,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $causeoftheissue = isset($_POST['causeoftheissue']) ? trim($_POST['causeoftheissue']) : '';
     $resso = isset($_POST['resso']) ? trim($_POST['resso']) : '';
     $status = isset($_POST['status']) ? trim($_POST['status']) : 'Done';
+    $note_ticket_id = isset($_POST['ticket_id']) ? intval($_POST['ticket_id']) : 0;
+    $note_id = isset($_POST['note_id']) ? intval($_POST['note_id']) : 0;
     $xdate = date('m/d/Y');
 
     $tech = get_logged_tech();
@@ -30,23 +35,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 }
             }
 
-            $stmt_in = $pdo->prepare("INSERT INTO bucket_technotes 
-                (accountnum, xdate, clientname, address, techname, reasonoftech, causeoftheissue, resso, status)
-                VALUES (:acct, :xdate, :cname, :addr, :tname, :reason, :cause, :resso, :status)");
+            // Reopening a ticket's note loads it back into this form, so saving
+            // updates that note rather than stacking a second one on the ticket.
+            if ($note_id > 0 && $note_ticket_id > 0) {
+                $stmt_up = $pdo->prepare("UPDATE bucket_technotes SET
+                    accountnum = :acct, xdate = :xdate, clientname = :cname, address = :addr,
+                    techname = :tname, reasonoftech = :reason, causeoftheissue = :cause,
+                    resso = :resso, status = :status
+                    WHERE id = :nid AND ticket_id = :tid");
 
-            $stmt_in->execute(array(
-                ':acct' => $accountnum,
-                ':xdate' => $xdate,
-                ':cname' => $clientname,
-                ':addr' => $address,
-                ':tname' => $techname,
-                ':reason' => $reasonoftech,
-                ':cause' => $causeoftheissue,
-                ':resso' => $resso,
-                ':status' => $status
-            ));
+                $stmt_up->execute(array(
+                    ':acct' => $accountnum,
+                    ':xdate' => $xdate,
+                    ':cname' => $clientname,
+                    ':addr' => $address,
+                    ':tname' => $techname,
+                    ':reason' => $reasonoftech,
+                    ':cause' => $causeoftheissue,
+                    ':resso' => $resso,
+                    ':status' => $status,
+                    ':nid' => $note_id,
+                    ':tid' => $note_ticket_id
+                ));
+            } else {
+                $stmt_in = $pdo->prepare("INSERT INTO bucket_technotes
+                    (accountnum, xdate, clientname, address, techname, reasonoftech, causeoftheissue, resso, status, ticket_id)
+                    VALUES (:acct, :xdate, :cname, :addr, :tname, :reason, :cause, :resso, :status, :tid)");
 
-            echo "<script>alert('Technician Service Note recorded successfully!'); window.location.href = window.location.pathname;</script>";
+                $stmt_in->execute(array(
+                    ':acct' => $accountnum,
+                    ':xdate' => $xdate,
+                    ':cname' => $clientname,
+                    ':addr' => $address,
+                    ':tname' => $techname,
+                    ':reason' => $reasonoftech,
+                    ':cause' => $causeoftheissue,
+                    ':resso' => $resso,
+                    ':status' => $status,
+                    ':tid' => $note_ticket_id
+                ));
+            }
+
+            // A note logged against a ticket and saved as Done closes that
+            // ticket out, so the visit and the ticket never disagree.
+            $ticket_resolved = false;
+            if ($note_ticket_id > 0 && $status === 'Done') {
+                $stmt_tk = $pdo->prepare("UPDATE client_support_tickets SET status = 'Resolved', updated_at = :now WHERE id = :tid");
+                $stmt_tk->execute(array(':now' => date('Y-m-d H:i:s'), ':tid' => $note_ticket_id));
+                // rowCount() is 0 for a ticket that was already Resolved, and it
+                // is still Resolved either way, so the message does not use it.
+                $ticket_resolved = true;
+            }
+
+            $saved_word = ($note_id > 0 && $note_ticket_id > 0) ? 'updated' : 'recorded';
+            $done_msg = $ticket_resolved
+                ? 'Technician Service Note ' . $saved_word . '. The support ticket is now marked as Resolved.'
+                : 'Technician Service Note ' . $saved_word . ' successfully!';
+
+            echo "<script>alert(" . json_encode($done_msg) . "); window.location.href = window.location.pathname;</script>";
             exit;
         } catch (PDOException $e) {
             error_log("Tech Note Insert Error: " . $e->getMessage());
@@ -86,8 +132,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             </div>
         </div>
 
+        <!-- Shown when this ticket already has a service note loaded into the form -->
+        <div id="note_existing_banner" class="hidden mb-5 rounded-2xl border border-[#FECDAA] bg-[#FFF5ED] px-4 py-3 flex items-start gap-2.5">
+            <svg class="w-4 h-4 text-[#EB3E0B] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div class="min-w-0">
+                <p class="text-xs font-extrabold text-[#9A2512]">Service note already logged for this ticket</p>
+                <p id="note_existing_meta" class="text-[11px] text-slate-600 leading-snug"></p>
+            </div>
+        </div>
+
         <form action="" method="POST" class="space-y-4">
             <input type="hidden" name="action" value="save_tech_note">
+            <!-- Set when the note is logged from a support ticket, so saving it
+                 as Done can close that ticket out too -->
+            <input type="hidden" name="ticket_id" id="note_ticket_id" value="">
+            <!-- Set when this ticket already has a note, so saving edits it
+                 instead of stacking a second note on the same ticket -->
+            <input type="hidden" name="note_id" id="note_id" value="">
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -257,66 +320,180 @@ document.addEventListener('DOMContentLoaded', function() {
     updateUnreadBadgeCount();
 });
 
-function openNewServiceNoteModal(acct, name, addr, reason) {
+function openNewServiceNoteModal(acct, name, addr, reason, ticketId) {
+    // Start from a blank form every time, otherwise the details of whatever
+    // was opened before stay behind in the fields this call does not fill.
+    var fields = ['note_accountnum', 'note_clientname', 'note_address', 'note_reason', 'note_cause', 'note_resso', 'note_ticket_id', 'note_id'];
+    for (var i = 0; i < fields.length; i++) {
+        var el = document.getElementById(fields[i]);
+        if (el) el.value = '';
+    }
+
+    // Only notes opened from a ticket carry one, and only those can close a ticket
+    if (ticketId) document.getElementById('note_ticket_id').value = ticketId;
     if (acct) document.getElementById('note_accountnum').value = acct;
     if (name) document.getElementById('note_clientname').value = name;
     if (addr) document.getElementById('note_address').value = addr;
     if (reason) document.getElementById('note_reason').value = reason;
     document.getElementById('newServiceNoteModal').classList.remove('hidden');
+
+    loadTicketServiceNote(ticketId);
+}
+
+// Loads the note already logged for this ticket - and only for this ticket -
+// straight into the form, so reopening it shows what was saved rather than a
+// blank sheet. Saving then edits that note instead of adding a second one.
+function loadTicketServiceNote(ticketId) {
+    var banner = document.getElementById('note_existing_banner');
+    banner.classList.add('hidden');
+    document.getElementById('note_id').value = '';
+
+    if (!ticketId) return;
+
+    fetch('api_ticket_notes.php?ticket_id=' + encodeURIComponent(ticketId))
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            // The modal may have been closed or reopened on another ticket by now
+            if (document.getElementById('note_ticket_id').value !== String(ticketId)) return;
+            if (!data || !data.success || !data.note) return;
+
+            var note = data.note;
+            document.getElementById('note_id').value = note.id;
+            document.getElementById('note_reason').value = note.reasonoftech || '';
+            document.getElementById('note_cause').value = note.causeoftheissue || '';
+            document.getElementById('note_resso').value = note.resso || '';
+
+            var statusSelect = document.querySelector('#newServiceNoteModal select[name="status"]');
+            if (statusSelect && note.status) statusSelect.value = note.status;
+
+            document.getElementById('note_existing_meta').textContent =
+                'Logged ' + (note.xdate || '') + ' by ' + (note.techname || 'a technician') +
+                '. Editing it here updates that same note.';
+            banner.classList.remove('hidden');
+        })
+        .catch(function(err) {
+            console.error('Service note load error:', err);
+        });
 }
 
 function closeNewServiceNoteModal() {
     document.getElementById('newServiceNoteModal').classList.add('hidden');
 }
 
-// Web Audio API Chime Synthesizer (No external sound file needed)
+// Notification Alarm - plays the submarine warning tone recording
+var TICKET_ALARM_FILE = 'ElevenLabs_Loud_warning_tone_in_a_submarine_for_a_critical_system_malfunction.mp3';
+var TICKET_ALARM_VOLUME = 0.85;
+var TICKET_ALARM_MAX_SECONDS = 4;    // the clip runs ~10s; 0 plays all of it
+var TICKET_ALARM_FADE_SECONDS = 0.5;
+
+var ticketAlarmAudio = null;
+var ticketAlarmStopTimer = null;
+var ticketAlarmFadeTimer = null;
+var ticketAlarmUnlocked = false;
+
+// One element reused for every alarm, so the clip is fetched and decoded once
+function getTicketAlarmAudio() {
+    if (!ticketAlarmAudio) {
+        ticketAlarmAudio = new Audio(TICKET_ALARM_FILE);
+        ticketAlarmAudio.preload = 'auto';
+        ticketAlarmAudio.volume = TICKET_ALARM_VOLUME;
+    }
+    return ticketAlarmAudio;
+}
+
+// Browsers refuse to play audio until the page has been interacted with, which
+// is why an alarm arriving on its own can stay silent while the test button
+// works. Priming the clip muted on the first click clears that for the session.
+function unlockTicketAudio() {
+    if (ticketAlarmUnlocked) return;
+    ticketAlarmUnlocked = true;
+    document.removeEventListener('click', unlockTicketAudio);
+    document.removeEventListener('keydown', unlockTicketAudio);
+
+    var audio = getTicketAlarmAudio();
+    audio.muted = true;
+
+    var reset = function() {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = false;
+    };
+
+    try {
+        var primed = audio.play();
+        if (primed && primed.then) {
+            primed.then(reset)['catch'](reset);
+        } else {
+            reset();
+        }
+    } catch (e) {
+        reset();
+    }
+}
+document.addEventListener('click', unlockTicketAudio);
+document.addEventListener('keydown', unlockTicketAudio);
+
+function stopTicketAlarm() {
+    if (ticketAlarmStopTimer) {
+        clearTimeout(ticketAlarmStopTimer);
+        ticketAlarmStopTimer = null;
+    }
+    if (ticketAlarmFadeTimer) {
+        clearInterval(ticketAlarmFadeTimer);
+        ticketAlarmFadeTimer = null;
+    }
+    if (!ticketAlarmAudio) return;
+    ticketAlarmAudio.pause();
+    ticketAlarmAudio.currentTime = 0;
+    ticketAlarmAudio.volume = TICKET_ALARM_VOLUME;
+}
+
 function playNewTicketChime() {
     try {
-        var AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return;
-        var ctx = new AudioCtx();
-        if (ctx.state === 'suspended') {
-            ctx.resume();
+        var audio = getTicketAlarmAudio();
+
+        // A second ticket landing mid-alarm restarts it rather than overlapping
+        stopTicketAlarm();
+        audio.volume = TICKET_ALARM_VOLUME;
+        audio.currentTime = 0;
+
+        var played = audio.play();
+        if (played && played['catch']) {
+            played['catch'](function(err) {
+                console.log('Notification alarm blocked by the browser:', err);
+            });
         }
 
-        // Tone 1: D5 (587.33 Hz)
-        var osc1 = ctx.createOscillator();
-        var gain1 = ctx.createGain();
-        osc1.type = 'sine';
-        osc1.frequency.setValueAtTime(587.33, ctx.currentTime);
-        gain1.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-        osc1.connect(gain1);
-        gain1.connect(ctx.destination);
-        osc1.start(ctx.currentTime);
-        osc1.stop(ctx.currentTime + 0.4);
-
-        // Tone 2: A5 (880.00 Hz)
-        var osc2 = ctx.createOscillator();
-        var gain2 = ctx.createGain();
-        osc2.type = 'sine';
-        osc2.frequency.setValueAtTime(880.00, ctx.currentTime + 0.15);
-        gain2.gain.setValueAtTime(0.4, ctx.currentTime + 0.15);
-        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.start(ctx.currentTime + 0.15);
-        osc2.stop(ctx.currentTime + 0.7);
-
-        // Tone 3: D6 (1174.66 Hz)
-        var osc3 = ctx.createOscillator();
-        var gain3 = ctx.createGain();
-        osc3.type = 'sine';
-        osc3.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.3);
-        gain3.gain.setValueAtTime(0.35, ctx.currentTime + 0.3);
-        gain3.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.9);
-        osc3.connect(gain3);
-        gain3.connect(ctx.destination);
-        osc3.start(ctx.currentTime + 0.3);
-        osc3.stop(ctx.currentTime + 0.9);
+        // Cut the clip short so one ticket does not hold the room for 10 seconds
+        if (TICKET_ALARM_MAX_SECONDS > 0) {
+            var fadeAt = Math.max(0, TICKET_ALARM_MAX_SECONDS - TICKET_ALARM_FADE_SECONDS);
+            ticketAlarmStopTimer = setTimeout(function() {
+                var steps = 10;
+                var step = 0;
+                ticketAlarmFadeTimer = setInterval(function() {
+                    step++;
+                    var level = TICKET_ALARM_VOLUME * (1 - (step / steps));
+                    audio.volume = (level > 0) ? level : 0;
+                    if (step >= steps) {
+                        stopTicketAlarm();
+                    }
+                }, (TICKET_ALARM_FADE_SECONDS * 1000) / steps);
+            }, fadeAt * 1000);
+        }
     } catch (e) {
-        console.log('Audio chime exception:', e);
+        console.log('Audio alarm exception:', e);
     }
+}
+
+// The Test Sound button plays the alarm exactly as a new ticket does. The
+// confirmation waits for it to finish, because a modal dialog blocks the timer
+// that fades the clip out and the alarm would run on until it was dismissed.
+function testNotificationSound() {
+    playNewTicketChime();
+    var waitMs = ((TICKET_ALARM_MAX_SECONDS > 0) ? TICKET_ALARM_MAX_SECONDS : 10) * 1000 + 300;
+    setTimeout(function() {
+        alert('🔔 Notification Sound Test: this is exactly what a new ticket sounds like.');
+    }, waitMs);
 }
 
 // Real-Time Ticket Poller (Checks every 6 seconds)

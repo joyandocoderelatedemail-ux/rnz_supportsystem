@@ -591,7 +591,18 @@ try {
 } catch (PDOException $e) {
     $next_accountnum = '';
 }
-$stmt_quick = $pdo->query("SELECT accountnum, tradename, clientname FROM bucket_client ORDER BY id ASC LIMIT 6");
+// Quick Accounts: surface the most active clients first (most support tickets
+// or tech notes submitted), falling back to plain account order to fill out
+// the remaining slots if too few accounts have any activity yet.
+$stmt_quick = $pdo->query("SELECT bc.accountnum, bc.tradename, bc.clientname,
+        (COALESCE(t.ticket_cnt, 0) + COALESCE(n.note_cnt, 0)) AS activity_cnt
+    FROM bucket_client bc
+    LEFT JOIN (SELECT accountnum, COUNT(*) AS ticket_cnt FROM client_support_tickets GROUP BY accountnum) t
+        ON t.accountnum = bc.accountnum
+    LEFT JOIN (SELECT accountnum, COUNT(*) AS note_cnt FROM bucket_technotes GROUP BY accountnum) n
+        ON n.accountnum = bc.accountnum
+    ORDER BY activity_cnt DESC, bc.id ASC
+    LIMIT 6");
 $quick_clients = $stmt_quick->fetchAll();
 
 // Data queries for active tabs if client selected
@@ -820,12 +831,18 @@ $page_title = 'Manage Accounts';
                 <?php if (!empty($quick_clients)): ?>
                     <div class="pt-1 flex flex-wrap items-center gap-2 text-xs">
                         <span class="text-slate-400 font-bold text-[11px] uppercase tracking-wider">Quick Accounts:</span>
-                        <?php foreach ($quick_clients as $qc): 
+                        <?php foreach ($quick_clients as $qc):
                             $qc_label = !empty($qc['tradename']) ? $qc['tradename'] : $qc['clientname'];
+                            $qc_activity = isset($qc['activity_cnt']) ? intval($qc['activity_cnt']) : 0;
                         ?>
-                            <a href="accounts.php?q=<?php echo urlencode($qc['accountnum']); ?>" 
-                               class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-700 hover:text-[#EB3E0B] px-3 py-1 rounded-full border border-slate-200/80 font-mono transition-colors">
-                                <?php echo sanitize($qc['accountnum']); ?> (<?php echo sanitize($qc_label); ?>)
+                            <a href="accounts.php?q=<?php echo urlencode($qc['accountnum']); ?>"
+                               class="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-[#FFE8D5] text-slate-700 hover:text-[#EB3E0B] px-3 py-1 rounded-full border border-slate-200/80 font-mono transition-colors">
+                                <span><?php echo sanitize($qc['accountnum']); ?> (<?php echo sanitize($qc_label); ?>)</span>
+                                <?php if ($qc_activity > 0): ?>
+                                    <span class="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-white/70 text-slate-500" title="<?php echo $qc_activity; ?> ticket(s) + tech note(s) submitted">
+                                        <?php echo $qc_activity; ?>
+                                    </span>
+                                <?php endif; ?>
                             </a>
                         <?php endforeach; ?>
                     </div>
