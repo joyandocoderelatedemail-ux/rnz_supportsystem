@@ -253,7 +253,16 @@ $page_title = 'Support Tickets';
                             </thead>
                             <tbody class="divide-y divide-[#FFE8D5] text-xs">
                                 <?php foreach ($tickets as $t): ?>
-                                    <tr class="hover:bg-[#FFF5ED] transition-colors group cursor-pointer" onclick="window.location='ticket_detail.php?id=<?php echo $t['id']; ?>'">
+                                    <tr class="ticket-row hover:bg-[#FFF5ED] transition-colors group cursor-pointer"
+                                        onclick="openTicketChat(this, event)"
+                                        title="Open support chat"
+                                        data-ticket-id="<?php echo intval($t['id']); ?>"
+                                        data-ticket-number="<?php echo sanitize($t['ticket_number']); ?>"
+                                        data-subject="<?php echo sanitize($t['subject']); ?>"
+                                        data-status="<?php echo sanitize($t['status']); ?>"
+                                        data-tech="<?php echo sanitize(isset($t['assigned_tech']) ? $t['assigned_tech'] : ''); ?>"
+                                        data-issue="<?php echo sanitize($t['issue_description']); ?>"
+                                        data-created="<?php echo sanitize(format_date($t['created_at'])); ?>">
                                         <td class="py-4 pl-2 font-mono font-bold text-[#EB3E0B] group-hover:underline">
                                             <?php echo sanitize($t['ticket_number']); ?>
                                         </td>
@@ -272,9 +281,7 @@ $page_title = 'Support Tickets';
                                             <?php echo format_date($t['created_at']); ?>
                                         </td>
                                         <td class="py-4 text-right pr-2">
-                                            <span class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold border <?php echo get_status_badge_class($t['status']); ?>">
-                                                <?php echo sanitize($t['status']); ?>
-                                            </span>
+                                            <span class="inline-flex items-center justify-center whitespace-nowrap px-3 py-1 rounded-full text-[11px] font-semibold border <?php echo get_status_badge_class($t['status']); ?>"><?php echo sanitize($t['status']); ?></span>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -374,5 +381,531 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+<!-- ========================================================================= -->
+<!-- SUPPORT CHAT POP-UP (opens at the lower right when a ticket row is clicked) -->
+<!-- ========================================================================= -->
+<div id="ticketChatBox" class="hidden fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] sm:w-[380px] bg-white rounded-3xl border border-[#FECDAA] shadow-2xl shadow-[#430D07]/20 overflow-hidden flex-col">
+
+    <!-- Header -->
+    <div class="shrink-0 bg-gradient-to-r from-[#EB3E0B] to-[#FA5915] text-white px-4 py-3 flex items-center gap-3">
+        <button type="button" onclick="toggleTicketChatMinimize()" class="min-w-0 flex-1 text-left" title="Click to minimize / expand">
+            <div class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0"></span>
+                <span id="ticketChatNumber" class="font-mono font-bold text-xs truncate"></span>
+            </div>
+            <div id="ticketChatSubject" class="text-[11px] font-semibold truncate opacity-95"></div>
+            <div id="ticketChatTech" class="text-[10px] truncate opacity-80"></div>
+        </button>
+        <div class="flex items-center gap-1 shrink-0">
+            <!-- Read only - only the support team changes a ticket's status -->
+            <span id="ticketChatStatus" class="px-2 py-0.5 rounded-full whitespace-nowrap text-[9px] font-bold bg-white/20 border border-white/30"></span>
+            <a id="ticketChatFullLink" href="#" title="Open full ticket page" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            </a>
+            <button type="button" onclick="toggleTicketChatMinimize()" title="Minimize" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
+                <svg id="ticketChatMinIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 13H5"/></svg>
+            </button>
+            <button type="button" onclick="closeTicketChat()" title="Close chat" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Collapsible body: thread + composer -->
+    <div id="ticketChatBody" class="flex flex-col min-h-0">
+
+        <!-- Conversation thread -->
+        <div id="ticketChatThread" class="h-[46vh] sm:h-[340px] overflow-y-auto bg-[#FFF9F5] px-3.5 py-4 space-y-3">
+            <div class="text-center text-[11px] text-[#B4785F] font-bold py-6">Loading conversation...</div>
+        </div>
+
+        <!-- Support typing indicator -->
+        <div id="ticketChatTyping" class="hidden px-4 py-1.5 bg-[#FFF9F5] border-t border-[#FFE8D5] text-[10px] font-bold text-[#7C2112] italic">
+            Support is typing...
+        </div>
+
+        <!-- Closed banner (shown instead of the composer on Resolved / Closed tickets) -->
+        <div id="ticketChatClosed" class="hidden shrink-0 px-4 py-3.5 bg-[#FFF5ED] border-t border-[#FFE8D5] text-center space-y-1">
+            <p class="text-[11px] font-bold text-[#7C2112]">This ticket is <span id="ticketChatClosedStatus"></span> - the chat is closed.</p>
+            <p class="text-[10px] text-[#9A2512]/80 leading-relaxed">Still need help? Submit a new support ticket and our team will pick it up.</p>
+        </div>
+
+        <!-- Composer -->
+        <div id="ticketChatComposer" class="shrink-0 border-t border-[#FFE8D5] bg-white p-3 space-y-2">
+            <div id="ticketChatError" class="hidden text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-2.5 py-1.5"></div>
+
+            <!-- Attached / pasted photos -->
+            <div id="ticketChatPhotoBar" class="hidden bg-[#FFF5ED] border border-[#FECDAA] rounded-xl px-2.5 py-1.5 space-y-1.5">
+                <div class="flex items-center justify-between gap-2 text-[10px] font-bold">
+                    <span id="ticketChatPhotoCount" class="text-[#9A2512] truncate"></span>
+                    <button type="button" onclick="clearTicketChatPhotos()" class="text-rose-600 hover:underline shrink-0">Remove all</button>
+                </div>
+                <div id="ticketChatPhotoGrid" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto"></div>
+            </div>
+
+            <div class="flex items-end gap-2">
+                <label title="Attach photos" class="w-9 h-9 shrink-0 rounded-full bg-[#FFF5ED] hover:bg-[#FFE8D5] text-[#B4785F] hover:text-[#EB3E0B] flex items-center justify-center cursor-pointer transition-colors">
+                    <input type="file" id="ticketChatPhotoInput" accept=".png, .jpg, .jpeg, image/png, image/jpeg" multiple class="hidden" onchange="onTicketChatPhotosPicked(this)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                </label>
+                <textarea id="ticketChatInput" rows="1" placeholder="Message support, or paste a screenshot with Ctrl + V..." class="flex-1 resize-none bg-[#FFF9F5] border border-[#FECDAA] text-[#430D07] text-xs rounded-2xl px-3.5 py-2.5 max-h-28 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                <button type="button" id="ticketChatSend" onclick="sendTicketChatReply()" title="Send message (Enter)" class="w-9 h-9 shrink-0 rounded-full bg-[#EB3E0B] hover:bg-[#C32C0B] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-[#EB3E0B]/25">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                </button>
+            </div>
+            <p class="text-[9px] text-[#B4785F] font-medium px-1">Enter sends - Shift + Enter starts a new line - Ctrl + V pastes screenshots</p>
+        </div>
+    </div>
+</div>
+
+<script>
+// =========================================================================
+// SUPPORT CHAT POP-UP
+// Clicking a ticket opens its conversation in a chat box at the lower right.
+// Clients read and reply here - only the support team changes ticket status,
+// so nothing in this pop-up edits the ticket itself.
+// =========================================================================
+var chatTicketId = 0;
+var chatLastReplyId = 0;
+var chatPollTimer = null;
+var chatIsSending = false;
+var chatIsMinimized = false;
+var chatLastTypingPing = 0;
+
+var chatBox = document.getElementById('ticketChatBox');
+var chatThread = document.getElementById('ticketChatThread');
+var chatInput = document.getElementById('ticketChatInput');
+var chatSendBtn = document.getElementById('ticketChatSend');
+var chatPhotoInput = document.getElementById('ticketChatPhotoInput');
+
+function escapeChatHtml(str) {
+    return String(str === null || typeof str === 'undefined' ? '' : str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+// -------------------------------------------------------------------------
+// Open / close
+// -------------------------------------------------------------------------
+function openTicketChat(row, e) {
+    // Links and buttons inside the row keep their own behaviour
+    if (e && e.target && e.target.closest) {
+        var interactive = e.target.closest('a, button, input, select, label, textarea, form');
+        if (interactive && interactive !== row) return;
+    }
+
+    var ticketId = parseInt(row.getAttribute('data-ticket-id'), 10);
+    if (!ticketId) return;
+
+    var reopeningSame = (ticketId === chatTicketId && !chatBox.classList.contains('hidden'));
+
+    chatTicketId = ticketId;
+    chatLastReplyId = 0;
+
+    document.getElementById('ticketChatNumber').textContent = row.getAttribute('data-ticket-number') || '';
+    document.getElementById('ticketChatSubject').textContent = row.getAttribute('data-subject') || '';
+    document.getElementById('ticketChatFullLink').href = 'ticket_detail.php?id=' + ticketId;
+
+    var tech = row.getAttribute('data-tech') || '';
+    document.getElementById('ticketChatTech').textContent = tech ? ('Handled by ' + tech) : 'Waiting for a technician';
+
+    applyTicketChatStatus(row.getAttribute('data-status') || '');
+
+    // Seed bubble: tickets with no replies yet still show the issue as reported
+    chatThread.setAttribute('data-seed-issue', row.getAttribute('data-issue') || '');
+    chatThread.setAttribute('data-seed-date', row.getAttribute('data-created') || '');
+    chatThread.innerHTML = '<div class="text-center text-[11px] text-[#B4785F] font-bold py-6">Loading conversation...</div>';
+
+    chatBox.classList.remove('hidden');
+    chatBox.classList.add('flex');
+    if (chatIsMinimized && !reopeningSame) {
+        toggleTicketChatMinimize();
+    }
+    hideTicketChatError();
+    clearTicketChatPhotos();
+
+    loadTicketChatThread(true);
+
+    if (chatPollTimer) clearInterval(chatPollTimer);
+    chatPollTimer = setInterval(function() { loadTicketChatThread(false); }, 3000);
+}
+
+function closeTicketChat() {
+    chatBox.classList.add('hidden');
+    chatBox.classList.remove('flex');
+    if (chatPollTimer) {
+        clearInterval(chatPollTimer);
+        chatPollTimer = null;
+    }
+    chatTicketId = 0;
+    chatLastReplyId = 0;
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+    clearTicketChatPhotos();
+    hideTicketChatError();
+}
+
+function toggleTicketChatMinimize() {
+    chatIsMinimized = !chatIsMinimized;
+    var body = document.getElementById('ticketChatBody');
+    var icon = document.getElementById('ticketChatMinIcon');
+    if (chatIsMinimized) {
+        body.classList.add('hidden');
+        body.classList.remove('flex');
+        icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>';
+    } else {
+        body.classList.remove('hidden');
+        body.classList.add('flex');
+        icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 13H5"/>';
+        scrollTicketChatToBottom();
+    }
+}
+
+// -------------------------------------------------------------------------
+// Status is display only here. Support closes a ticket; the client just sees
+// the chat swap to a notice when that happens.
+// -------------------------------------------------------------------------
+function applyTicketChatStatus(status) {
+    document.getElementById('ticketChatStatus').textContent = status || '-';
+
+    var isClosed = (status === 'Resolved' || status === 'Closed');
+    document.getElementById('ticketChatComposer').classList.toggle('hidden', isClosed);
+    document.getElementById('ticketChatClosed').classList.toggle('hidden', !isClosed);
+    document.getElementById('ticketChatClosedStatus').textContent = status;
+
+    // Keep the row in the table honest if support changed the status mid-chat
+    var row = document.querySelector('.ticket-row[data-ticket-id="' + chatTicketId + '"]');
+    if (row && row.getAttribute('data-status') !== status) {
+        row.setAttribute('data-status', status);
+        var rowBadge = row.querySelector('td:last-child span');
+        if (rowBadge) rowBadge.textContent = status;
+    }
+}
+
+// -------------------------------------------------------------------------
+// Thread rendering
+// -------------------------------------------------------------------------
+function buildTicketChatBubble(reply) {
+    var isMine = !!reply.is_client;
+
+    var wrap = document.createElement('div');
+    wrap.className = 'chat-msg flex flex-col ' + (isMine ? 'items-end' : 'items-start');
+    wrap.setAttribute('data-reply-id', parseInt(reply.id, 10) || 0);
+
+    var bubbleClass = isMine
+        ? 'max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-br-md bg-[#FFF5ED] border border-[#FECDAA] text-left'
+        : 'max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md bg-white border border-[#FFE8D5] text-left';
+
+    var body = '';
+    if (reply.diagnostic_log) {
+        body = '<p class="text-[11px] font-extrabold text-[#430D07]">Hardware diagnostic report</p>' +
+            '<details class="mt-1"><summary class="cursor-pointer text-[10px] font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>' +
+            '<pre class="mt-1.5 p-2 rounded-xl bg-[#FFF9F5] border border-[#FFE8D5] text-[#430D07] font-mono text-[10px] whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">' + escapeChatHtml(reply.diagnostic_log) + '</pre></details>';
+    } else if (reply.message) {
+        body = '<p class="text-[11.5px] text-[#430D07] leading-relaxed font-medium whitespace-pre-wrap break-words">' + escapeChatHtml(reply.message) + '</p>';
+    }
+
+    var atts = reply.attachments || [];
+    if (atts.length > 0) {
+        body += '<div class="mt-2 flex flex-wrap gap-1.5">';
+        for (var i = 0; i < atts.length; i++) {
+            var url = String(atts[i]);
+            body += '<a href="' + escapeChatHtml(url) + '" target="_blank" rel="noopener">' +
+                '<img src="' + escapeChatHtml(url) + '" alt="Attachment" loading="lazy" ' +
+                'class="h-20 w-auto max-w-[120px] object-cover rounded-xl border border-[#FECDAA] hover:opacity-90 transition-opacity"></a>';
+        }
+        body += '</div>';
+    }
+
+    wrap.innerHTML =
+        '<span class="text-[9px] font-bold uppercase tracking-wider mb-1 px-1 ' + (isMine ? 'text-[#EB3E0B]' : 'text-[#7C2112]') + '">' +
+            escapeChatHtml(reply.sender_name) + (isMine ? '' : ' (Support)') + ' - ' + escapeChatHtml(reply.formatted_date) +
+        '</span>' +
+        '<div class="' + bubbleClass + '">' + body + '</div>';
+
+    return wrap;
+}
+
+function renderTicketChatSeed() {
+    var issue = chatThread.getAttribute('data-seed-issue');
+    if (!issue) return;
+    chatThread.appendChild(buildTicketChatBubble({
+        id: 0,
+        is_client: true,
+        sender_name: 'You',
+        formatted_date: chatThread.getAttribute('data-seed-date') || '',
+        message: issue,
+        attachments: []
+    }));
+}
+
+function isTicketChatNearBottom() {
+    return (chatThread.scrollHeight - chatThread.scrollTop - chatThread.clientHeight) < 80;
+}
+
+function scrollTicketChatToBottom() {
+    chatThread.scrollTop = chatThread.scrollHeight;
+}
+
+// -------------------------------------------------------------------------
+// Polling: the first call paints the whole thread, later ones append
+// -------------------------------------------------------------------------
+function loadTicketChatThread(isFirstLoad) {
+    if (!chatTicketId || chatIsSending) return;
+    var requestedTicket = chatTicketId;
+
+    fetch('api_ticket_replies.php?id=' + requestedTicket + '&after_id=' + chatLastReplyId)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            // A different ticket may have been opened while this was in flight
+            if (requestedTicket !== chatTicketId) return;
+
+            if (!data || !data.success) {
+                if (isFirstLoad) {
+                    chatThread.innerHTML = '<div class="text-center text-[11px] text-rose-500 font-bold py-6">' +
+                        escapeChatHtml((data && data.error) ? data.error : 'Failed to load conversation.') + '</div>';
+                }
+                return;
+            }
+
+            var stickToBottom = isFirstLoad || isTicketChatNearBottom();
+
+            if (isFirstLoad) {
+                chatThread.innerHTML = '';
+                if (!data.replies || !data.replies.length) {
+                    renderTicketChatSeed();
+                }
+            }
+
+            if (data.replies && data.replies.length) {
+                for (var i = 0; i < data.replies.length; i++) {
+                    var r = data.replies[i];
+                    if (chatThread.querySelector('.chat-msg[data-reply-id="' + r.id + '"]')) continue;
+                    chatThread.appendChild(buildTicketChatBubble(r));
+                    if (r.id > chatLastReplyId) chatLastReplyId = r.id;
+                }
+            }
+
+            document.getElementById('ticketChatTyping').classList.toggle('hidden', !data.support_typing);
+
+            if (data.assigned_tech) {
+                document.getElementById('ticketChatTech').textContent = 'Handled by ' + data.assigned_tech;
+            }
+            applyTicketChatStatus(data.ticket_status);
+
+            if (stickToBottom) scrollTicketChatToBottom();
+        })
+        .catch(function(err) {
+            console.warn('Support chat poll error:', err);
+        });
+}
+
+// -------------------------------------------------------------------------
+// Photos: picked from disk or pasted straight into the box with Ctrl + V
+// -------------------------------------------------------------------------
+function showTicketChatError(msg) {
+    var box = document.getElementById('ticketChatError');
+    box.textContent = msg;
+    box.classList.remove('hidden');
+}
+
+function hideTicketChatError() {
+    document.getElementById('ticketChatError').classList.add('hidden');
+}
+
+function onTicketChatPhotosPicked(input) {
+    var count = (input.files && input.files.length) ? input.files.length : 0;
+    if (!count) {
+        clearTicketChatPhotos();
+        return;
+    }
+
+    var validExts = ['png', 'jpg', 'jpeg'];
+    var invalid = [];
+    for (var f = 0; f < input.files.length; f++) {
+        var ext = input.files[f].name.split('.').pop().toLowerCase();
+        if (validExts.indexOf(ext) === -1) invalid.push(input.files[f].name);
+    }
+    if (invalid.length > 0) {
+        showTicketChatError('Only PNG, JPG and JPEG photos are allowed: ' + invalid.join(', '));
+        clearTicketChatPhotos();
+        return;
+    }
+
+    hideTicketChatError();
+    document.getElementById('ticketChatPhotoCount').textContent = count + (count === 1 ? ' photo attached' : ' photos attached');
+    document.getElementById('ticketChatPhotoBar').classList.remove('hidden');
+
+    var grid = document.getElementById('ticketChatPhotoGrid');
+    grid.innerHTML = '';
+    for (var i = 0; i < count; i++) {
+        (function(file) {
+            var reader = new FileReader();
+            reader.onload = function(ev) {
+                var thumb = document.createElement('img');
+                thumb.src = ev.target.result;
+                thumb.alt = 'Preview';
+                thumb.className = 'h-12 w-12 rounded-lg object-cover border border-[#FECDAA]';
+                grid.appendChild(thumb);
+            };
+            reader.readAsDataURL(file);
+        })(input.files[i]);
+    }
+}
+
+function clearTicketChatPhotos() {
+    if (chatPhotoInput) chatPhotoInput.value = '';
+    document.getElementById('ticketChatPhotoBar').classList.add('hidden');
+    document.getElementById('ticketChatPhotoGrid').innerHTML = '';
+}
+
+// Drops the clipboard image into the same file input the attach button fills,
+// so pasted and picked photos travel the identical path
+function handleTicketChatPaste(e) {
+    if (!chatPhotoInput) return;
+
+    var items = (e.clipboardData || window.clipboardData || {}).items;
+    if (!items) return;
+
+    var pasted = [];
+    for (var i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file' && items[i].type.indexOf('image/') === 0) {
+            var file = items[i].getAsFile();
+            if (file) pasted.push(file);
+        }
+    }
+    if (!pasted.length) return;
+
+    e.preventDefault();
+
+    var dt = new DataTransfer();
+    if (chatPhotoInput.files) {
+        for (var f = 0; f < chatPhotoInput.files.length; f++) {
+            dt.items.add(chatPhotoInput.files[f]);
+        }
+    }
+
+    var stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    for (var p = 0; p < pasted.length; p++) {
+        var ext = (pasted[p].type === 'image/jpeg') ? 'jpg' : 'png';
+        dt.items.add(new File([pasted[p]], 'pasted-image-' + stamp + '-' + p + '.' + ext, { type: pasted[p].type }));
+    }
+
+    chatPhotoInput.files = dt.files;
+    onTicketChatPhotosPicked(chatPhotoInput);
+}
+
+// -------------------------------------------------------------------------
+// Sending
+// -------------------------------------------------------------------------
+function sendTicketChatReply() {
+    if (!chatTicketId || chatIsSending) return;
+
+    var msg = chatInput.value.trim();
+    var hasPhotos = chatPhotoInput && chatPhotoInput.files && chatPhotoInput.files.length > 0;
+    if (!msg && !hasPhotos) return;
+
+    hideTicketChatError();
+    chatIsSending = true;
+    chatSendBtn.disabled = true;
+    chatSendBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+    var body = new FormData();
+    body.append('action', 'post_reply');
+    body.append('id', chatTicketId);
+    body.append('reply_message', msg);
+    if (hasPhotos) {
+        for (var i = 0; i < chatPhotoInput.files.length; i++) {
+            body.append('attachments[]', chatPhotoInput.files[i]);
+        }
+    }
+
+    var sentToTicket = chatTicketId;
+
+    fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: body })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            chatIsSending = false;
+            chatSendBtn.disabled = false;
+            chatSendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+            if (!data || !data.success) {
+                showTicketChatError((data && data.error) ? data.error : 'Failed to send message.');
+                return;
+            }
+
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+            clearTicketChatPhotos();
+
+            if (sentToTicket !== chatTicketId) return;
+            if (!chatThread.querySelector('.chat-msg[data-reply-id="' + data.reply.id + '"]')) {
+                chatThread.appendChild(buildTicketChatBubble(data.reply));
+                if (data.reply.id > chatLastReplyId) chatLastReplyId = data.reply.id;
+                scrollTicketChatToBottom();
+            }
+        })
+        .catch(function(err) {
+            chatIsSending = false;
+            chatSendBtn.disabled = false;
+            chatSendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            showTicketChatError('Network error - your message was not sent.');
+            console.error('Support chat send error:', err);
+        });
+}
+
+// Enter sends; Shift + Enter starts a new line
+if (chatInput) {
+    chatInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            e.preventDefault();
+            sendTicketChatReply();
+        }
+    });
+
+    chatInput.addEventListener('input', function() {
+        // Grow with the text, up to the max height the class caps it at
+        chatInput.style.height = 'auto';
+        chatInput.style.height = Math.min(chatInput.scrollHeight, 112) + 'px';
+
+        // Let support see the typing indicator, at most one ping every 2s
+        var now = Date.now();
+        if (chatTicketId && (now - chatLastTypingPing) > 2000) {
+            chatLastTypingPing = now;
+            var ping = new FormData();
+            ping.append('action', 'typing');
+            ping.append('id', chatTicketId);
+            fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: ping }).catch(function() {});
+        }
+    });
+}
+
+// Ctrl + V works anywhere while the chat is open, not just inside the
+// textarea - but a paste aimed at another field on the page is left alone.
+document.addEventListener('paste', function(e) {
+    if (!chatTicketId || chatBox.classList.contains('hidden') || chatIsMinimized) return;
+    if (document.getElementById('ticketChatComposer').classList.contains('hidden')) return;
+
+    var el = document.activeElement;
+    if (el && el !== document.body && !chatBox.contains(el)) return;
+
+    handleTicketChatPaste(e);
+});
+
+// Polling is pointless while the tab is hidden
+document.addEventListener('visibilitychange', function() {
+    if (!chatTicketId) return;
+    if (document.hidden) {
+        if (chatPollTimer) {
+            clearInterval(chatPollTimer);
+            chatPollTimer = null;
+        }
+    } else if (!chatPollTimer) {
+        loadTicketChatThread(false);
+        chatPollTimer = setInterval(function() { loadTicketChatThread(false); }, 3000);
+    }
+});
+</script>
+
 
 <?php include __DIR__ . '/includes/footer.php'; ?>
