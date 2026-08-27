@@ -11,7 +11,7 @@ require_once __DIR__ . '/config.php';
 function init_ticket_chat_tables($force = false) {
     // The chat API is polled every few seconds, so the schema check runs once
     // per session instead of on every request.
-    if (!$force && isset($_SESSION['ticket_chat_schema_ready']) && $_SESSION['ticket_chat_schema_ready']) {
+    if (!$force && isset($_SESSION['ticket_chat_schema_ready_v2']) && $_SESSION['ticket_chat_schema_ready_v2']) {
         return true;
     }
 
@@ -53,6 +53,15 @@ function init_ticket_chat_tables($force = false) {
                 ADD `support_last_seen_reply_id` INT(11) NOT NULL DEFAULT 0");
         }
 
+        // Who picked the ticket up - the technician who moved it to In Progress,
+        // whether by changing the status or by being first to reply
+        $chk_wip = $pdo->query("SHOW COLUMNS FROM `client_support_tickets` LIKE 'in_progress_by'");
+        if ($chk_wip && $chk_wip->rowCount() == 0) {
+            $pdo->exec("ALTER TABLE `client_support_tickets`
+                ADD `in_progress_by` VARCHAR(100) NULL DEFAULT NULL,
+                ADD `in_progress_at` DATETIME NULL DEFAULT NULL");
+        }
+
         // One live row per ticket per side, refreshed while someone is typing
         $pdo->exec("CREATE TABLE IF NOT EXISTS `client_ticket_typing` (
             `ticket_id` INT(11) NOT NULL,
@@ -62,7 +71,7 @@ function init_ticket_chat_tables($force = false) {
             PRIMARY KEY (`ticket_id`, `actor_type`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8;");
 
-        $_SESSION['ticket_chat_schema_ready'] = true;
+        $_SESSION['ticket_chat_schema_ready_v2'] = true;
         return true;
     } catch (PDOException $e) {
         error_log("Ticket chat init error: " . $e->getMessage());

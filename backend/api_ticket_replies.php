@@ -30,7 +30,7 @@ if ($ticket_id <= 0) {
     exit;
 }
 
-$stmt_check = $pdo->prepare("SELECT id, ticket_number, status, priority, category, assigned_tech, updated_at FROM client_support_tickets WHERE id = :id LIMIT 1");
+$stmt_check = $pdo->prepare("SELECT id, ticket_number, status, priority, category, assigned_tech, updated_at, in_progress_by, in_progress_at FROM client_support_tickets WHERE id = :id LIMIT 1");
 $stmt_check->execute(array(':id' => $ticket_id));
 $ticket = $stmt_check->fetch();
 
@@ -76,9 +76,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ));
         $new_reply_id = $pdo->lastInsertId();
 
-        // Auto update status to In Progress if currently Pending
-        $pdo->prepare("UPDATE client_support_tickets SET status = 'In Progress', updated_at = :now WHERE id = :tid AND status = 'Pending'")
-            ->execute(array(':now' => $now, ':tid' => $ticket_id));
+        // Auto update status to In Progress if currently Pending. Replying is
+        // how most tickets get picked up, so the replier is credited with it.
+        $pdo->prepare("UPDATE client_support_tickets
+            SET status = 'In Progress', updated_at = :now, in_progress_by = :by, in_progress_at = :at
+            WHERE id = :tid AND status = 'Pending'")
+            ->execute(array(':now' => $now, ':by' => $tech_name, ':at' => $now, ':tid' => $ticket_id));
 
         // Sending a message implies this side has read up to here, and is no longer typing
         mark_ticket_seen($pdo, $ticket_id, 'support', $new_reply_id);
@@ -171,12 +174,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $now = date('Y-m-d H:i:s');
 
     try {
-        $stmt_st = $pdo->prepare("UPDATE client_support_tickets SET status = :status, updated_at = :now WHERE id = :tid");
-        $stmt_st->execute(array(
-            ':status' => $new_status,
-            ':now' => $now,
-            ':tid' => $ticket_id
-        ));
+        if ($new_status === 'In Progress') {
+            // Record who picked the ticket up, so the chat can name them
+            $stmt_st = $pdo->prepare("UPDATE client_support_tickets
+                SET status = :status, updated_at = :now, in_progress_by = :by, in_progress_at = :at
+                WHERE id = :tid");
+            $stmt_st->execute(array(
+                ':status' => $new_status,
+                ':now' => $now,
+                ':by' => $tech_name,
+                ':at' => $now,
+                ':tid' => $ticket_id
+            ));
+        } else {
+            $stmt_st = $pdo->prepare("UPDATE client_support_tickets SET status = :status, updated_at = :now WHERE id = :tid");
+            $stmt_st->execute(array(
+                ':status' => $new_status,
+                ':now' => $now,
+                ':tid' => $ticket_id
+            ));
+        }
 
         // Leave a closing note in the thread the first time this ticket is closed,
         // so the client sees why the conversation ended.
@@ -201,7 +218,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     echo json_encode(array(
         'success' => true,
         'status' => $new_status,
-        'status_badge_class' => get_status_badge_class($new_status)
+        'status_badge_class' => get_status_badge_class($new_status),
+        'in_progress_by' => ($new_status === 'In Progress') ? $tech_name : null,
+        'in_progress_at' => ($new_status === 'In Progress') ? format_date($now) : null
     ));
     exit;
 }
@@ -260,6 +279,8 @@ try {
         'status_badge_class' => get_status_badge_class($ticket['status']),
         'assigned_tech' => $ticket['assigned_tech'],
         'last_updated' => format_date($ticket['updated_at']),
+        'in_progress_by' => !empty($ticket['in_progress_by']) ? $ticket['in_progress_by'] : null,
+        'in_progress_at' => !empty($ticket['in_progress_at']) ? format_date($ticket['in_progress_at']) : null,
         'replies' => $formatted_replies,
         'reactions' => $reactions_map ? $reactions_map : new stdClass(),
         'client_seen_id' => $seen_ids['client'],

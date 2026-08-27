@@ -187,6 +187,62 @@ $tickets = $stmt->fetchAll();
 $start_item = $total_tickets > 0 ? $offset + 1 : 0;
 $end_item = min($offset + $per_page, $total_tickets);
 
+/**
+ * Every colour a ticket row wears for a given status. Defined once because the
+ * chat pop-up recolours rows live in JS from this same table - without that, a
+ * ticket moved to In Progress keeps its red Pending styling until a reload.
+ *
+ * @param string $status
+ * @return array
+ */
+function ticket_row_palette($status) {
+    if ($status === 'Resolved' || $status === 'Closed') {
+        // Resolved -> Green Row
+        return array(
+            'row'   => 'bg-emerald-50/70 hover:bg-emerald-100/80 border-b border-emerald-100 text-emerald-950',
+            'num'   => 'text-emerald-700',
+            'title' => 'text-emerald-950',
+            'subj'  => 'text-emerald-900',
+            'date'  => 'text-emerald-700 font-mono',
+            'badge' => 'bg-emerald-100 text-emerald-800 border border-emerald-300',
+            'btn'   => 'bg-emerald-100/90 hover:bg-emerald-600 text-emerald-700 hover:text-white'
+        );
+    }
+    if ($status === 'Pending' || $status === 'Open') {
+        // Pending -> Red Row
+        return array(
+            'row'   => 'bg-rose-50/70 hover:bg-rose-100/80 border-b border-rose-100 text-rose-950',
+            'num'   => 'text-rose-700',
+            'title' => 'text-rose-950',
+            'subj'  => 'text-rose-900',
+            'date'  => 'text-rose-700 font-mono',
+            'badge' => 'bg-rose-100 text-rose-800 border border-rose-300',
+            'btn'   => 'bg-rose-100/90 hover:bg-rose-600 text-rose-700 hover:text-white'
+        );
+    }
+    if ($status === 'In Progress') {
+        // In Progress -> Blue Row
+        return array(
+            'row'   => 'bg-blue-50/70 hover:bg-blue-100/80 border-b border-blue-100 text-blue-950',
+            'num'   => 'text-blue-700',
+            'title' => 'text-blue-950',
+            'subj'  => 'text-blue-900',
+            'date'  => 'text-blue-700 font-mono',
+            'badge' => 'bg-blue-100 text-blue-800 border border-blue-300',
+            'btn'   => 'bg-blue-100/90 hover:bg-blue-600 text-blue-700 hover:text-white'
+        );
+    }
+    return array(
+        'row'   => 'hover:bg-slate-50/80 text-slate-800',
+        'num'   => 'text-[#EB3E0B]',
+        'title' => 'text-slate-900',
+        'subj'  => 'text-slate-800',
+        'date'  => 'text-slate-500 font-mono',
+        'badge' => get_status_badge_class($status),
+        'btn'   => 'bg-slate-100 hover:bg-[#EB3E0B] text-slate-500 hover:text-white'
+    );
+}
+
 $active_page = 'tickets';
 $page_title = 'Support Tickets Center';
 ?>
@@ -317,44 +373,9 @@ $page_title = 'Support Tickets Center';
                                     $note_client = !empty($t['tradename']) ? $t['tradename'] : (!empty($t['clientname']) ? $t['clientname'] : '');
                                     $st = $t['status'];
 
-                                    if ($st === 'Resolved' || $st === 'Closed') {
-                                        // Resolved -> Green Row
-                                        $row_class   = 'bg-emerald-50/70 hover:bg-emerald-100/80 border-b border-emerald-100 text-emerald-950';
-                                        $num_color   = 'text-emerald-700';
-                                        $title_color = 'text-emerald-950';
-                                        $subj_color  = 'text-emerald-900';
-                                        $date_color  = 'text-emerald-700 font-mono';
-                                        $badge_class = 'bg-emerald-100 text-emerald-800 border border-emerald-300';
-                                        $btn_class   = 'bg-emerald-100/90 hover:bg-emerald-600 text-emerald-700 hover:text-white';
-                                    } elseif ($st === 'Pending' || $st === 'Open') {
-                                        // Pending -> Red Row
-                                        $row_class   = 'bg-rose-50/70 hover:bg-rose-100/80 border-b border-rose-100 text-rose-950';
-                                        $num_color   = 'text-rose-700';
-                                        $title_color = 'text-rose-950';
-                                        $subj_color  = 'text-rose-900';
-                                        $date_color  = 'text-rose-700 font-mono';
-                                        $badge_class = 'bg-rose-100 text-rose-800 border border-rose-300';
-                                        $btn_class   = 'bg-rose-100/90 hover:bg-rose-600 text-rose-700 hover:text-white';
-                                    } elseif ($st === 'In Progress') {
-                                        // In Progress -> Blue Row
-                                        $row_class   = 'bg-blue-50/70 hover:bg-blue-100/80 border-b border-blue-100 text-blue-950';
-                                        $num_color   = 'text-blue-700';
-                                        $title_color = 'text-blue-950';
-                                        $subj_color  = 'text-blue-900';
-                                        $date_color  = 'text-blue-700 font-mono';
-                                        $badge_class = 'bg-blue-100 text-blue-800 border border-blue-300';
-                                        $btn_class   = 'bg-blue-100/90 hover:bg-blue-600 text-blue-700 hover:text-white';
-                                    } else {
-                                        $row_class   = 'hover:bg-slate-50/80 text-slate-800';
-                                        $num_color   = 'text-[#EB3E0B]';
-                                        $title_color = 'text-slate-900';
-                                        $subj_color  = 'text-slate-800';
-                                        $date_color  = 'text-slate-500 font-mono';
-                                        $badge_class = get_status_badge_class($st);
-                                        $btn_class   = 'bg-slate-100 hover:bg-[#EB3E0B] text-slate-500 hover:text-white';
-                                    }
+                                    $pal = ticket_row_palette($st);
                                 ?>
-                                    <tr class="ticket-row <?php echo $row_class; ?> transition-colors cursor-pointer"
+                                    <tr class="ticket-row <?php echo $pal['row']; ?> transition-colors cursor-pointer"
                                         onclick="openTicketChat(this, event)"
                                         title="Open chat thread"
                                         data-ticket-id="<?php echo intval($t['id']); ?>"
@@ -367,27 +388,27 @@ $page_title = 'Support Tickets Center';
                                         data-account="<?php echo sanitize($t['accountnum']); ?>"
                                         data-tradename="<?php echo sanitize($note_client); ?>"
                                         data-address="<?php echo sanitize(isset($t['address']) ? $t['address'] : ''); ?>">
-                                        <td class="py-4 px-6 font-mono font-bold <?php echo $num_color; ?>">
+                                        <td data-cell="num" class="py-4 px-6 font-mono font-bold <?php echo $pal['num']; ?>">
                                             <?php echo sanitize($t['ticket_number']); ?>
                                         </td>
                                         <td class="py-4 px-6">
-                                            <div class="font-bold <?php echo $title_color; ?>"><?php echo sanitize($client_name); ?></div>
+                                            <div data-cell="title" class="font-bold <?php echo $pal['title']; ?>"><?php echo sanitize($client_name); ?></div>
                                         </td>
-                                        <td class="py-4 px-6 max-w-xs truncate font-semibold <?php echo $subj_color; ?>">
+                                        <td data-cell="subject" class="py-4 px-6 max-w-xs truncate font-semibold <?php echo $pal['subj']; ?>">
                                             <?php echo sanitize($t['subject']); ?>
                                         </td>
                                         <td class="py-4 px-6">
-                                            <span class="inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold border <?php echo $badge_class; ?>"><?php echo sanitize($t['status']); ?></span>
+                                            <span data-cell="badge" class="inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold border <?php echo $pal['badge']; ?>"><?php echo sanitize($t['status']); ?></span>
                                         </td>
 
-                                        <td class="py-4 px-6 <?php echo $date_color; ?>">
+                                        <td data-cell="date" class="py-4 px-6 <?php echo $pal['date']; ?>">
                                             <?php echo format_date($t['created_at']); ?>
                                         </td>
 
                                         <td class="py-4 px-6 text-right">
                                             <div class="flex items-center justify-end space-x-1.5">
                                                 <!-- Log Technician Service Note (pre-filled from this ticket) -->
-                                                <button type="button" onclick="openTicketTechNote(this)" class="inline-flex items-center justify-center w-9 h-9 rounded-full <?php echo $btn_class; ?> transition-colors shadow-xs" title="Log Technician Service Note">
+                                                <button type="button" onclick="openTicketTechNote(this)" data-cell="note" class="inline-flex items-center justify-center w-9 h-9 rounded-full <?php echo $pal['btn']; ?> transition-colors shadow-xs" title="Log Technician Service Note">
                                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                                                     </svg>
@@ -617,6 +638,16 @@ $page_title = 'Support Tickets Center';
             </div>
 
             <p id="ticketChatStatusError" class="hidden text-[10px] font-bold text-rose-600 leading-snug"></p>
+
+            <!-- Who moved this ticket to In Progress -->
+            <div id="ticketChatPickedUp" class="hidden items-center gap-1.5 rounded-xl bg-blue-50 border border-blue-200 px-2.5 py-1.5">
+                <svg class="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
+                <p class="text-[10px] font-bold text-blue-900 leading-snug min-w-0">
+                    Set to In Progress by <span id="ticketChatPickedUpBy" class="font-extrabold"></span><span id="ticketChatPickedUpAt" class="font-medium text-blue-700"></span>
+                </p>
+            </div>
         </div>
 
         <!-- Conversation thread -->
@@ -754,6 +785,16 @@ var chatLastTypingPing = 0;
 var chatReplyToId = 0;
 var chatMyTier = <?php echo intval($my_tier); ?>;
 
+// The same colour table the rows were rendered with, so a live status change
+// repaints a row exactly as a page reload would
+var TICKET_ROW_PALETTE = <?php echo json_encode(array(
+    'Pending'     => ticket_row_palette('Pending'),
+    'Open'        => ticket_row_palette('Open'),
+    'In Progress' => ticket_row_palette('In Progress'),
+    'Resolved'    => ticket_row_palette('Resolved'),
+    'Closed'      => ticket_row_palette('Closed')
+)); ?>;
+
 var chatBox = document.getElementById('ticketChatBox');
 var chatThread = document.getElementById('ticketChatThread');
 var chatInput = document.getElementById('ticketChatInput');
@@ -797,6 +838,7 @@ function openTicketChat(row, e) {
     document.getElementById('ticketChatFullLink').href = 'ticket_detail.php?id=' + ticketId;
 
     applyTicketChatStatus(row.getAttribute('data-status') || '');
+    renderTicketChatPickedUp('', '');  // filled in by the first poll
     cancelTicketChatStatus();
 
     // Seed bubble: tickets with no replies yet still show the reported issue
@@ -873,14 +915,54 @@ function applyTicketChatStatus(status, badgeClass) {
     var row = document.querySelector('.ticket-row[data-ticket-id="' + chatTicketId + '"]');
     if (row && row.getAttribute('data-status') !== status) {
         row.setAttribute('data-status', status);
-        var rowBadge = row.querySelector('td:nth-child(4) span');
-        if (rowBadge) {
-            rowBadge.textContent = status;
-            if (badgeClass) {
-                rowBadge.className = 'inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold border ' + badgeClass;
-            }
+        applyTicketRowPalette(row, status, badgeClass);
+    }
+}
+
+// Repaints a whole row for a new status. The colours are baked in by PHP when
+// the page renders, so changing only the badge left a ticket that moved to
+// In Progress still wearing its red Pending row until the next reload.
+function applyTicketRowPalette(row, status, badgeClass) {
+    var pal = TICKET_ROW_PALETTE[status];
+
+    var badge = row.querySelector('[data-cell="badge"]');
+    if (badge) {
+        badge.textContent = status;
+        var badgeCls = pal ? pal.badge : badgeClass;
+        if (badgeCls) {
+            badge.className = 'inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold border ' + badgeCls;
         }
     }
+
+    // An unlisted status keeps the row it was rendered with
+    if (!pal) return;
+
+    row.className = 'ticket-row ' + pal.row + ' transition-colors cursor-pointer';
+
+    var paint = function(selector, classes) {
+        var el = row.querySelector(selector);
+        if (el) el.className = classes;
+    };
+    paint('[data-cell="num"]', 'py-4 px-6 font-mono font-bold ' + pal.num);
+    paint('[data-cell="title"]', 'font-bold ' + pal.title);
+    paint('[data-cell="subject"]', 'py-4 px-6 max-w-xs truncate font-semibold ' + pal.subj);
+    paint('[data-cell="date"]', 'py-4 px-6 ' + pal.date);
+    paint('[data-cell="note"]', 'inline-flex items-center justify-center w-9 h-9 rounded-full ' + pal.btn + ' transition-colors shadow-xs');
+}
+
+// Names the technician who moved the ticket to In Progress. Stays visible
+// after the ticket moves on, since it is a record of who picked it up.
+function renderTicketChatPickedUp(by, at) {
+    var box = document.getElementById('ticketChatPickedUp');
+    if (!by) {
+        box.classList.add('hidden');
+        box.classList.remove('flex');
+        return;
+    }
+    document.getElementById('ticketChatPickedUpBy').textContent = by;
+    document.getElementById('ticketChatPickedUpAt').textContent = at ? (' - ' + at) : '';
+    box.classList.remove('hidden');
+    box.classList.add('flex');
 }
 
 function showTicketChatStatusError(msg) {
@@ -958,6 +1040,7 @@ function submitTicketChatStatus() {
             document.getElementById('ticketChatStatusError').classList.add('hidden');
 
             applyTicketChatStatus(data.status, data.status_badge_class);
+            if (data.in_progress_by) renderTicketChatPickedUp(data.in_progress_by, data.in_progress_at);
 
             var savedTag = document.getElementById('ticketChatStatusSaved');
             savedTag.classList.remove('hidden');
@@ -1225,6 +1308,7 @@ function loadTicketChatThread(isFirstLoad) {
             if (document.getElementById('ticketChatCodeRow').classList.contains('hidden')) {
                 applyTicketChatStatus(data.ticket_status, data.status_badge_class);
             }
+            renderTicketChatPickedUp(data.in_progress_by, data.in_progress_at);
 
             if (stickToBottom) scrollTicketChatToBottom();
         })
