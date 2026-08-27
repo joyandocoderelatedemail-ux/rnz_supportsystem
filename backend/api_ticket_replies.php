@@ -167,13 +167,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         exit;
     }
 
+    $was_already_closed = (isset($ticket['status']) && $ticket['status'] === 'Closed');
+    $now = date('Y-m-d H:i:s');
+
     try {
         $stmt_st = $pdo->prepare("UPDATE client_support_tickets SET status = :status, updated_at = :now WHERE id = :tid");
         $stmt_st->execute(array(
             ':status' => $new_status,
-            ':now' => date('Y-m-d H:i:s'),
+            ':now' => $now,
             ':tid' => $ticket_id
         ));
+
+        // Leave a closing note in the thread the first time this ticket is closed,
+        // so the client sees why the conversation ended.
+        if ($new_status === 'Closed' && !$was_already_closed) {
+            $closing_msg = "Since we have not received a response from the client, we will be closing this ticket.";
+            $stmt_close = $pdo->prepare("INSERT INTO client_ticket_replies
+                (ticket_id, sender_type, sender_name, message, created_at)
+                VALUES (:tid, 'support', :sname, :msg, :c_at)");
+            $stmt_close->execute(array(
+                ':tid' => $ticket_id,
+                ':sname' => $tech_name,
+                ':msg' => $closing_msg,
+                ':c_at' => $now
+            ));
+            mark_ticket_seen($pdo, $ticket_id, 'support', intval($pdo->lastInsertId()));
+        }
     } catch (PDOException $e) {
         echo json_encode(array('success' => false, 'error' => $e->getMessage()));
         exit;
