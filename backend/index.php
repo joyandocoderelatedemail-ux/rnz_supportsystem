@@ -40,17 +40,11 @@ try {
     $today_events_count = intval($pdo->query("SELECT COUNT(*) FROM support_events WHERE DATE(start_datetime) = CURDATE() AND status NOT IN ('Cancelled', 'Completed')")->fetchColumn());
     $upcoming_events_count = intval($pdo->query("SELECT COUNT(*) FROM support_events WHERE DATE(start_datetime) >= CURDATE() AND status IN ('Scheduled', 'In Progress', 'Rescheduled')")->fetchColumn());
 
-    // Fetch Today's & Upcoming Events (Limit 6) - only what's still actionable
+    // Fetch Today's Events only - this is a same-day reminder, not a lookahead
     $stmt_dash_events = $pdo->query("SELECT * FROM support_events
-        WHERE (DATE(start_datetime) >= CURDATE() OR DATE(end_datetime) >= CURDATE() OR status = 'In Progress')
+        WHERE DATE(start_datetime) = CURDATE()
           AND status NOT IN ('Cancelled', 'Completed')
-        ORDER BY
-            CASE 
-                WHEN DATE(start_datetime) = CURDATE() THEN 1 
-                WHEN DATE(start_datetime) > CURDATE() THEN 2 
-                ELSE 3 
-            END ASC, 
-            start_datetime ASC 
+        ORDER BY start_datetime ASC
         LIMIT 6");
     $dash_events = $stmt_dash_events ? $stmt_dash_events->fetchAll() : array();
 
@@ -473,7 +467,7 @@ $auto_open_popup = true;
         <!-- Modal Footer -->
         <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div class="text-xs text-slate-500 font-medium text-center sm:text-left">
-                <?php echo $upcoming_events_count; ?> upcoming schedule item(s) this week
+                <?php echo $today_events_count; ?> schedule item(s) today &bull; <a href="events.php" class="text-[#EB3E0B] hover:underline font-bold">see upcoming</a>
             </div>
             <div class="flex items-center space-x-2.5 w-full sm:w-auto justify-end">
                 <a href="events.php" class="flex-1 sm:flex-initial text-center bg-slate-200/80 hover:bg-slate-300 text-slate-800 text-xs font-bold px-4 py-2.5 rounded-xl transition-all">
