@@ -71,7 +71,9 @@ $active_page = 'dashboard';
 $page_title = 'Support Center Overview';
 
 $tech = get_logged_tech();
-$auto_open_popup = true;
+// Nothing to remind the tech about if there are no events today - don't
+// interrupt their login with an empty pop-up, they can still open it manually.
+$auto_open_popup = ($today_events_count > 0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
