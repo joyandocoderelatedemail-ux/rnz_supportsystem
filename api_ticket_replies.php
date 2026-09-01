@@ -116,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 $after_id = isset($_GET['after_id']) ? intval($_GET['after_id']) : 0;
 
 try {
-    $stmt_replies = $pdo->prepare("SELECT id, ticket_id, sender_type, sender_name, message, attachment_path, created_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
+    $stmt_replies = $pdo->prepare("SELECT id, ticket_id, sender_type, sender_name, message, attachment_path, created_at, edited_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
     $stmt_replies->execute(array(':tid' => $ticket_id, ':after_id' => $after_id));
     $raw_replies = $stmt_replies->fetchAll();
 
@@ -147,12 +147,28 @@ try {
             'attachment_path' => !empty($r['attachment_path']) ? $r['attachment_path'] : null,
             'attachments' => parse_ticket_attachments($r['attachment_path']),
             'formatted_date' => format_date($r['created_at']),
-            'diagnostic_log' => $diag_log
+            'diagnostic_log' => $diag_log,
+            'edited' => !empty($r['edited_at']),
+            'edited_at' => !empty($r['edited_at']) ? format_date($r['edited_at']) : null
+        );
+    }
+
+    // Support can correct a message after sending it, so every edited message in
+    // the thread rides along and the open chat updates in place.
+    $edits_map = array();
+    $stmt_edits = $pdo->prepare("SELECT id, message, edited_at FROM client_ticket_replies
+        WHERE ticket_id = :tid AND edited_at IS NOT NULL");
+    $stmt_edits->execute(array(':tid' => $ticket_id));
+    foreach ($stmt_edits->fetchAll() as $er) {
+        $edits_map[strval($er['id'])] = array(
+            'message' => $er['message'],
+            'edited_at' => format_date($er['edited_at'])
         );
     }
 
     echo json_encode(array(
         'success' => true,
+        'edits' => !empty($edits_map) ? $edits_map : new stdClass(),
         'ticket_status' => $ticket['status'],
         'status_badge_class' => get_status_badge_class($ticket['status']),
         'assigned_tech' => $ticket['assigned_tech'],

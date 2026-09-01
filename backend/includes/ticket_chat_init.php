@@ -11,7 +11,7 @@ require_once __DIR__ . '/config.php';
 function init_ticket_chat_tables($force = false) {
     // The chat API is polled every few seconds, so the schema check runs once
     // per session instead of on every request.
-    if (!$force && isset($_SESSION['ticket_chat_schema_ready_v2']) && $_SESSION['ticket_chat_schema_ready_v2']) {
+    if (!$force && isset($_SESSION['ticket_chat_schema_ready_v3']) && $_SESSION['ticket_chat_schema_ready_v3']) {
         return true;
     }
 
@@ -53,6 +53,12 @@ function init_ticket_chat_tables($force = false) {
                 ADD `support_last_seen_reply_id` INT(11) NOT NULL DEFAULT 0");
         }
 
+        // Stamped when a message is edited, so the thread can show it was changed
+        $chk_edited = $pdo->query("SHOW COLUMNS FROM `client_ticket_replies` LIKE 'edited_at'");
+        if ($chk_edited && $chk_edited->rowCount() == 0) {
+            $pdo->exec("ALTER TABLE `client_ticket_replies` ADD `edited_at` DATETIME NULL DEFAULT NULL");
+        }
+
         // Who picked the ticket up - the technician who moved it to In Progress,
         // whether by changing the status or by being first to reply
         $chk_wip = $pdo->query("SHOW COLUMNS FROM `client_support_tickets` LIKE 'in_progress_by'");
@@ -71,7 +77,7 @@ function init_ticket_chat_tables($force = false) {
             PRIMARY KEY (`ticket_id`, `actor_type`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8;");
 
-        $_SESSION['ticket_chat_schema_ready_v2'] = true;
+        $_SESSION['ticket_chat_schema_ready_v3'] = true;
         return true;
     } catch (PDOException $e) {
         error_log("Ticket chat init error: " . $e->getMessage());

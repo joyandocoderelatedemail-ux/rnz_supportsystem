@@ -610,7 +610,7 @@ function buildTicketChatBubble(reply) {
             '<details class="mt-1"><summary class="cursor-pointer text-[10px] font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>' +
             '<pre class="mt-1.5 p-2 rounded-xl bg-[#FFF9F5] border border-[#FFE8D5] text-[#430D07] font-mono text-[10px] whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">' + escapeChatHtml(reply.diagnostic_log) + '</pre></details>';
     } else if (reply.message) {
-        body = '<p class="text-[11.5px] text-[#430D07] leading-relaxed font-medium whitespace-pre-wrap break-words">' + escapeChatHtml(reply.message) + '</p>';
+        body = '<p class="chat-text text-[11.5px] text-[#430D07] leading-relaxed font-medium whitespace-pre-wrap break-words">' + escapeChatHtml(reply.message) + '</p>';
     }
 
     var atts = reply.attachments || [];
@@ -628,10 +628,32 @@ function buildTicketChatBubble(reply) {
     wrap.innerHTML =
         '<span class="text-[9px] font-bold uppercase tracking-wider mb-1 px-1 ' + (isMine ? 'text-[#EB3E0B]' : 'text-[#7C2112]') + '">' +
             escapeChatHtml(reply.sender_name) + (isMine ? '' : ' (Support)') + ' - ' + escapeChatHtml(reply.formatted_date) +
+            '<span class="chat-edited-tag text-[#B07A6A] normal-case tracking-normal font-medium' + (reply.edited ? '' : ' hidden') + '"' +
+                (reply.edited_at ? ' title="Edited ' + escapeChatHtml(reply.edited_at) + '"' : '') + '> (edited)</span>' +
         '</span>' +
         '<div class="' + bubbleClass + '">' + body + '</div>';
 
     return wrap;
+}
+
+// Support can correct a message after sending it - refresh anything already
+// on screen so the client is never left reading the old wording.
+function applyTicketChatEditMap(map) {
+    if (!map) return;
+    for (var id in map) {
+        if (!map.hasOwnProperty(id)) continue;
+        var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(id, 10) + '"]');
+        if (!msg) continue;
+        var textEl = msg.querySelector('.chat-text');
+        if (textEl && textEl.textContent !== map[id].message) {
+            textEl.textContent = map[id].message;
+        }
+        var tag = msg.querySelector('.chat-edited-tag');
+        if (tag) {
+            tag.classList.remove('hidden');
+            if (map[id].edited_at) tag.setAttribute('title', 'Edited ' + map[id].edited_at);
+        }
+    }
 }
 
 function renderTicketChatSeed() {
@@ -693,6 +715,8 @@ function loadTicketChatThread(isFirstLoad) {
                     if (r.id > chatLastReplyId) chatLastReplyId = r.id;
                 }
             }
+
+            applyTicketChatEditMap(data.edits);
 
             document.getElementById('ticketChatTyping').classList.toggle('hidden', !data.support_typing);
 

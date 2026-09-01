@@ -39,6 +39,88 @@ if (!$ticket) {
     exit;
 }
 
+/**
+ * May the signed-in technician rewrite this message? Support messages only,
+ * and only the author - a Super Admin can correct anyone on the support side.
+ *
+ * @param array  $reply     row from client_ticket_replies
+ * @param string $tech_name signed-in technician full name
+ * @return bool
+ */
+function can_edit_ticket_reply($reply, $tech_name) {
+    if (!$reply || $reply['sender_type'] !== 'support') {
+        return false;
+    }
+    if (get_logged_tech_access_tier() === 1) {
+        return false;   // Level 1 accounts are view only
+    }
+    if (is_super_admin()) {
+        return true;
+    }
+    return (strtolower(trim($reply['sender_name'])) === strtolower(trim($tech_name)));
+}
+
+// -----------------------------------------------------------
+// 0. POST: Edit an existing support message
+// -----------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_reply') {
+    $reply_id = isset($_POST['reply_id']) ? intval($_POST['reply_id']) : 0;
+    $new_message = isset($_POST['reply_message']) ? trim($_POST['reply_message']) : '';
+    $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+
+    $perm_check = check_tech_action_permission($action_code);
+    if (!$perm_check['allowed']) {
+        echo json_encode(array(
+            'success' => false,
+            'error' => $perm_check['message'],
+            'needs_code' => (get_logged_tech_access_tier() === 2)
+        ));
+        exit;
+    }
+
+    if ($reply_id <= 0) {
+        echo json_encode(array('success' => false, 'error' => 'No message selected.'));
+        exit;
+    }
+    if ($new_message === '') {
+        echo json_encode(array('success' => false, 'error' => 'The message cannot be left empty.'));
+        exit;
+    }
+
+    try {
+        $stmt_one = $pdo->prepare("SELECT id, ticket_id, sender_type, sender_name, message, attachment_path
+            FROM client_ticket_replies WHERE id = :rid AND ticket_id = :tid LIMIT 1");
+        $stmt_one->execute(array(':rid' => $reply_id, ':tid' => $ticket_id));
+        $reply_row = $stmt_one->fetch();
+
+        if (!$reply_row) {
+            echo json_encode(array('success' => false, 'error' => 'That message is no longer in this ticket.'));
+            exit;
+        }
+        if (!can_edit_ticket_reply($reply_row, $tech_name)) {
+            echo json_encode(array('success' => false, 'error' => 'You can only edit your own support messages.'));
+            exit;
+        }
+
+        $edited_at = date('Y-m-d H:i:s');
+        $stmt_edit = $pdo->prepare("UPDATE client_ticket_replies SET message = :msg, edited_at = :eat WHERE id = :rid");
+        $stmt_edit->execute(array(':msg' => $new_message, ':eat' => $edited_at, ':rid' => $reply_id));
+
+        echo json_encode(array(
+            'success' => true,
+            'id' => $reply_id,
+            'message' => $new_message,
+            'reply_snippet' => build_reply_snippet($new_message, $reply_row['attachment_path']),
+            'edited' => true,
+            'edited_at' => format_date($edited_at)
+        ));
+        exit;
+    } catch (PDOException $e) {
+        echo json_encode(array('success' => false, 'error' => $e->getMessage()));
+        exit;
+    }
+}
+
 // -----------------------------------------------------------
 // 1. POST: Send Tech Reply via AJAX
 // -----------------------------------------------------------
@@ -231,7 +313,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 $after_id = isset($_GET['after_id']) ? intval($_GET['after_id']) : 0;
 
 try {
-    $stmt_replies = $pdo->prepare("SELECT id, ticket_id, reply_to_id, sender_type, sender_name, message, attachment_path, created_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
+    $stmt_replies = $pdo->prepare("SELECT id, ticket_id, reply_to_id, sender_type, sender_name, message, attachment_path, created_at, edited_at FROM client_ticket_replies WHERE ticket_id = :tid AND id > :after_id ORDER BY id ASC");
     $stmt_replies->execute(array(':tid' => $ticket_id, ':after_id' => $after_id));
     $raw_replies = $stmt_replies->fetchAll();
 
@@ -265,7 +347,24 @@ try {
             'formatted_date' => format_date($r['created_at']),
             'reply_snippet' => build_reply_snippet($msg_text, $r['attachment_path']),
             'reply_to' => get_reply_parent_info($pdo, isset($r['reply_to_id']) ? $r['reply_to_id'] : 0, $ticket_id),
-            'diagnostic_log' => $diag_log
+            'diagnostic_log' => $diag_log,
+            'can_edit' => can_edit_ticket_reply($r, $tech_name),
+            'edited' => !empty($r['edited_at']),
+            'edited_at' => !empty($r['edited_at']) ? format_date($r['edited_at']) : null
+        );
+    }
+
+    // Messages already on screen may have been rewritten since they were drawn,
+    // so every edited message in the thread is sent back on each poll.
+    $edits_map = array();
+    $stmt_edits = $pdo->prepare("SELECT id, message, attachment_path, edited_at FROM client_ticket_replies
+        WHERE ticket_id = :tid AND edited_at IS NOT NULL");
+    $stmt_edits->execute(array(':tid' => $ticket_id));
+    foreach ($stmt_edits->fetchAll() as $er) {
+        $edits_map[strval($er['id'])] = array(
+            'message' => $er['message'],
+            'reply_snippet' => build_reply_snippet($er['message'], $er['attachment_path']),
+            'edited_at' => format_date($er['edited_at'])
         );
     }
 
@@ -282,6 +381,7 @@ try {
         'in_progress_by' => !empty($ticket['in_progress_by']) ? $ticket['in_progress_by'] : null,
         'in_progress_at' => !empty($ticket['in_progress_at']) ? format_date($ticket['in_progress_at']) : null,
         'replies' => $formatted_replies,
+        'edits' => !empty($edits_map) ? $edits_map : new stdClass(),
         'reactions' => $reactions_map ? $reactions_map : new stdClass(),
         'client_seen_id' => $seen_ids['client'],
         'client_typing' => $client_is_typing

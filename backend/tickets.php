@@ -139,7 +139,8 @@ $search = isset($_GET['q']) ? trim($_GET['q']) : '';
 // picked up themselves by moving it to In Progress from the chat.
 $mine_only = (isset($_GET['mine']) && $_GET['mine'] === '1');
 $me = get_logged_tech();
-$my_name = ($me && isset($me['fullname'])) ? strtolower(trim($me['fullname'])) : '';
+$my_display_name = ($me && isset($me['fullname'])) ? trim($me['fullname']) : '';
+$my_name = strtolower($my_display_name);
 $mine_sql = "(LOWER(TRIM(IFNULL(t.assigned_tech, ''))) = :myname OR LOWER(TRIM(IFNULL(t.in_progress_by, ''))) = :myname2)";
 
 $where_clauses = array();
@@ -369,7 +370,7 @@ $page_title = 'Support Tickets Center';
                         <!-- My open workload: In Progress tickets assigned to me,
                              or that I picked up myself -->
                         <a href="<?php echo tickets_filter_url('', !$mine_only, $search); ?>"
-                           title="<?php echo $mine_only ? 'Show tickets from the whole team' : 'Only In Progress tickets assigned to you or that you set to In Progress'; ?>"
+                           title="<?php echo $mine_only ? 'Show tickets from the whole team' : sanitize('In Progress tickets assigned to ' . $my_display_name . ', or that ' . $my_display_name . ' set to In Progress'); ?>"
                            class="px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ml-1 border <?php echo $mine_only ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'; ?>">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
@@ -419,8 +420,8 @@ $page_title = 'Support Tickets Center';
                                 <tr>
                                     <td colspan="6" class="py-12 text-center text-slate-400 space-y-2">
                                         <?php if ($mine_only): ?>
-                                            <p class="font-bold text-sm">You have no tickets in progress.</p>
-                                            <p class="text-xs">A ticket lands here once it is assigned to you, or once you set it to In Progress.</p>
+                                            <p class="font-bold text-sm">No In Progress tickets are recorded for <?php echo sanitize($my_display_name); ?>.</p>
+                                            <p class="text-xs">A ticket lands here once its Assigned Technician is set to that exact name, or once you move it to In Progress from the chat.</p>
                                         <?php else: ?>
                                             <p class="font-bold text-sm">No support tickets found.</p>
                                             <p class="text-xs">Adjust your search filter or clear status selection.</p>
