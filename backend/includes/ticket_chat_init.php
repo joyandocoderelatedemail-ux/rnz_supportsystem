@@ -319,6 +319,62 @@ function mark_ticket_seen($pdo, $ticket_id, $actor_type, $reply_id) {
 }
 
 /**
+ * Client messages the support side has not read yet, per ticket. Opening a
+ * ticket chat marks the whole thread read, so a count here means nobody on the
+ * support side has looked at that conversation since the client last wrote.
+ *
+ * @param PDO   $pdo
+ * @param array $ticket_ids limit to these tickets; empty means every ticket
+ * @return array ticket_id => unread count (tickets with none are absent)
+ */
+function get_support_unread_counts($pdo, $ticket_ids = array()) {
+    if (!$pdo) {
+        return array();
+    }
+
+    $params = array();
+    $filter = '';
+    if (!empty($ticket_ids)) {
+        $placeholders = array();
+        foreach ($ticket_ids as $tid) {
+            $tid = intval($tid);
+            if ($tid <= 0) {
+                continue;
+            }
+            $ph = ':t' . count($placeholders);
+            $placeholders[] = $ph;
+            $params[$ph] = $tid;
+        }
+        if (empty($placeholders)) {
+            return array();
+        }
+        $filter = ' AND r.ticket_id IN (' . implode(',', $placeholders) . ')';
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT r.ticket_id, COUNT(*) AS unread
+            FROM client_ticket_replies r
+            INNER JOIN client_support_tickets t ON t.id = r.ticket_id
+            WHERE r.sender_type = 'client'
+              AND r.id > t.support_last_seen_reply_id" . $filter . "
+            GROUP BY r.ticket_id");
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+    } catch (PDOException $e) {
+        // The seen columns are added by init_ticket_chat_tables; without them
+        // there is nothing to compare against, so nothing is unread.
+        error_log("Unread count error: " . $e->getMessage());
+        return array();
+    }
+
+    $counts = array();
+    foreach ($rows as $r) {
+        $counts[intval($r['ticket_id'])] = intval($r['unread']);
+    }
+    return $counts;
+}
+
+/**
  * @param PDO $pdo
  * @param int $ticket_id
  * @return array array('client' => int, 'support' => int)

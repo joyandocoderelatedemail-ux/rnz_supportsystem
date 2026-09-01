@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/events_init.php';
 require_once __DIR__ . '/includes/presence_init.php';
+require_once __DIR__ . '/includes/ticket_chat_init.php';
 
 if (!is_tech_logged_in()) {
     require_once __DIR__ . '/login.php';
@@ -16,6 +17,8 @@ require_page_access('dashboard');
 // Auto initialize tables
 init_inventory_tables();
 init_events_table();
+// Read markers behind the unread badges on the ticket queue
+init_ticket_chat_tables();
 
 // Register this visit before reading the list so the viewer always sees
 // themselves in the Online Staff panel. Only backend `user` accounts are
@@ -33,6 +36,7 @@ $today_events_count = 0;
 $upcoming_events_count = 0;
 $dash_events = array();
 $recent_tickets = array();
+$unread_counts = array();
 
 try {
     $pdo = get_db_connection();
@@ -84,6 +88,13 @@ try {
             t.created_at DESC 
         LIMIT 8");
     $recent_tickets = $stmt_tickets ? $stmt_tickets->fetchAll() : array();
+
+    // Client messages nobody on the support side has opened yet, for the red badge
+    $queue_ticket_ids = array();
+    foreach ($recent_tickets as $rt) {
+        $queue_ticket_ids[] = intval($rt['id']);
+    }
+    $unread_counts = get_support_unread_counts($pdo, $queue_ticket_ids);
 } catch (PDOException $e) {
     error_log("Backend dashboard query error: " . $e->getMessage());
 }
@@ -391,7 +402,17 @@ $auto_open_popup = ($today_events_count > 0);
                                         data-tradename="<?php echo sanitize($note_client); ?>"
                                         data-address="<?php echo sanitize(isset($t['address']) ? $t['address'] : ''); ?>">
                                         <td data-cell="num" class="py-4 px-6 font-mono font-bold <?php echo $pal['num']; ?>">
-                                            <?php echo sanitize($t['ticket_number']); ?>
+                                            <div class="flex items-center gap-1.5">
+                                                <span><?php echo sanitize($t['ticket_number']); ?></span>
+                                                <?php $t_unread = isset($unread_counts[intval($t['id'])]) ? $unread_counts[intval($t['id'])] : 0; ?>
+                                                <?php if ($t_unread > 0): ?>
+                                                    <span data-cell="unread" title="<?php echo $t_unread; ?> unread client message<?php echo ($t_unread > 1) ? 's' : ''; ?>"
+                                                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-extrabold shadow-sm shadow-rose-600/30 shrink-0">
+                                                        <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                                                        <?php echo $t_unread; ?> new
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
                                         </td>
                                         <td class="py-4 px-6">
                                             <div data-cell="title" class="font-bold <?php echo $pal['title']; ?>"><?php echo sanitize($client_display); ?></div>

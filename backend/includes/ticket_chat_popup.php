@@ -217,6 +217,16 @@ function openTicketChat(row, e) {
     chatThread.setAttribute('data-seed-date', row.getAttribute('data-created') || '');
     chatThread.innerHTML = '<div class="text-center text-[11px] text-slate-400 font-bold py-6">Loading conversation...</div>';
 
+    // Opening the thread marks it read on the server, so drop the red unread
+    // badge straight away instead of leaving it until the next page load.
+    var listedRow = document.querySelector('.ticket-row[data-ticket-id="' + ticketId + '"]');
+    if (listedRow) {
+        var unreadTag = listedRow.querySelector('[data-cell="unread"]');
+        if (unreadTag && unreadTag.parentNode) {
+            unreadTag.parentNode.removeChild(unreadTag);
+        }
+    }
+
     chatBox.classList.remove('hidden');
     chatBox.classList.add('flex');
     if (chatIsMinimized && !reopeningSame) {

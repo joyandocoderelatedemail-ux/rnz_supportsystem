@@ -2,8 +2,12 @@
 // Support Tickets Center for Tech/Admin Portal (PHP 5.6 Compatible)
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/ticket_chat_init.php';
 
 require_page_access('tickets');
+
+// Makes sure the read markers the unread badges rely on exist
+init_ticket_chat_tables();
 
 $pdo = get_db_connection();
 
@@ -186,6 +190,13 @@ $tickets = $stmt->fetchAll();
 
 $start_item = $total_tickets > 0 ? $offset + 1 : 0;
 $end_item = min($offset + $per_page, $total_tickets);
+
+// Client messages nobody on the support side has opened yet, for the red badge
+$page_ticket_ids = array();
+foreach ($tickets as $t_row) {
+    $page_ticket_ids[] = intval($t_row['id']);
+}
+$unread_counts = get_support_unread_counts($pdo, $page_ticket_ids);
 
 // Ticket notifications point here with ?open_ticket=ID instead of opening the
 // full console, so the thread opens in the chat pop-up over this list. The
@@ -371,7 +382,17 @@ $page_title = 'Support Tickets Center';
                                         data-tradename="<?php echo sanitize($note_client); ?>"
                                         data-address="<?php echo sanitize(isset($t['address']) ? $t['address'] : ''); ?>">
                                         <td data-cell="num" class="py-4 px-6 font-mono font-bold <?php echo $pal['num']; ?>">
-                                            <?php echo sanitize($t['ticket_number']); ?>
+                                            <div class="flex items-center gap-1.5">
+                                                <span><?php echo sanitize($t['ticket_number']); ?></span>
+                                                <?php $t_unread = isset($unread_counts[intval($t['id'])]) ? $unread_counts[intval($t['id'])] : 0; ?>
+                                                <?php if ($t_unread > 0): ?>
+                                                    <span data-cell="unread" title="<?php echo $t_unread; ?> unread client message<?php echo ($t_unread > 1) ? 's' : ''; ?>"
+                                                          class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-extrabold shadow-sm shadow-rose-600/30 shrink-0">
+                                                        <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                                                        <?php echo $t_unread; ?> new
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
                                         </td>
                                         <td class="py-4 px-6">
                                             <div data-cell="title" class="font-bold <?php echo $pal['title']; ?>"><?php echo sanitize($client_name); ?></div>
