@@ -2,6 +2,7 @@
 // Client Support Tickets Page
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/db_init.php';
+require_once __DIR__ . '/includes/support_availability.php';
 
 require_login();
 $client = get_logged_client();
@@ -80,6 +81,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ':att'   => $photo_attachment ? $photo_attachment : null,
                 ':c_at'  => $now
             ));
+
+            // Nobody signed in to take the ticket? Answer it automatically with
+            // the wait time and the technician roster, instead of leaving the
+            // client on a silent thread.
+            send_offline_autoreply_if_unattended($pdo, $new_ticket_id);
 
             // Back to the list with the new ticket's chat already open, so the
             // client lands in the conversation instead of a separate page
