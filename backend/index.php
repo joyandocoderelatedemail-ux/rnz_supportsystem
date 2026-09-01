@@ -45,16 +45,27 @@ try {
     $resolved_tickets = intval($pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status IN ('Resolved', 'Closed')")->fetchColumn());
 
     // Events Stats Queries (Completed & Cancelled items don't belong on the dashboard)
-    $today_events_count = intval($pdo->query("SELECT COUNT(*) FROM support_events WHERE DATE(start_datetime) = CURDATE() AND status NOT IN ('Cancelled', 'Completed')")->fetchColumn());
-    $upcoming_events_count = intval($pdo->query("SELECT COUNT(*) FROM support_events WHERE DATE(start_datetime) >= CURDATE() AND status IN ('Scheduled', 'In Progress', 'Rescheduled')")->fetchColumn());
+    // Today comes from PHP, never from the database clock: events are stored
+    // with Manila timestamps, so a live server whose MySQL runs on another
+    // zone matched a different day and this pop-up stayed empty.
+    $today_date = date('Y-m-d');
+
+    $stmt_today_cnt = $pdo->prepare("SELECT COUNT(*) FROM support_events WHERE DATE(start_datetime) = :today AND status NOT IN ('Cancelled', 'Completed')");
+    $stmt_today_cnt->execute(array(':today' => $today_date));
+    $today_events_count = intval($stmt_today_cnt->fetchColumn());
+
+    $stmt_upcoming_cnt = $pdo->prepare("SELECT COUNT(*) FROM support_events WHERE DATE(start_datetime) >= :today AND status IN ('Scheduled', 'In Progress', 'Rescheduled')");
+    $stmt_upcoming_cnt->execute(array(':today' => $today_date));
+    $upcoming_events_count = intval($stmt_upcoming_cnt->fetchColumn());
 
     // Fetch Today's Events only - this is a same-day reminder, not a lookahead
-    $stmt_dash_events = $pdo->query("SELECT * FROM support_events
-        WHERE DATE(start_datetime) = CURDATE()
+    $stmt_dash_events = $pdo->prepare("SELECT * FROM support_events
+        WHERE DATE(start_datetime) = :today
           AND status NOT IN ('Cancelled', 'Completed')
         ORDER BY start_datetime ASC
         LIMIT 6");
-    $dash_events = $stmt_dash_events ? $stmt_dash_events->fetchAll() : array();
+    $stmt_dash_events->execute(array(':today' => $today_date));
+    $dash_events = $stmt_dash_events->fetchAll();
 
     // Recent Incoming Tickets
     // The extra client columns feed the chat pop-up and the service note form,
@@ -293,6 +304,25 @@ $auto_open_popup = ($today_events_count > 0);
                                     <p class="text-[11px] text-slate-500 truncate" title="<?php echo sanitize($st['page']); ?>">
                                         <?php echo $activity_text; ?>
                                     </p>
+
+                                    <!-- What this staff member is working on right now -->
+                                    <?php if ($st['in_progress_count'] > 0): ?>
+                                        <div class="flex flex-wrap items-center gap-1 pt-0.5">
+                                            <span class="text-[9px] font-extrabold uppercase tracking-wider text-blue-700 shrink-0"><?php echo $st['in_progress_count']; ?> In Progress</span>
+                                            <?php foreach (array_slice($st['in_progress'], 0, 2) as $wt): ?>
+                                                <a href="tickets.php?open_ticket=<?php echo intval($wt['id']); ?>"
+                                                   title="<?php echo sanitize($wt['client'] . ' - ' . $wt['subject']); ?>"
+                                                   class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-800 font-mono font-bold text-[9px] hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-colors">
+                                                    <?php echo sanitize($wt['ticket_number']); ?>
+                                                </a>
+                                            <?php endforeach; ?>
+                                            <?php if ($st['in_progress_count'] > 2): ?>
+                                                <a href="tickets.php?status=In Progress" class="text-[9px] font-bold text-slate-500 hover:text-[#EB3E0B] shrink-0">+<?php echo ($st['in_progress_count'] - 2); ?> more</a>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php else: ?>
+                                        <p class="text-[10px] text-slate-400 font-medium">No in-progress tickets</p>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         <?php endforeach; ?>
@@ -613,6 +643,26 @@ function renderOnlineStaff(data) {
                 ? 'Viewing ' + escOnlineStaffHtml(s.page) + ' &bull; ' + escOnlineStaffHtml(s.last_seen)
                 : 'Idle &bull; last active ' + escOnlineStaffHtml(s.last_seen);
 
+            // The In Progress tickets this person owns, same as the server renders
+            var work = '';
+            var tickets = s.in_progress || [];
+            if (tickets.length > 0) {
+                work = '<div class="flex flex-wrap items-center gap-1 pt-0.5">' +
+                       '<span class="text-[9px] font-extrabold uppercase tracking-wider text-blue-700 shrink-0">' + tickets.length + ' In Progress</span>';
+                for (var w = 0; w < tickets.length && w < 2; w++) {
+                    work += '<a href="tickets.php?open_ticket=' + parseInt(tickets[w].id, 10) + '" ' +
+                            'title="' + escOnlineStaffHtml(tickets[w].client + ' - ' + tickets[w].subject) + '" ' +
+                            'class="inline-flex items-center px-1.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-800 font-mono font-bold text-[9px] hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-colors">' +
+                            escOnlineStaffHtml(tickets[w].ticket_number) + '</a>';
+                }
+                if (tickets.length > 2) {
+                    work += '<a href="tickets.php?status=In Progress" class="text-[9px] font-bold text-slate-500 hover:text-[#EB3E0B] shrink-0">+' + (tickets.length - 2) + ' more</a>';
+                }
+                work += '</div>';
+            } else {
+                work = '<p class="text-[10px] text-slate-400 font-medium">No in-progress tickets</p>';
+            }
+
             html += '<div class="flex items-center space-x-3 p-3.5 rounded-2xl border ' + cardClass + ' transition-colors">' +
                         '<div class="relative shrink-0">' +
                             '<div class="w-10 h-10 rounded-full bg-slate-900 text-white text-xs font-extrabold flex items-center justify-center">' + escOnlineStaffHtml(s.initials) + '</div>' +
@@ -625,6 +675,7 @@ function renderOnlineStaff(data) {
                             '</div>' +
                             '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize ' + (s.role_class || 'bg-slate-100 text-slate-600 border-slate-200') + '">' + escOnlineStaffHtml(s.role) + '</span>' +
                             '<p class="text-[11px] text-slate-500 truncate" title="' + escOnlineStaffHtml(s.page) + '">' + activity + '</p>' +
+                            work +
                         '</div>' +
                     '</div>';
         }

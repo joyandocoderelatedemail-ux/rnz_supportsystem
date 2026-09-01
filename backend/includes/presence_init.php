@@ -295,6 +295,101 @@ function presence_role_badge_class($role) {
 }
 
 /**
+ * Does client_support_tickets carry the chat pop-up in_progress_by column yet?
+ * It is added lazily by ticket_chat_init, so a database that has never run the
+ * chat must not break the online panel.
+ *
+ * @param PDO $pdo
+ * @return bool
+ */
+function presence_has_in_progress_column($pdo) {
+    static $has = null;
+    if ($has !== null) {
+        return $has;
+    }
+    try {
+        $stmt = $pdo->query("SHOW COLUMNS FROM `client_support_tickets` LIKE 'in_progress_by'");
+        $has = ($stmt && $stmt->fetch()) ? true : false;
+    } catch (PDOException $e) {
+        $has = false;
+    }
+    return $has;
+}
+
+/**
+ * In Progress tickets owned by the given staff names, keyed by lower-cased name.
+ * A ticket belongs to whoever it is assigned to; when nobody is assigned it
+ * belongs to the technician who moved it to In Progress from the chat, so a
+ * ticket is never counted against two people at once.
+ *
+ * @param array $names full names as stored on the ticket
+ * @return array map of lower-cased name => list of tickets
+ */
+function get_staff_inprogress_tickets($names) {
+    $pdo = get_db_connection();
+    if (!$pdo || empty($names)) {
+        return array();
+    }
+
+    $params = array();
+    $placeholders = array();
+    $seen = array();
+    foreach ($names as $n) {
+        $key = strtolower(trim($n));
+        if ($key === '' || isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $ph = ':n' . count($placeholders);
+        $placeholders[] = $ph;
+        $params[$ph] = $key;
+    }
+    if (empty($placeholders)) {
+        return array();
+    }
+
+    // Assignment wins; the technician who picked the ticket up only owns it
+    // while it sits unassigned. New tickets arrive with the literal string
+    // "Unassigned" from the client portal, which is not a person.
+    $assigned = "LOWER(TRIM(IFNULL(t.assigned_tech, '')))";
+    $owner_expr = presence_has_in_progress_column($pdo)
+        ? "CASE WHEN " . $assigned . " NOT IN ('', 'unassigned') THEN " . $assigned . " ELSE LOWER(TRIM(IFNULL(t.in_progress_by, ''))) END"
+        : "CASE WHEN " . $assigned . " NOT IN ('', 'unassigned') THEN " . $assigned . " ELSE '' END";
+
+    try {
+        $stmt = $pdo->prepare("SELECT t.id, t.ticket_number, t.subject, t.accountnum, t.created_at,
+                c.tradename, c.clientname,
+                " . $owner_expr . " AS owner_key
+            FROM client_support_tickets t
+            LEFT JOIN bucket_client c ON t.accountnum = c.accountnum
+            WHERE t.status = 'In Progress'
+              AND " . $owner_expr . " IN (" . implode(',', $placeholders) . ")
+            ORDER BY t.created_at DESC");
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+    } catch (PDOException $e) {
+        error_log("Staff workload fetch error: " . $e->getMessage());
+        return array();
+    }
+
+    $map = array();
+    foreach ($rows as $r) {
+        $key = $r['owner_key'];
+        if (!isset($map[$key])) {
+            $map[$key] = array();
+        }
+        $client = !empty($r['tradename']) ? $r['tradename'] : (!empty($r['clientname']) ? $r['clientname'] : 'Acct: ' . $r['accountnum']);
+        $map[$key][] = array(
+            'id' => intval($r['id']),
+            'ticket_number' => $r['ticket_number'],
+            'subject' => $r['subject'],
+            'client' => $client
+        );
+    }
+    return $map;
+}
+
+/**
  * Fetch staff seen within the away window, most recently active first.
  * Clients are structurally excluded - only `user` accounts are ever stored.
  *
@@ -318,22 +413,28 @@ function get_online_staff($window_minutes = PRESENCE_AWAY_MINUTES) {
     $tech = get_logged_tech();
     $my_id = ($tech && isset($tech['id'])) ? intval($tech['id']) : 0;
 
+    // The cut-off is worked out in PHP because last_activity is written with
+    // PHP time - measuring it against the database clock would drift by the
+    // whole offset wherever MySQL does not run on the application time zone.
+    $cutoff = date('Y-m-d H:i:s', time() - ($window_minutes * 60));
+
     try {
-        // Window is an integer literal because MySQL will not take a bound
-        // parameter inside INTERVAL on all 5.x builds.
-        $stmt = $pdo->query("SELECT p.*, u.fname, u.lname, u.emailadd
+        $stmt = $pdo->prepare("SELECT p.*, u.fname, u.lname, u.emailadd
             FROM `support_user_presence` p
             LEFT JOIN `user` u ON u.id = p.user_id
-            WHERE p.last_activity >= (NOW() - INTERVAL " . $window_minutes . " MINUTE)
+            WHERE p.last_activity >= :cutoff
             ORDER BY p.last_activity DESC");
-        $rows = $stmt ? $stmt->fetchAll() : array();
+        $stmt->execute(array(':cutoff' => $cutoff));
+        $rows = $stmt->fetchAll();
     } catch (PDOException $e) {
         error_log("Presence fetch error: " . $e->getMessage());
         return array();
     }
 
-    $staff = array();
-    foreach ($rows as $r) {
+    // Resolve every display name first, then pull the whole online team's
+    // In Progress tickets in one query instead of one per person.
+    $names = array();
+    foreach ($rows as $i => $r) {
         $name = trim($r['fullname']);
         if ($name === '') {
             $name = trim($r['fname'] . ' ' . $r['lname']);
@@ -341,6 +442,16 @@ function get_online_staff($window_minutes = PRESENCE_AWAY_MINUTES) {
         if ($name === '') {
             $name = $r['username'];
         }
+        $rows[$i]['display_name'] = $name;
+        $names[] = $name;
+    }
+    $workload = get_staff_inprogress_tickets($names);
+
+    $staff = array();
+    foreach ($rows as $r) {
+        $name = $r['display_name'];
+        $work_key = strtolower(trim($name));
+        $my_tickets = isset($workload[$work_key]) ? $workload[$work_key] : array();
         $seconds = presence_seconds_since($r['last_activity']);
         $staff[] = array(
             'user_id' => intval($r['user_id']),
@@ -354,7 +465,9 @@ function get_online_staff($window_minutes = PRESENCE_AWAY_MINUTES) {
             'seconds_idle' => $seconds,
             'last_seen' => presence_ago($r['last_activity']),
             'online_since' => !empty($r['login_at']) ? date('g:i A', strtotime($r['login_at'])) : '',
-            'is_you' => (intval($r['user_id']) === $my_id)
+            'is_you' => (intval($r['user_id']) === $my_id),
+            'in_progress' => $my_tickets,
+            'in_progress_count' => count($my_tickets)
         );
     }
     return $staff;

@@ -47,10 +47,14 @@ if ($is_local) {
 function get_db_connection() {
     static $pdo = null;
     if ($pdo === null) {
+        // The session time zone is pinned to the same offset PHP runs on.
+        // Without it MySQL keeps the host clock - identical to PHP on XAMPP,
+        // but usually UTC or a US zone on a live server - and CURDATE() / NOW()
+        // then disagree with the Manila timestamps every row is written with.
         $options = array(
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8, time_zone = '" . date('P') . "'"
         );
         try {
             $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8";
