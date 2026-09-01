@@ -3,6 +3,7 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/events_init.php';
+require_once __DIR__ . '/includes/presence_init.php';
 
 if (!is_tech_logged_in()) {
     require_once __DIR__ . '/login.php';
@@ -15,6 +16,13 @@ require_page_access('dashboard');
 // Auto initialize tables
 init_inventory_tables();
 init_events_table();
+
+// Register this visit before reading the list so the viewer always sees
+// themselves in the Online Staff panel. Only backend `user` accounts are
+// tracked - client portal sessions are never recorded.
+touch_user_presence('Dashboard');
+$online_staff = get_online_staff();
+$presence_counts = count_staff_presence($online_staff);
 
 $total_tickets = 0;
 $pending_tickets = 0;
@@ -49,8 +57,10 @@ try {
     $dash_events = $stmt_dash_events ? $stmt_dash_events->fetchAll() : array();
 
     // Recent Incoming Tickets
-    $stmt_tickets = $pdo->query("SELECT t.*, c.tradename, c.clientname 
-        FROM client_support_tickets t 
+    // The extra client columns feed the chat pop-up and the service note form,
+    // the same way the tickets center loads them.
+    $stmt_tickets = $pdo->query("SELECT t.*, c.tradename, c.clientname, c.contactnum, c.address
+        FROM client_support_tickets t
         LEFT JOIN bucket_client c ON t.accountnum = c.accountnum 
         ORDER BY 
             CASE 
@@ -215,6 +225,86 @@ $auto_open_popup = ($today_events_count > 0);
 
             </div>
 
+            <!-- Staff Currently Online (support team only - client portal users are never tracked) -->
+            <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div class="flex items-center space-x-3.5 min-w-0">
+                        <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                        </div>
+                        <div class="min-w-0">
+                            <div class="flex items-center space-x-2">
+                                <h3 class="text-lg font-extrabold text-slate-900">Staff Online Now</h3>
+                                <span class="relative flex h-2.5 w-2.5">
+                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                </span>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-0.5">Technicians and admins currently signed into the support center. Client portal accounts are not tracked here.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center space-x-2 shrink-0">
+                        <span id="onlineStaffCountBadge" class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <?php echo $presence_counts['online']; ?> Online
+                        </span>
+                        <span id="awayStaffCountBadge" class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 <?php echo ($presence_counts['away'] > 0) ? '' : 'hidden'; ?>">
+                            <?php echo $presence_counts['away']; ?> Idle
+                        </span>
+                    </div>
+                </div>
+
+                <div id="onlineStaffList" class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    <?php if (empty($online_staff)): ?>
+                        <div class="col-span-full py-8 text-center text-xs text-slate-400 space-y-1">
+                            <p class="font-bold text-slate-600">Nobody is signed in right now</p>
+                            <p>Staff appear here as soon as they open any support center page.</p>
+                        </div>
+                    <?php else: ?>
+                        <?php foreach ($online_staff as $st):
+                            $is_online = ($st['state'] === 'online');
+                            $card_class = $is_online
+                                ? 'bg-emerald-50/50 border-emerald-200'
+                                : 'bg-slate-50 border-slate-200';
+                            $dot_class = $is_online ? 'bg-emerald-500' : 'bg-amber-400';
+                            $activity_text = $is_online
+                                ? 'Viewing ' . $st['page'] . ' &bull; ' . $st['last_seen']
+                                : 'Idle &bull; last active ' . $st['last_seen'];
+                        ?>
+                            <div class="flex items-center space-x-3 p-3.5 rounded-2xl border <?php echo $card_class; ?> transition-colors">
+                                <div class="relative shrink-0">
+                                    <div class="w-10 h-10 rounded-full bg-slate-900 text-white text-xs font-extrabold flex items-center justify-center">
+                                        <?php echo sanitize($st['initials']); ?>
+                                    </div>
+                                    <span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-white <?php echo $dot_class; ?>" title="<?php echo $is_online ? 'Online' : 'Idle'; ?>"></span>
+                                </div>
+                                <div class="min-w-0 flex-1 space-y-1">
+                                    <div class="flex items-center gap-1.5 min-w-0">
+                                        <span class="font-extrabold text-xs text-slate-900 truncate"><?php echo sanitize($st['name']); ?></span>
+                                        <?php if ($st['is_you']): ?>
+                                            <span class="text-[10px] font-extrabold text-[#EB3E0B] shrink-0">(You)</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize <?php echo $st['role_class']; ?>">
+                                        <?php echo sanitize($st['role']); ?>
+                                    </span>
+                                    <p class="text-[11px] text-slate-500 truncate" title="<?php echo sanitize($st['page']); ?>">
+                                        <?php echo $activity_text; ?>
+                                    </p>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+
+                <div class="px-5 sm:px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                    <span>Online = active in the last <?php echo PRESENCE_ONLINE_MINUTES; ?> minutes &bull; idle staff drop off after <?php echo PRESENCE_AWAY_MINUTES; ?> minutes</span>
+                    <span id="onlineStaffUpdated" class="font-mono">Updated <?php echo date('g:i:s A'); ?></span>
+                </div>
+            </div>
+
             <!-- Incoming Support Tickets Queue -->
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
                 <div class="p-6 border-b border-slate-100 flex items-center justify-between">
@@ -239,83 +329,51 @@ $auto_open_popup = ($today_events_count > 0);
                                 <th class="py-3.5 px-6">Subject / Summary</th>
                                 <th class="py-3.5 px-6">Status</th>
                                 <th class="py-3.5 px-6">Created Date</th>
-                                <th class="py-3.5 px-6 text-right">Manage</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 font-medium">
                             <?php if (empty($recent_tickets)): ?>
                                 <tr>
-                                    <td colspan="6" class="py-8 text-center text-slate-400">
+                                    <td colspan="5" class="py-8 text-center text-slate-400">
                                         No client support tickets found.
                                     </td>
                                 </tr>
                             <?php else: ?>
-                                <?php foreach ($recent_tickets as $t): 
+                                <?php foreach ($recent_tickets as $t):
                                     $client_display = !empty($t['tradename']) ? $t['tradename'] : (!empty($t['clientname']) ? $t['clientname'] : 'Acct: ' . $t['accountnum']);
-                                    $st = $t['status'];
+                                    // Real trade name only - the service note form wants the client record,
+                                    // not the "Acct: 000..." placeholder the table falls back to.
+                                    $note_client = !empty($t['tradename']) ? $t['tradename'] : (!empty($t['clientname']) ? $t['clientname'] : '');
 
-                                    if ($st === 'Resolved' || $st === 'Closed') {
-                                        // Resolved -> Green Row
-                                        $row_class   = 'bg-emerald-50/70 hover:bg-emerald-100/80 border-b border-emerald-100 text-emerald-950';
-                                        $num_color   = 'text-emerald-700';
-                                        $title_color = 'text-emerald-950';
-                                        $subj_color  = 'text-emerald-900';
-                                        $date_color  = 'text-emerald-700 font-mono';
-                                        $badge_class = 'bg-emerald-100 text-emerald-800 border border-emerald-300';
-                                        $btn_class   = 'bg-emerald-100/90 hover:bg-emerald-600 text-emerald-700 hover:text-white';
-                                    } elseif ($st === 'Pending' || $st === 'Open') {
-                                        // Pending -> Red Row
-                                        $row_class   = 'bg-rose-50/70 hover:bg-rose-100/80 border-b border-rose-100 text-rose-950';
-                                        $num_color   = 'text-rose-700';
-                                        $title_color = 'text-rose-950';
-                                        $subj_color  = 'text-rose-900';
-                                        $date_color  = 'text-rose-700 font-mono';
-                                        $badge_class = 'bg-rose-100 text-rose-800 border border-rose-300';
-                                        $btn_class   = 'bg-rose-100/90 hover:bg-rose-600 text-rose-700 hover:text-white';
-                                    } elseif ($st === 'In Progress') {
-                                        // In Progress -> Blue Row
-                                        $row_class   = 'bg-blue-50/70 hover:bg-blue-100/80 border-b border-blue-100 text-blue-950';
-                                        $num_color   = 'text-blue-700';
-                                        $title_color = 'text-blue-950';
-                                        $subj_color  = 'text-blue-900';
-                                        $date_color  = 'text-blue-700 font-mono';
-                                        $badge_class = 'bg-blue-100 text-blue-800 border border-blue-300';
-                                        $btn_class   = 'bg-blue-100/90 hover:bg-blue-600 text-blue-700 hover:text-white';
-                                    } else {
-                                        $row_class   = 'hover:bg-slate-50/80 text-slate-800';
-                                        $num_color   = 'text-[#EB3E0B]';
-                                        $title_color = 'text-slate-900';
-                                        $subj_color  = 'text-slate-800';
-                                        $date_color  = 'text-slate-500 font-mono';
-                                        $badge_class = get_status_badge_class($st);
-                                        $btn_class   = 'bg-slate-100 hover:bg-[#EB3E0B] text-slate-500 hover:text-white';
-                                    }
+                                    $pal = ticket_row_palette($t['status']);
                                 ?>
-                                    <tr class="<?php echo $row_class; ?> transition-colors">
-                                        <td class="py-4 px-6 font-mono font-bold <?php echo $num_color; ?>">
+                                    <tr class="ticket-row <?php echo $pal['row']; ?> transition-colors cursor-pointer"
+                                        onclick="openDashboardTicketChat(this, event)"
+                                        title="Open chat thread"
+                                        data-ticket-id="<?php echo intval($t['id']); ?>"
+                                        data-ticket-number="<?php echo sanitize($t['ticket_number']); ?>"
+                                        data-client="<?php echo sanitize($client_display); ?>"
+                                        data-subject="<?php echo sanitize($t['subject']); ?>"
+                                        data-status="<?php echo sanitize($t['status']); ?>"
+                                        data-issue="<?php echo sanitize($t['issue_description']); ?>"
+                                        data-created="<?php echo sanitize(format_date($t['created_at'])); ?>"
+                                        data-account="<?php echo sanitize($t['accountnum']); ?>"
+                                        data-tradename="<?php echo sanitize($note_client); ?>"
+                                        data-address="<?php echo sanitize(isset($t['address']) ? $t['address'] : ''); ?>">
+                                        <td data-cell="num" class="py-4 px-6 font-mono font-bold <?php echo $pal['num']; ?>">
                                             <?php echo sanitize($t['ticket_number']); ?>
                                         </td>
                                         <td class="py-4 px-6">
-                                            <div class="font-bold <?php echo $title_color; ?>"><?php echo sanitize($client_display); ?></div>
+                                            <div data-cell="title" class="font-bold <?php echo $pal['title']; ?>"><?php echo sanitize($client_display); ?></div>
                                         </td>
-                                        <td class="py-4 px-6 max-w-xs truncate font-semibold <?php echo $subj_color; ?>">
+                                        <td data-cell="subject" class="py-4 px-6 max-w-xs truncate font-semibold <?php echo $pal['subj']; ?>">
                                             <?php echo sanitize($t['subject']); ?>
                                         </td>
                                         <td class="py-4 px-6">
-                                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border <?php echo $badge_class; ?>">
-                                                <?php echo sanitize($t['status']); ?>
-                                            </span>
+                                            <span data-cell="badge" class="inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 rounded-full text-[10px] font-bold border <?php echo $pal['badge']; ?>"><?php echo sanitize($t['status']); ?></span>
                                         </td>
-                                        <td class="py-4 px-6 <?php echo $date_color; ?>">
+                                        <td data-cell="date" class="py-4 px-6 <?php echo $pal['date']; ?>">
                                             <?php echo format_date($t['created_at']); ?>
-                                        </td>
-                                        <td class="py-4 px-6 text-right">
-                                            <a href="ticket_detail.php?id=<?php echo $t['id']; ?>" onclick="markNotificationClicked('ticket_<?php echo $t['id']; ?>', <?php echo (intval($t['id']) * 100000); ?>)" class="inline-flex items-center justify-center w-9 h-9 rounded-full <?php echo $btn_class; ?> transition-colors shadow-xs" title="Manage Ticket">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                                                </svg>
-                                            </a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -512,6 +570,105 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
+/* Clicking a ticket row opens the same chat pop-up the tickets center uses.
+   The row also counts as reading that ticket, so its notification badge
+   clears exactly as the old Manage button used to do. */
+function openDashboardTicketChat(row, e) {
+    var ticketId = parseInt(row.getAttribute('data-ticket-id'), 10) || 0;
+    if (ticketId && typeof markNotificationClicked === 'function') {
+        markNotificationClicked('ticket_' + ticketId, ticketId * 100000);
+    }
+    openTicketChat(row, e);
+}
+
+/* ----- Staff Online Now panel -----
+   The same request doubles as this dashboard's heartbeat, so an admin who
+   leaves the dashboard open stays listed as online. */
+var ONLINE_STAFF_REFRESH_MS = 20000;
+
+function escOnlineStaffHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function renderOnlineStaff(data) {
+    var list = document.getElementById('onlineStaffList');
+    if (!list || !data || !data.success) return;
+
+    var staff = data.staff || [];
+    var html = '';
+
+    if (staff.length === 0) {
+        html = '<div class="col-span-full py-8 text-center text-xs text-slate-400 space-y-1">' +
+                   '<p class="font-bold text-slate-600">Nobody is signed in right now</p>' +
+                   '<p>Staff appear here as soon as they open any support center page.</p>' +
+               '</div>';
+    } else {
+        for (var i = 0; i < staff.length; i++) {
+            var s = staff[i];
+            var isOnline = (s.state === 'online');
+            var cardClass = isOnline ? 'bg-emerald-50/50 border-emerald-200' : 'bg-slate-50 border-slate-200';
+            var dotClass = isOnline ? 'bg-emerald-500' : 'bg-amber-400';
+            var activity = isOnline
+                ? 'Viewing ' + escOnlineStaffHtml(s.page) + ' &bull; ' + escOnlineStaffHtml(s.last_seen)
+                : 'Idle &bull; last active ' + escOnlineStaffHtml(s.last_seen);
+
+            html += '<div class="flex items-center space-x-3 p-3.5 rounded-2xl border ' + cardClass + ' transition-colors">' +
+                        '<div class="relative shrink-0">' +
+                            '<div class="w-10 h-10 rounded-full bg-slate-900 text-white text-xs font-extrabold flex items-center justify-center">' + escOnlineStaffHtml(s.initials) + '</div>' +
+                            '<span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-white ' + dotClass + '" title="' + (isOnline ? 'Online' : 'Idle') + '"></span>' +
+                        '</div>' +
+                        '<div class="min-w-0 flex-1 space-y-1">' +
+                            '<div class="flex items-center gap-1.5 min-w-0">' +
+                                '<span class="font-extrabold text-xs text-slate-900 truncate">' + escOnlineStaffHtml(s.name) + '</span>' +
+                                (s.is_you ? '<span class="text-[10px] font-extrabold text-[#EB3E0B] shrink-0">(You)</span>' : '') +
+                            '</div>' +
+                            '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize ' + (s.role_class || 'bg-slate-100 text-slate-600 border-slate-200') + '">' + escOnlineStaffHtml(s.role) + '</span>' +
+                            '<p class="text-[11px] text-slate-500 truncate" title="' + escOnlineStaffHtml(s.page) + '">' + activity + '</p>' +
+                        '</div>' +
+                    '</div>';
+        }
+    }
+
+    list.innerHTML = html;
+
+    var onlineBadge = document.getElementById('onlineStaffCountBadge');
+    if (onlineBadge) {
+        onlineBadge.textContent = data.online_count + ' Online';
+    }
+
+    var awayBadge = document.getElementById('awayStaffCountBadge');
+    if (awayBadge) {
+        awayBadge.textContent = data.away_count + ' Idle';
+        if (data.away_count > 0) {
+            awayBadge.classList.remove('hidden');
+        } else {
+            awayBadge.classList.add('hidden');
+        }
+    }
+
+    var stamp = document.getElementById('onlineStaffUpdated');
+    if (stamp && data.server_time) {
+        stamp.textContent = 'Updated ' + data.server_time;
+    }
+}
+
+function refreshOnlineStaff() {
+    fetch('api_online_users.php?page=Dashboard', { credentials: 'same-origin' })
+        .then(function(res) { return res.json(); })
+        .then(function(data) { renderOnlineStaff(data); })
+        .catch(function(err) { console.error('Online staff refresh error:', err); });
+}
+
+setInterval(refreshOnlineStaff, ONLINE_STAFF_REFRESH_MS);
+
+// Catch up right away when the tab is brought back to the front.
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        refreshOnlineStaff();
+    }
+});
+
 <?php if ($auto_open_popup): ?>
 document.addEventListener('DOMContentLoaded', function() {
     openSchedulePopup();
@@ -519,4 +676,5 @@ document.addEventListener('DOMContentLoaded', function() {
 <?php endif; ?>
 </script>
 
+<?php include __DIR__ . '/includes/ticket_chat_popup.php'; ?>
 <?php include __DIR__ . '/includes/footer.php'; ?>

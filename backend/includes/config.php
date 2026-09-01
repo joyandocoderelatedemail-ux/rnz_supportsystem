@@ -171,6 +171,63 @@ function get_status_badge_class($status) {
 }
 
 /**
+ * Every colour a ticket row wears for a given status. Defined once because the
+ * chat pop-up recolours rows live in JS from this same table - without that, a
+ * ticket moved to In Progress keeps its red Pending styling until a reload.
+ * Shared by the tickets center and the dashboard queue so both look identical.
+ *
+ * @param string $status
+ * @return array
+ */
+function ticket_row_palette($status) {
+    if ($status === 'Resolved' || $status === 'Closed') {
+        // Resolved -> Green Row
+        return array(
+            'row'   => 'bg-emerald-50/70 hover:bg-emerald-100/80 border-b border-emerald-100 text-emerald-950',
+            'num'   => 'text-emerald-700',
+            'title' => 'text-emerald-950',
+            'subj'  => 'text-emerald-900',
+            'date'  => 'text-emerald-700 font-mono',
+            'badge' => 'bg-emerald-100 text-emerald-800 border border-emerald-300',
+            'btn'   => 'bg-emerald-100/90 hover:bg-emerald-600 text-emerald-700 hover:text-white'
+        );
+    }
+    if ($status === 'Pending' || $status === 'Open') {
+        // Pending -> Red Row
+        return array(
+            'row'   => 'bg-rose-50/70 hover:bg-rose-100/80 border-b border-rose-100 text-rose-950',
+            'num'   => 'text-rose-700',
+            'title' => 'text-rose-950',
+            'subj'  => 'text-rose-900',
+            'date'  => 'text-rose-700 font-mono',
+            'badge' => 'bg-rose-100 text-rose-800 border border-rose-300',
+            'btn'   => 'bg-rose-100/90 hover:bg-rose-600 text-rose-700 hover:text-white'
+        );
+    }
+    if ($status === 'In Progress') {
+        // In Progress -> Blue Row
+        return array(
+            'row'   => 'bg-blue-50/70 hover:bg-blue-100/80 border-b border-blue-100 text-blue-950',
+            'num'   => 'text-blue-700',
+            'title' => 'text-blue-950',
+            'subj'  => 'text-blue-900',
+            'date'  => 'text-blue-700 font-mono',
+            'badge' => 'bg-blue-100 text-blue-800 border border-blue-300',
+            'btn'   => 'bg-blue-100/90 hover:bg-blue-600 text-blue-700 hover:text-white'
+        );
+    }
+    return array(
+        'row'   => 'hover:bg-slate-50/80 text-slate-800',
+        'num'   => 'text-[#EB3E0B]',
+        'title' => 'text-slate-900',
+        'subj'  => 'text-slate-800',
+        'date'  => 'text-slate-500 font-mono',
+        'badge' => get_status_badge_class($status),
+        'btn'   => 'bg-slate-100 hover:bg-[#EB3E0B] text-slate-500 hover:text-white'
+    );
+}
+
+/**
  * Safely upload ticket photo attachments (PNG, JPG, JPEG, WEBP, GIF)
  * Supports both single file and multiple files (e.g. name="attachments[]" or name="attachment")
  * @param string $file_key Name of the file input in $_FILES (default 'attachments')

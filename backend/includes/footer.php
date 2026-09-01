@@ -169,6 +169,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <input type="text" name="address" id="note_address" placeholder="Location or store address" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
             </div>
 
+            <!-- Only notes opened from a ticket have a conversation to summarise -->
+            <div id="note_ai_row" class="hidden items-center justify-between gap-3 rounded-2xl border border-dashed border-[#FECDAA] bg-[#FFF9F5] px-3.5 py-2.5">
+                <p class="text-[10px] text-slate-500 font-medium leading-snug min-w-0">
+                    Draft this note from the ticket conversation. <span class="font-bold text-slate-700">Always review before saving.</span>
+                </p>
+                <button type="button" id="note_ai_btn" onclick="summarizeTicketNote()" class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    <svg id="note_ai_icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/>
+                    </svg>
+                    <span id="note_ai_label">Summarize with AI</span>
+                </button>
+            </div>
+            <p id="note_ai_error" class="hidden text-[10px] font-bold text-rose-600 leading-snug"></p>
+
             <div>
                 <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Reason for Technical Service *</label>
                 <textarea name="reasonoftech" id="note_reason" rows="2" required placeholder="Reason for tech visit or support call..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
@@ -337,7 +351,86 @@ function openNewServiceNoteModal(acct, name, addr, reason, ticketId) {
     if (reason) document.getElementById('note_reason').value = reason;
     document.getElementById('newServiceNoteModal').classList.remove('hidden');
 
+    // The AI draft needs a conversation, so it only appears for ticket notes
+    var aiRow = document.getElementById('note_ai_row');
+    document.getElementById('note_ai_error').classList.add('hidden');
+    if (ticketId) {
+        aiRow.classList.remove('hidden');
+        aiRow.classList.add('flex');
+    } else {
+        aiRow.classList.add('hidden');
+        aiRow.classList.remove('flex');
+    }
+
     loadTicketServiceNote(ticketId);
+}
+
+// Drafts the note fields from the ticket's chat thread. This only fills the
+// form in - the technician still reviews and presses Save themselves.
+function summarizeTicketNote() {
+    var ticketId = document.getElementById('note_ticket_id').value;
+    if (!ticketId) return;
+
+    var btn = document.getElementById('note_ai_btn');
+    var label = document.getElementById('note_ai_label');
+    var icon = document.getElementById('note_ai_icon');
+    var errorBox = document.getElementById('note_ai_error');
+
+    errorBox.classList.add('hidden');
+    btn.disabled = true;
+    label.textContent = 'Reading the conversation...';
+    icon.classList.add('animate-spin');
+
+    var done = function() {
+        btn.disabled = false;
+        label.textContent = 'Summarize with AI';
+        icon.classList.remove('animate-spin');
+    };
+
+    fetch('api_summarize_ticket.php?ticket_id=' + encodeURIComponent(ticketId))
+        .then(function(res) {
+            // Read as text first: if PHP dies it returns an HTML error page, and
+            // res.json() would throw, hiding the real reason behind "network error"
+            return res.text().then(function(body) {
+                try {
+                    return JSON.parse(body);
+                } catch (e) {
+                    return {
+                        success: false,
+                        error: 'The server did not return a summary (HTTP ' + res.status + '). ' +
+                               'It may have timed out - check backend/includes/ai_config.php.'
+                    };
+                }
+            });
+        })
+        .then(function(data) {
+            done();
+
+            // The modal may have been closed or moved to another ticket by now
+            if (document.getElementById('note_ticket_id').value !== String(ticketId)) return;
+
+            if (!data || !data.success) {
+                errorBox.textContent = (data && data.error) ? data.error : 'Could not draft the note.';
+                errorBox.classList.remove('hidden');
+                return;
+            }
+
+            var note = data.note;
+            document.getElementById('note_reason').value = note.reasonoftech || '';
+            document.getElementById('note_cause').value = note.causeoftheissue || '';
+            document.getElementById('note_resso').value = note.resso || '';
+
+            var statusSelect = document.querySelector('#newServiceNoteModal select[name="status"]');
+            if (statusSelect && note.status) statusSelect.value = note.status;
+
+            label.textContent = 'Redraft with AI';
+        })
+        .catch(function(err) {
+            done();
+            errorBox.textContent = 'Network error - the summary could not be generated.';
+            errorBox.classList.remove('hidden');
+            console.error('Note summary error:', err);
+        });
 }
 
 // Loads the note already logged for this ticket - and only for this ticket -
@@ -524,7 +617,8 @@ function pollForNewTickets() {
                         if (dropList && res.latest_ticket) {
                             var t = res.latest_ticket;
                             var isMaint = (res.latest_type === 'maintenance');
-                            var itemLink = isMaint ? 'maintenance.php' : ('ticket_detail.php?id=' + t.id);
+                            // Tickets open in the chat pop-up on the list page
+                            var itemLink = isMaint ? 'maintenance.php' : ('tickets.php?open_ticket=' + t.id);
                             var itemBadge = isMaint ? 'Maintenance' : escapeHtml(t.priority);
                             var badgeClass = isMaint ? 'bg-[#FFE8D5] text-[#EB3E0B] border-[#FECDAA]' : 'bg-amber-100 text-amber-800 border-amber-300';
 
@@ -558,7 +652,7 @@ function showNewTicketToastPopup(ticket, pendingCount, latestType, latestId, not
     toast.className = 'fixed bottom-6 right-6 z-50 bg-slate-900 text-white rounded-3xl p-5 shadow-2xl border border-[#FA5915] max-w-sm w-full space-y-3 animate-bounce';
     
     var isMaint = (latestType === 'maintenance');
-    var targetLink = isMaint ? 'maintenance.php' : ('ticket_detail.php?id=' + (ticket ? ticket.id : 0));
+    var targetLink = isMaint ? 'maintenance.php' : ('tickets.php?open_ticket=' + (ticket ? ticket.id : 0));
     var labelText = isMaint ? 'NEW POS MAINTENANCE REQUEST' : 'NEW SUPPORT TICKET';
     var iconSymbol = isMaint ? '🛠️' : '🔔';
     var btnText = isMaint ? 'View Requests &rarr;' : 'View Ticket &rarr;';

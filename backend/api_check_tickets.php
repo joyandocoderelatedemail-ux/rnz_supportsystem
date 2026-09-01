@@ -2,6 +2,7 @@
 // API Endpoint for Checking New Support Tickets in Real-Time (PHP 5.6 Compatible)
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/presence_init.php';
 
 header('Content-Type: application/json');
 
@@ -9,6 +10,10 @@ if (!is_tech_logged_in()) {
     echo json_encode(array('error' => 'Unauthorized'));
     exit;
 }
+
+// This poll runs on every backend page, so it keeps whoever left a tab open
+// listed as online instead of idling out between page loads.
+touch_user_presence(presence_current_page_label());
 
 $pdo = get_db_connection();
 

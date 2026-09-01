@@ -81,7 +81,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ':c_at'  => $now
             ));
 
-            header("Location: ticket_detail.php?id=" . $new_ticket_id . "&submitted=1");
+            // Back to the list with the new ticket's chat already open, so the
+            // client lands in the conversation instead of a separate page
+            header("Location: tickets.php?open=" . $new_ticket_id . "&submitted=1");
             exit;
 
         } catch (PDOException $e) {
@@ -813,7 +815,8 @@ function sendTicketChatReply() {
     var body = new FormData();
     body.append('action', 'post_reply');
     body.append('id', chatTicketId);
-    body.append('reply_message', msg);
+    // The client API reads "message" - the backend one uses "reply_message"
+    body.append('message', msg);
     if (hasPhotos) {
         for (var i = 0; i < chatPhotoInput.files.length; i++) {
             body.append('attachments[]', chatPhotoInput.files[i]);
@@ -905,6 +908,28 @@ document.addEventListener('visibilitychange', function() {
         chatPollTimer = setInterval(function() { loadTicketChatThread(false); }, 3000);
     }
 });
+
+// ?open=<id> lands here straight after submitting a ticket - open that chat so
+// the client carries on in the conversation instead of hunting for the row.
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    var openId = params.get('open');
+    if (!openId) return;
+
+    var row = document.querySelector('.ticket-row[data-ticket-id="' + parseInt(openId, 10) + '"]');
+    if (!row) return;
+
+    openTicketChat(row, null);
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    // Drop the parameter so a refresh does not keep reopening the chat
+    if (window.history && window.history.replaceState) {
+        params['delete']('open');
+        params['delete']('submitted');
+        var rest = params.toString();
+        window.history.replaceState({}, '', window.location.pathname + (rest ? '?' + rest : ''));
+    }
+})();
 </script>
 
 

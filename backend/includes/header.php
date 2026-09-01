@@ -6,6 +6,11 @@ if (!isset($page_title)) {
 $tech = get_logged_tech();
 $tech_name = $tech ? $tech['fullname'] : 'Support Tech';
 
+// Mark this staff member as active so the dashboard Online Staff panel
+// reflects everyone currently working inside the backend.
+require_once __DIR__ . '/presence_init.php';
+touch_user_presence();
+
 $pdo = get_db_connection();
 $stmt_pending_t = $pdo->query("SELECT COUNT(*) FROM client_support_tickets WHERE status = 'Pending'");
 $pending_tickets_cnt = intval($stmt_pending_t->fetchColumn());
@@ -54,7 +59,9 @@ foreach ($header_pending_list as $pt) {
         'combined_id' => $t_comb_id,
         'title' => 'Ticket: ' . $pt['tradename'],
         'subtitle' => $pt['subject'] . ' (' . $pt['priority'] . ' Priority)',
-        'link' => 'ticket_detail.php?id=' . $pt['id'],
+        // Notifications land on the tickets list with the chat pop-up already
+        // open, rather than on the full ticket console.
+        'link' => 'tickets.php?open_ticket=' . intval($pt['id']),
         'number' => $pt['ticket_number'],
         'date' => $pt['created_at'],
         'badge' => $pt['priority']
