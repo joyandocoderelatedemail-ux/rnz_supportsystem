@@ -1364,24 +1364,19 @@ $page_title = 'Hardware Inventory Hub';
         <form method="POST" action="" class="space-y-4">
             <input type="hidden" name="action" value="pull_out_item">
 
-            <!-- 1. Pull Out Direction Toggle -->
+            <!-- 1. Pull Out Direction
+                 Releasing stock to a client is done from the client account page
+                 (Software & Hardware > Add Hardware), which deducts inventory and
+                 raises the work order in one step. This modal only brings units back. -->
+            <input type="hidden" name="pullout_direction" value="from_client">
             <div class="space-y-1.5">
-                <label class="text-xs font-bold text-slate-700">Pull-Out Type / Movement Direction <span class="text-[#EB3E0B]">*</span></label>
-                <div class="grid grid-cols-2 gap-2.5">
-                    <label class="border-2 border-slate-200 rounded-2xl p-3 flex items-center space-x-3 cursor-pointer has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50/50 has-[:checked]:text-amber-950 transition-all">
-                        <input type="radio" name="pullout_direction" value="from_client" checked onchange="togglePulloutDirection(this.value)" class="text-amber-600 focus:ring-0">
-                        <div>
-                            <span class="block text-xs font-bold text-slate-900">🔄 From Client to Office</span>
-                            <span class="block text-[10px] text-slate-500">Defective, repair, warranty pull-out</span>
-                        </div>
-                    </label>
-                    <label class="border-2 border-slate-200 rounded-2xl p-3 flex items-center space-x-3 cursor-pointer has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50/50 has-[:checked]:text-emerald-950 transition-all">
-                        <input type="radio" name="pullout_direction" value="to_client" onchange="togglePulloutDirection(this.value)" class="text-emerald-600 focus:ring-0">
-                        <div>
-                            <span class="block text-xs font-bold text-slate-900">📦 Deploy to Client</span>
-                            <span class="block text-[10px] text-slate-500">Release & deduct from warehouse</span>
-                        </div>
-                    </label>
+                <label class="text-xs font-bold text-slate-700">Pull-Out Type / Movement Direction</label>
+                <div class="border-2 border-amber-500 bg-amber-50/50 rounded-2xl p-3 flex items-center space-x-3">
+                    <span class="text-lg">🔄</span>
+                    <div>
+                        <span class="block text-xs font-bold text-slate-900">From Client to Office</span>
+                        <span class="block text-[10px] text-slate-500">Defective, repair, warranty pull-out</span>
+                    </div>
                 </div>
             </div>
 

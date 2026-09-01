@@ -192,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 // Hardware is picked from the support_inventory_items catalogue
                 $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
                 if ($item_id > 0) {
-                    $stmt_item = $pdo->prepare("SELECT id, item_code, name FROM support_inventory_items WHERE id = :id LIMIT 1");
+                    $stmt_item = $pdo->prepare("SELECT id, item_code, name, quantity, qty_good FROM support_inventory_items WHERE id = :id LIMIT 1");
                     $stmt_item->execute(array(':id' => $item_id));
                     $inv_item = $stmt_item->fetch();
                     if ($inv_item) {
@@ -206,19 +206,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
             }
 
+            // Handing hardware to a client takes it out of the warehouse, so the
+            // stock has to be there before anything is written.
+            $good_on_hand = ($asset_type === 'Hardware' && $item_id !== null && isset($inv_item['qty_good'])) ? intval($inv_item['qty_good']) : 0;
+
             if (empty($accountnum)) {
                 $update_error = "No client account selected.";
             } elseif ($asset_type === 'Software' && $asset_name === '') {
                 $update_error = "Please enter the software name.";
             } elseif ($asset_type === 'Hardware' && $item_id === null) {
                 $update_error = "Please choose a hardware item from the inventory list.";
+            } elseif ($asset_type === 'Hardware' && $quantity > $good_on_hand) {
+                $update_error = "Cannot release " . $quantity . " unit(s) of \"" . $asset_name . "\": only " . $good_on_hand .
+                    " in Good / Functional stock. Restock or re-classify the units in Inventory first.";
             } else {
                 try {
                     $now = date('Y-m-d H:i:s');
                     $tech_now = get_logged_tech();
                     $recorded_by = ($tech_now && isset($tech_now['fullname'])) ? $tech_now['fullname'] : 'Support Tech';
 
-                    $stmt_asset = $pdo->prepare("INSERT INTO client_assets 
+                    // Recording hardware, deducting the stock and raising the work
+                    // order belong together - none of them should land on its own.
+                    $pdo->beginTransaction();
+
+                    $stmt_asset = $pdo->prepare("INSERT INTO client_assets
                         (accountnum, asset_type, item_id, item_code, name, serial_number, quantity, 
                          unit_price, total_amount, notes, warranty_status, warranty_start, warranty_expiry, warranty_notes, 
                          recorded_by, created_at, updated_at) 
@@ -248,7 +259,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     ));
 
                     $update_msg = "$asset_type \"$asset_name\" recorded for Account #$accountnum.";
+
+                    // Hardware handed over leaves the warehouse and gets billed:
+                    // deduct the good stock, log the movement, and raise an unpaid
+                    // work order the tech only has to mark Paid once settled.
+                    if ($asset_type === 'Hardware' && $item_id !== null) {
+                        $prev_qty = intval($inv_item['quantity']);
+
+                        $stmt_deduct = $pdo->prepare("UPDATE support_inventory_items
+                            SET qty_good = qty_good - :amt, updated_at = :now
+                            WHERE id = :id");
+                        $stmt_deduct->execute(array(':amt' => $quantity, ':now' => $now, ':id' => $item_id));
+                        $new_qty = resync_item_total_quantity($pdo, $item_id);
+
+                        // Client details for the work order and the movement log
+                        $wo_clientname = '';
+                        $wo_address = '';
+                        $stmt_cli = $pdo->prepare("SELECT tradename, clientname, address FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+                        $stmt_cli->execute(array(':acct' => $accountnum));
+                        $cli_row = $stmt_cli->fetch();
+                        if ($cli_row) {
+                            $wo_clientname = !empty($cli_row['tradename']) ? $cli_row['tradename'] : $cli_row['clientname'];
+                            $wo_address = isset($cli_row['address']) ? $cli_row['address'] : '';
+                        }
+                        if ($wo_clientname === '') {
+                            $wo_clientname = 'Account #' . $accountnum;
+                        }
+
+                        $log_notes = 'Released to client via Software & Hardware record';
+                        if ($serial_number !== '') {
+                            $log_notes .= ' | S/N: ' . $serial_number;
+                        }
+                        if ($notes !== '') {
+                            $log_notes .= ' | Notes: ' . $notes;
+                        }
+
+                        $stmt_log = $pdo->prepare("INSERT INTO support_inventory_logs
+                            (item_id, tech_name, change_type, quantity_change, previous_quantity, new_quantity, accountnum, client_name, notes, created_at)
+                            VALUES (:item_id, :tech, 'Deploy to Client', :change, :prev, :new, :acct, :client, :notes, :now)");
+                        $stmt_log->execute(array(
+                            ':item_id' => $item_id,
+                            ':tech' => $recorded_by,
+                            ':change' => -$quantity,
+                            ':prev' => $prev_qty,
+                            ':new' => $new_qty,
+                            ':acct' => $accountnum,
+                            ':client' => $wo_clientname,
+                            ':notes' => $log_notes,
+                            ':now' => $now
+                        ));
+
+                        $wo_nature = $quantity . 'x ' . $asset_name;
+                        // Some items carry their name as the code; no point printing it twice
+                        if (!empty($item_code) && strcasecmp(trim($item_code), trim($asset_name)) !== 0) {
+                            $wo_nature .= ' (' . $item_code . ')';
+                        }
+                        if ($serial_number !== '') {
+                            $wo_nature .= ' - S/N: ' . $serial_number;
+                        }
+
+                        $stmt_wo_new = $pdo->prepare("INSERT INTO bucket_workorder
+                            (accountnum, xdate, clientname, address, natureofwork, amount, status, ornum)
+                            VALUES (:acct, :xdate, :cname, :addr, :nature, :amount, 'unpaid', '')");
+                        $stmt_wo_new->execute(array(
+                            ':acct' => $accountnum,
+                            ':xdate' => date('Y-m-d'),
+                            ':cname' => $wo_clientname,
+                            ':addr' => $wo_address,
+                            ':nature' => $wo_nature,
+                            ':amount' => ($unit_price * $quantity)
+                        ));
+                        $new_wo_id = intval($pdo->lastInsertId());
+
+                        $update_msg = "Hardware \"$asset_name\" recorded for Account #$accountnum. " .
+                            $quantity . " unit(s) deducted from inventory (" . $new_qty . " left in stock) and Work Order #WO-" . $new_wo_id .
+                            " raised as Unpaid - open the Work Orders tab to mark it Paid once settled.";
+                    }
+
+                    $pdo->commit();
                 } catch (PDOException $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
                     $update_error = "Error saving item: " . $e->getMessage();
                 }
             }
@@ -894,7 +986,8 @@ $page_title = 'Manage Accounts';
                 <?php if ($active_tab === 'orders' || $active_tab === 'workorders'): ?>
                     <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
                         
-                        <!-- Top Summary Statistics -->
+                        <!-- Top Summary Statistics (revenue figures: Super Admin / Master only) -->
+                        <?php if ($can_view_spend): ?>
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                                 <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Work Orders</span>
@@ -917,6 +1010,7 @@ $page_title = 'Manage Accounts';
                                 <span class="text-[11px] text-amber-800 font-bold">Unpaid / In Progress</span>
                             </div>
                         </div>
+                        <?php endif; ?>
 
                         <!-- Filter & Search Toolbar -->
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
@@ -956,7 +1050,9 @@ $page_title = 'Manage Accounts';
                                         <th class="py-3 px-4">Client Business</th>
                                         <th class="py-3 px-4">Scope of Work</th>
                                         <th class="py-3 px-4 text-center">Status</th>
-                                        <th class="py-3 px-4 text-right">Amount (PHP)</th>
+                                        <?php if ($can_view_spend): ?>
+                                            <th class="py-3 px-4 text-right">Amount (PHP)</th>
+                                        <?php endif; ?>
                                         <th class="py-3 px-4 text-center">Actions</th>
                                     </tr>
                                 </thead>
@@ -994,9 +1090,11 @@ $page_title = 'Manage Accounts';
                                                         </span>
                                                     <?php endif; ?>
                                                 </td>
-                                                <td class="py-3 px-4 text-right font-mono font-extrabold text-slate-900 text-sm">
-                                                    &#8369;<?php echo number_format(floatval($wo['amount']), 2); ?>
-                                                </td>
+                                                <?php if ($can_view_spend): ?>
+                                                    <td class="py-3 px-4 text-right font-mono font-extrabold text-slate-900 text-sm">
+                                                        &#8369;<?php echo number_format(floatval($wo['amount']), 2); ?>
+                                                    </td>
+                                                <?php endif; ?>
                                                 <td class="py-3 px-4 text-center">
                                                     <div class="flex items-center justify-center space-x-1.5">
                                                         <a href="accounts.php?q=<?php echo urlencode($wo['accountnum']); ?>&tab=orders" class="bg-slate-100 hover:bg-[#EB3E0B] text-slate-700 hover:text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all" title="Open in Client Account">
@@ -1012,7 +1110,7 @@ $page_title = 'Manage Accounts';
                                         <?php endforeach; ?>
                                     <?php else: ?>
                                         <tr>
-                                            <td colspan="7" class="py-12 text-center text-slate-400">No work orders found matching your search.</td>
+                                            <td colspan="<?php echo $can_view_spend ? 7 : 6; ?>" class="py-12 text-center text-slate-400">No work orders found matching your search.</td>
                                         </tr>
                                     <?php endif; ?>
                                 </tbody>
@@ -1647,7 +1745,9 @@ $page_title = 'Manage Accounts';
                                         <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                                             <th class="py-3 px-4">WO # / Date</th>
                                             <th class="py-3 px-4">Nature of Work / Particulars</th>
-                                            <th class="py-3 px-4">Amount</th>
+                                            <?php if ($can_view_spend): ?>
+                                                <th class="py-3 px-4">Amount</th>
+                                            <?php endif; ?>
                                             <th class="py-3 px-4">OR #</th>
                                             <th class="py-3 px-4">Status</th>
                                             <th class="py-3 px-4 text-right">Actions</th>
@@ -1656,7 +1756,7 @@ $page_title = 'Manage Accounts';
                                     <tbody class="divide-y divide-slate-100 font-medium">
                                         <?php if (empty($work_orders)): ?>
                                             <tr>
-                                                <td colspan="6" class="py-8 text-center text-slate-400">No work orders recorded for this account.</td>
+                                                <td colspan="<?php echo $can_view_spend ? 6 : 5; ?>" class="py-8 text-center text-slate-400">No work orders recorded for this account.</td>
                                             </tr>
                                         <?php else: ?>
                                             <?php foreach ($work_orders as $wo): 
@@ -1676,7 +1776,9 @@ $page_title = 'Manage Accounts';
                                                             </div>
                                                         <?php endif; ?>
                                                     </td>
-                                                    <td class="py-3 px-4 font-mono font-bold text-slate-900 text-sm">₱<?php echo number_format(floatval($wo['amount']), 2); ?></td>
+                                                    <?php if ($can_view_spend): ?>
+                                                        <td class="py-3 px-4 font-mono font-bold text-slate-900 text-sm">₱<?php echo number_format(floatval($wo['amount']), 2); ?></td>
+                                                    <?php endif; ?>
                                                     <td class="py-3 px-4 font-mono text-slate-600"><?php echo !empty($wo['ornum']) ? 'OR #' . sanitize($wo['ornum']) : 'N/A'; ?></td>
                                                     <td class="py-3 px-4">
                                                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border <?php echo $st_badge; ?>">
@@ -2139,7 +2241,7 @@ $page_title = 'Manage Accounts';
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
-                                    <p class="text-[10px] text-slate-400 mt-1">Stock counts are shown for reference only. Recording here does not deduct inventory &mdash; use Pull Out Item for that.</p>
+                                    <p class="text-[10px] text-slate-500 mt-1">Saving deducts the quantity from Good / Functional stock and raises an <strong class="text-amber-700">Unpaid</strong> work order for this client &mdash; mark it Paid in the Work Orders tab once settled.</p>
                                 </div>
 
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
