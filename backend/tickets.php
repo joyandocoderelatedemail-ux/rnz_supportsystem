@@ -135,10 +135,25 @@ if ($msg === 'ticket_deleted') {
 $status_filter = isset($_GET['status']) ? trim($_GET['status']) : '';
 $search = isset($_GET['q']) ? trim($_GET['q']) : '';
 
+// "My Tickets": everything assigned to this technician plus everything they
+// picked up themselves by moving it to In Progress from the chat.
+$mine_only = (isset($_GET['mine']) && $_GET['mine'] === '1');
+$me = get_logged_tech();
+$my_name = ($me && isset($me['fullname'])) ? strtolower(trim($me['fullname'])) : '';
+$mine_sql = "(LOWER(TRIM(IFNULL(t.assigned_tech, ''))) = :myname OR LOWER(TRIM(IFNULL(t.in_progress_by, ''))) = :myname2)";
+
 $where_clauses = array();
 $params = array();
 
-if (!empty($status_filter)) {
+if ($mine_only && $my_name !== '') {
+    // My Tickets is a work queue, not a status filter: it lists only the
+    // In Progress tickets this technician owns, so the status chips - which
+    // belong to the all-tickets view - are not applied on top of it.
+    $where_clauses[] = $mine_sql;
+    $where_clauses[] = "t.status = 'In Progress'";
+    $params[':myname'] = $my_name;
+    $params[':myname2'] = $my_name;
+} elseif (!empty($status_filter)) {
     $where_clauses[] = "t.status = :status";
     $params[':status'] = $status_filter;
 }
@@ -149,6 +164,37 @@ if (!empty($search)) {
 }
 
 $where_sql = !empty($where_clauses) ? "WHERE " . implode(" AND ", $where_clauses) : "";
+
+// Badge count for the My Tickets chip - my open workload, ignoring the search
+// box so the number does not move around while browsing.
+$my_ticket_count = 0;
+if ($my_name !== '') {
+    $stmt_mine_cnt = $pdo->prepare("SELECT COUNT(*) FROM client_support_tickets t WHERE " . $mine_sql . " AND t.status = 'In Progress'");
+    $stmt_mine_cnt->execute(array(':myname' => $my_name, ':myname2' => $my_name));
+    $my_ticket_count = intval($stmt_mine_cnt->fetchColumn());
+}
+
+/**
+ * URL for one filter chip, carrying the other active filters along.
+ *
+ * @param string $status  status to filter by ('' for all)
+ * @param bool   $mine    limit to the logged-in technician
+ * @param string $search  current search term
+ * @return string
+ */
+function tickets_filter_url($status, $mine, $search) {
+    $p = array();
+    if ($status !== '') {
+        $p['status'] = $status;
+    }
+    if ($mine) {
+        $p['mine'] = '1';
+    }
+    if ($search !== '') {
+        $p['q'] = $search;
+    }
+    return 'tickets.php' . (empty($p) ? '' : '?' . http_build_query($p));
+}
 
 // 10 items per page pagination
 $per_page = 10;
@@ -307,17 +353,29 @@ $page_title = 'Support Tickets Center';
                 
                 <div class="flex flex-wrap items-center gap-2">
                     <div class="flex items-center space-x-1.5 overflow-x-auto pb-1 lg:pb-0">
-                        <a href="tickets.php" class="px-4 py-2 rounded-full text-xs font-bold transition-all <?php echo empty($status_filter) ? 'bg-[#EB3E0B] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                        <a href="<?php echo tickets_filter_url('', false, $search); ?>" class="px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap <?php echo (empty($status_filter) && !$mine_only) ? 'bg-[#EB3E0B] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
                             All Tickets
                         </a>
-                        <a href="tickets.php?status=Pending" class="px-4 py-2 rounded-full text-xs font-bold transition-all <?php echo ($status_filter === 'Pending') ? 'bg-[#EB3E0B] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                        <a href="<?php echo tickets_filter_url('Pending', false, $search); ?>" class="px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap <?php echo ($status_filter === 'Pending' && !$mine_only) ? 'bg-[#EB3E0B] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
                             Pending
                         </a>
-                        <a href="tickets.php?status=In Progress" class="px-4 py-2 rounded-full text-xs font-bold transition-all <?php echo ($status_filter === 'In Progress') ? 'bg-[#EB3E0B] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                        <a href="<?php echo tickets_filter_url('In Progress', false, $search); ?>" class="px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap <?php echo ($status_filter === 'In Progress' && !$mine_only) ? 'bg-[#EB3E0B] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
                             In Progress
                         </a>
-                        <a href="tickets.php?status=Resolved" class="px-4 py-2 rounded-full text-xs font-bold transition-all <?php echo ($status_filter === 'Resolved') ? 'bg-[#EB3E0B] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                        <a href="<?php echo tickets_filter_url('Resolved', false, $search); ?>" class="px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap <?php echo ($status_filter === 'Resolved' && !$mine_only) ? 'bg-[#EB3E0B] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
                             Resolved
+                        </a>
+
+                        <!-- My open workload: In Progress tickets assigned to me,
+                             or that I picked up myself -->
+                        <a href="<?php echo tickets_filter_url('', !$mine_only, $search); ?>"
+                           title="<?php echo $mine_only ? 'Show tickets from the whole team' : 'Only In Progress tickets assigned to you or that you set to In Progress'; ?>"
+                           class="px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ml-1 border <?php echo $mine_only ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'; ?>">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                            <span>My Tickets</span>
+                            <span class="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold <?php echo $mine_only ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'; ?>"><?php echo $my_ticket_count; ?></span>
                         </a>
                     </div>
                     
@@ -327,6 +385,12 @@ $page_title = 'Support Tickets Center';
                 </div>
 
                 <form action="tickets.php" method="GET" class="w-full lg:w-72">
+                    <!-- Searching stays inside whichever view is open -->
+                    <?php if ($mine_only): ?>
+                        <input type="hidden" name="mine" value="1">
+                    <?php elseif (!empty($status_filter)): ?>
+                        <input type="hidden" name="status" value="<?php echo sanitize($status_filter); ?>">
+                    <?php endif; ?>
                     <div class="relative">
                         <input type="text" name="q" value="<?php echo sanitize($search); ?>" placeholder="Search ticket #, client, problem..." class="w-full bg-slate-50 text-slate-800 text-xs pl-9 pr-4 py-2.5 rounded-full border border-slate-200 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
                         <svg class="w-4 h-4 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -354,8 +418,13 @@ $page_title = 'Support Tickets Center';
                             <?php if (empty($tickets)): ?>
                                 <tr>
                                     <td colspan="6" class="py-12 text-center text-slate-400 space-y-2">
-                                        <p class="font-bold text-sm">No support tickets found.</p>
-                                        <p class="text-xs">Adjust your search filter or clear status selection.</p>
+                                        <?php if ($mine_only): ?>
+                                            <p class="font-bold text-sm">You have no tickets in progress.</p>
+                                            <p class="text-xs">A ticket lands here once it is assigned to you, or once you set it to In Progress.</p>
+                                        <?php else: ?>
+                                            <p class="font-bold text-sm">No support tickets found.</p>
+                                            <p class="text-xs">Adjust your search filter or clear status selection.</p>
+                                        <?php endif; ?>
                                     </td>
                                 </tr>
                             <?php else: ?>
