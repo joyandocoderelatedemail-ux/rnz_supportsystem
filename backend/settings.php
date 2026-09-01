@@ -1044,7 +1044,10 @@ $page_title = 'Admin Settings & Page Permissions';
 
 <script>
 var currentLoggedTier = <?php echo intval($my_tier); ?>;
-var pageKeys = ['dashboard', 'tickets', 'accounts', 'inventory', 'maintenance', 'settings'];
+// Straight from the page catalogue - a hand-written copy went stale once and
+// left Orders, Events and Analytics untouched when a user was opened for edit,
+// so they always looked unchecked and were dropped on save.
+var pageKeys = <?php echo json_encode(array_keys($all_pages_catalog)); ?>;
 
 function setAllPages(prefix, checkVal) {
     pageKeys.forEach(function(k) {
