@@ -11,7 +11,7 @@ require_once __DIR__ . '/config.php';
 function init_ticket_chat_tables($force = false) {
     // The chat API is polled every few seconds, so the schema check runs once
     // per session instead of on every request.
-    if (!$force && isset($_SESSION['ticket_chat_schema_ready_v3']) && $_SESSION['ticket_chat_schema_ready_v3']) {
+    if (!$force && isset($_SESSION['ticket_chat_schema_ready_v4']) && $_SESSION['ticket_chat_schema_ready_v4']) {
         return true;
     }
 
@@ -59,6 +59,13 @@ function init_ticket_chat_tables($force = false) {
             $pdo->exec("ALTER TABLE `client_ticket_replies` ADD `edited_at` DATETIME NULL DEFAULT NULL");
         }
 
+        // Stamped when a message is unsent - the row stays so replies quoting it
+        // still line up, but its text and photos are gone
+        $chk_unsent = $pdo->query("SHOW COLUMNS FROM `client_ticket_replies` LIKE 'unsent_at'");
+        if ($chk_unsent && $chk_unsent->rowCount() == 0) {
+            $pdo->exec("ALTER TABLE `client_ticket_replies` ADD `unsent_at` DATETIME NULL DEFAULT NULL");
+        }
+
         // Who picked the ticket up - the technician who moved it to In Progress,
         // whether by changing the status or by being first to reply
         $chk_wip = $pdo->query("SHOW COLUMNS FROM `client_support_tickets` LIKE 'in_progress_by'");
@@ -77,7 +84,7 @@ function init_ticket_chat_tables($force = false) {
             PRIMARY KEY (`ticket_id`, `actor_type`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8;");
 
-        $_SESSION['ticket_chat_schema_ready_v3'] = true;
+        $_SESSION['ticket_chat_schema_ready_v4'] = true;
         return true;
     } catch (PDOException $e) {
         error_log("Ticket chat init error: " . $e->getMessage());
@@ -157,7 +164,7 @@ function get_reply_parent_info($pdo, $reply_to_id, $ticket_id) {
         return null;
     }
     try {
-        $stmt = $pdo->prepare("SELECT id, sender_type, sender_name, message, attachment_path
+        $stmt = $pdo->prepare("SELECT id, sender_type, sender_name, message, attachment_path, unsent_at
             FROM client_ticket_replies WHERE id = :rid AND ticket_id = :tid LIMIT 1");
         $stmt->execute(array(':rid' => $reply_to_id, ':tid' => intval($ticket_id)));
         $row = $stmt->fetch();
@@ -172,7 +179,9 @@ function get_reply_parent_info($pdo, $reply_to_id, $ticket_id) {
         'sender_type' => $row['sender_type'],
         'sender_name' => $row['sender_name'],
         'is_tech' => ($row['sender_type'] === 'support'),
-        'snippet' => build_reply_snippet($row['message'], $row['attachment_path'])
+        'snippet' => !empty($row['unsent_at'])
+            ? 'Message unsent'
+            : build_reply_snippet($row['message'], $row['attachment_path'])
     );
 }
 

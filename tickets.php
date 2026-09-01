@@ -605,7 +605,9 @@ function buildTicketChatBubble(reply) {
         : 'max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-bl-md bg-white border border-[#FFE8D5] text-left';
 
     var body = '';
-    if (reply.diagnostic_log) {
+    if (reply.unsent) {
+        body = '<p class="chat-unsent text-[11.5px] italic text-[#B07A6A]">This message was unsent.</p>';
+    } else if (reply.diagnostic_log) {
         body = '<p class="text-[11px] font-extrabold text-[#430D07]">Hardware diagnostic report</p>' +
             '<details class="mt-1"><summary class="cursor-pointer text-[10px] font-bold text-[#EB3E0B] hover:underline">View Diagnostic Log</summary>' +
             '<pre class="mt-1.5 p-2 rounded-xl bg-[#FFF9F5] border border-[#FFE8D5] text-[#430D07] font-mono text-[10px] whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">' + escapeChatHtml(reply.diagnostic_log) + '</pre></details>';
@@ -613,7 +615,7 @@ function buildTicketChatBubble(reply) {
         body = '<p class="chat-text text-[11.5px] text-[#430D07] leading-relaxed font-medium whitespace-pre-wrap break-words">' + escapeChatHtml(reply.message) + '</p>';
     }
 
-    var atts = reply.attachments || [];
+    var atts = reply.unsent ? [] : (reply.attachments || []);
     if (atts.length > 0) {
         body += '<div class="mt-2 flex flex-wrap gap-1.5">';
         for (var i = 0; i < atts.length; i++) {
@@ -644,6 +646,20 @@ function applyTicketChatEditMap(map) {
         if (!map.hasOwnProperty(id)) continue;
         var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(id, 10) + '"]');
         if (!msg) continue;
+
+        // Support took the message back - replace it with the plain notice
+        if (map[id].unsent) {
+            if (!msg.querySelector('.chat-unsent')) {
+                var bubble = msg.querySelector('div');
+                if (bubble) {
+                    bubble.innerHTML = '<p class="chat-unsent text-[11.5px] italic text-[#B07A6A]">This message was unsent.</p>';
+                }
+                var utag = msg.querySelector('.chat-edited-tag');
+                if (utag) utag.classList.add('hidden');
+            }
+            continue;
+        }
+
         var textEl = msg.querySelector('.chat-text');
         if (textEl && textEl.textContent !== map[id].message) {
             textEl.textContent = map[id].message;
