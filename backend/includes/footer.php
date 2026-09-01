@@ -228,6 +228,11 @@ $stmt_max_m = $pdo_footer->query("SELECT MAX(id) FROM client_maintenance_request
 $init_max_maint_id = intval($stmt_max_m->fetchColumn());
 
 $init_combined_id = ($init_max_ticket_id * 100000) + $init_max_maint_id;
+
+// Newest client message at page load, so the poller only sounds for messages
+// that arrive from here on rather than for the whole backlog.
+$stmt_max_r = $pdo_footer->query("SELECT MAX(id) FROM client_ticket_replies WHERE sender_type = 'client'");
+$init_max_client_reply_id = intval($stmt_max_r->fetchColumn());
 ?>
 <script>
 function getClickedNotifications() {
@@ -329,6 +334,7 @@ function updateUnreadBadgeCount() {
 var serverMaxId = <?php echo $init_combined_id; ?>;
 var storedMaxClickedId = parseInt(localStorage.getItem('rnz_last_clicked_notif_id') || '0', 10);
 var lastKnownTicketId = Math.max(serverMaxId, storedMaxClickedId);
+var lastKnownClientReplyId = <?php echo $init_max_client_reply_id; ?>;
 
 document.addEventListener('DOMContentLoaded', function() {
     updateUnreadBadgeCount();
@@ -639,6 +645,15 @@ function pollForNewTickets() {
                         updateUnreadBadgeCount();
                     }
                 }
+
+                // A client answering an existing ticket deserves the same
+                // attention as a brand new one.
+                if (res.success && res.latest_client_reply_id > lastKnownClientReplyId) {
+                    lastKnownClientReplyId = res.latest_client_reply_id;
+                    if (res.latest_client_reply) {
+                        handleNewClientReply(res.latest_client_reply);
+                    }
+                }
             } catch (e) {
                 console.error(e);
             }
@@ -680,6 +695,79 @@ function showNewTicketToastPopup(ticket, pendingCount, latestType, latestId, not
     toast.innerHTML = html;
     document.body.appendChild(toast);
     
+    setTimeout(function() {
+        if (toast && toast.parentElement) {
+            toast.remove();
+        }
+    }, 12000);
+}
+
+// =========================================================================
+// CLIENT REPLIED TO AN EXISTING TICKET
+// Same alarm as a new ticket, plus the red unread badge on the listed row so
+// the table agrees with what was just heard.
+// =========================================================================
+function handleNewClientReply(reply) {
+    var ticketId = parseInt(reply.ticket_id, 10) || 0;
+    if (!ticketId) return;
+
+    // The chat pop-up sounds for the thread it has open, so skip that one here
+    var chatIsOpenForThis = (typeof chatTicketId !== 'undefined' && chatTicketId === ticketId &&
+        typeof chatBox !== 'undefined' && chatBox && !chatBox.classList.contains('hidden'));
+    if (chatIsOpenForThis) return;
+
+    playNewTicketChime();
+    bumpTicketUnreadBadge(ticketId);
+    showClientReplyToast(reply);
+}
+
+// Adds or increments the red badge on a ticket row that is on this page
+function bumpTicketUnreadBadge(ticketId) {
+    var row = document.querySelector('.ticket-row[data-ticket-id="' + ticketId + '"]');
+    if (!row) return;
+
+    var badge = row.querySelector('[data-cell="unread"]');
+    var count = badge ? (parseInt(badge.getAttribute('data-unread-count'), 10) || 0) + 1 : 1;
+
+    if (!badge) {
+        var numCell = row.querySelector('[data-cell="num"] div') || row.querySelector('[data-cell="num"]');
+        if (!numCell) return;
+        badge = document.createElement('span');
+        badge.setAttribute('data-cell', 'unread');
+        badge.className = 'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-extrabold shadow-sm shadow-rose-600/30 shrink-0';
+        numCell.appendChild(badge);
+    }
+
+    badge.setAttribute('data-unread-count', count);
+    badge.setAttribute('title', count + ' unread client message' + (count > 1 ? 's' : ''));
+    badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>' + count + ' new';
+}
+
+function showClientReplyToast(reply) {
+    var toast = document.createElement('div');
+    toast.className = 'fixed bottom-6 right-6 z-50 bg-slate-900 text-white rounded-3xl p-5 shadow-2xl border border-[#FA5915] max-w-sm w-full space-y-3';
+
+    var link = 'tickets.php?open_ticket=' + parseInt(reply.ticket_id, 10);
+    var html = '';
+    html += '<div class="flex items-start justify-between gap-3 min-w-0">';
+    html += '  <div class="flex items-center space-x-3 min-w-0 flex-1 overflow-hidden">';
+    html += '    <div class="w-10 h-10 rounded-2xl bg-[#EB3E0B] text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-md">💬</div>';
+    html += '    <div class="min-w-0 flex-1 overflow-hidden">';
+    html += '      <span class="text-[10px] font-extrabold uppercase tracking-wider text-[#FEAA73] block truncate">NEW CLIENT MESSAGE</span>';
+    html += '      <h4 class="text-sm font-extrabold text-white truncate max-w-full" title="' + escapeHtml(reply.tradename) + '">' + escapeHtml(reply.tradename) + '</h4>';
+    html += '    </div>';
+    html += '  </div>';
+    html += '  <button onclick="this.parentElement.parentElement.remove()" class="text-slate-400 hover:text-white p-1 text-lg font-bold shrink-0">&times;</button>';
+    html += '</div>';
+    html += '<p class="text-xs text-slate-300 line-clamp-2 bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 font-medium">' + escapeHtml(reply.message) + '</p>';
+    html += '<div class="flex items-center justify-between pt-1">';
+    html += '  <span class="text-[11px] font-mono text-slate-400">' + escapeHtml(reply.ticket_number) + '</span>';
+    html += '  <a href="' + link + '" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-4 py-1.5 rounded-full transition-all shadow-sm">Open Chat &rarr;</a>';
+    html += '</div>';
+
+    toast.innerHTML = html;
+    document.body.appendChild(toast);
+
     setTimeout(function() {
         if (toast && toast.parentElement) {
             toast.remove();

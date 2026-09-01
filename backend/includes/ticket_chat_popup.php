@@ -703,13 +703,25 @@ function loadTicketChatThread(isFirstLoad) {
                 }
             }
 
+            var clientReplyArrived = false;
+
             if (data.replies && data.replies.length) {
                 for (var i = 0; i < data.replies.length; i++) {
                     var r = data.replies[i];
                     if (chatThread.querySelector('.chat-msg[data-reply-id="' + r.id + '"]')) continue;
                     chatThread.appendChild(buildTicketChatBubble(r));
                     if (r.id > chatLastReplyId) chatLastReplyId = r.id;
+                    if (!isFirstLoad && !r.is_tech) {
+                        clientReplyArrived = true;
+                    }
                 }
+            }
+
+            // A message landing in the open thread sounds the same alarm as one
+            // arriving on any other ticket. The footer poller skips this ticket
+            // while the chat is open, so it only ever sounds once.
+            if (clientReplyArrived && typeof playNewTicketChime === 'function') {
+                playNewTicketChime();
             }
 
             applyTicketChatReactionMap(data.reactions);

@@ -386,7 +386,7 @@ $page_title = 'Support Tickets Center';
                                                 <span><?php echo sanitize($t['ticket_number']); ?></span>
                                                 <?php $t_unread = isset($unread_counts[intval($t['id'])]) ? $unread_counts[intval($t['id'])] : 0; ?>
                                                 <?php if ($t_unread > 0): ?>
-                                                    <span data-cell="unread" title="<?php echo $t_unread; ?> unread client message<?php echo ($t_unread > 1) ? 's' : ''; ?>"
+                                                    <span data-cell="unread" data-unread-count="<?php echo $t_unread; ?>" title="<?php echo $t_unread; ?> unread client message<?php echo ($t_unread > 1) ? 's' : ''; ?>"
                                                           class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-extrabold shadow-sm shadow-rose-600/30 shrink-0">
                                                         <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
                                                         <?php echo $t_unread; ?> new

@@ -69,12 +69,45 @@ try {
         $latest_item = $latest_ticket_item;
     }
 
+    // Newest message a client has written on any ticket, so the poller can
+    // sound the alarm for a reply the same way it does for a new ticket.
+    $latest_reply = null;
+    $stmt_reply = $pdo->query("SELECT r.id, r.ticket_id, r.sender_name, r.message, r.attachment_path, r.created_at,
+            t.ticket_number, t.subject, t.tradename
+        FROM client_ticket_replies r
+        INNER JOIN client_support_tickets t ON t.id = r.ticket_id
+        WHERE r.sender_type = 'client'
+        ORDER BY r.id DESC
+        LIMIT 1");
+    $reply_row = $stmt_reply ? $stmt_reply->fetch() : null;
+
+    if ($reply_row) {
+        $snippet = trim($reply_row['message']);
+        if ($snippet === '' && !empty($reply_row['attachment_path'])) {
+            $snippet = 'Sent a photo attachment.';
+        }
+        if (strlen($snippet) > 120) {
+            $snippet = substr($snippet, 0, 117) . '...';
+        }
+        $latest_reply = array(
+            'id' => intval($reply_row['id']),
+            'ticket_id' => intval($reply_row['ticket_id']),
+            'ticket_number' => $reply_row['ticket_number'],
+            'tradename' => !empty($reply_row['tradename']) ? $reply_row['tradename'] : $reply_row['sender_name'],
+            'subject' => $reply_row['subject'],
+            'message' => $snippet,
+            'created_at' => $reply_row['created_at']
+        );
+    }
+
     echo json_encode(array(
         'success' => true,
         'latest_id' => $combined_latest_id,
         'pending_count' => $pending_count,
         'latest_type' => $latest_type,
-        'latest_ticket' => $latest_item
+        'latest_ticket' => $latest_item,
+        'latest_client_reply_id' => $latest_reply ? $latest_reply['id'] : 0,
+        'latest_client_reply' => $latest_reply
     ));
 } catch (PDOException $e) {
     echo json_encode(array('error' => $e->getMessage()));
