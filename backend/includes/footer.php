@@ -480,7 +480,7 @@ function closeNewServiceNoteModal() {
 }
 
 // Notification Alarm - plays the submarine warning tone recording
-var TICKET_ALARM_FILE = 'ElevenLabs_Loud_warning_tone_in_a_submarine_for_a_critical_system_malfunction.mp3';
+var TICKET_ALARM_FILE = 'ehh.mp3';
 var TICKET_ALARM_VOLUME = 0.85;
 var TICKET_ALARM_MAX_SECONDS = 4;    // the clip runs ~10s; 0 plays all of it
 var TICKET_ALARM_FADE_SECONDS = 0.5;
