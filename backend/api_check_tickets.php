@@ -69,14 +69,19 @@ try {
         $latest_item = $latest_ticket_item;
     }
 
-    // Newest message a client has written on any ticket, so the poller can
-    // sound the alarm for a reply the same way it does for a new ticket.
+    // Newest FOLLOW-UP message a client has written on any ticket, so the
+    // poller can sound the alarm for a reply the same way it does for a new
+    // ticket. A ticket's opening message is also stored as a client reply
+    // row - excluding it here stops a brand new ticket from firing both the
+    // "new ticket" toast and a second "new client message" toast for the
+    // exact same event.
     $latest_reply = null;
     $stmt_reply = $pdo->query("SELECT r.id, r.ticket_id, r.sender_name, r.message, r.attachment_path, r.created_at,
             t.ticket_number, t.subject, t.tradename
         FROM client_ticket_replies r
         INNER JOIN client_support_tickets t ON t.id = r.ticket_id
         WHERE r.sender_type = 'client'
+          AND r.id <> (SELECT MIN(id) FROM client_ticket_replies WHERE ticket_id = r.ticket_id)
         ORDER BY r.id DESC
         LIMIT 1");
     $reply_row = $stmt_reply ? $stmt_reply->fetch() : null;

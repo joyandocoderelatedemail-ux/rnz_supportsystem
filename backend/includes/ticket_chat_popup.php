@@ -4,6 +4,10 @@
 // Include this at the bottom of any backend page that renders ticket rows with
 // class="ticket-row" plus the data-ticket-* attributes. The tickets center and
 // the dashboard queue both use it, so a ticket behaves the same in both places.
+//
+// Up to CHAT_MAX_OPEN conversations can be open at once, each in its own box
+// docked at the lower right - clicking a new ticket row no longer replaces
+// whatever is already open, so several threads can be worked side by side.
 if (!isset($my_tier)) {
     $my_tier = get_logged_tech_access_tier();
 }
@@ -14,146 +18,24 @@ if (!isset($chat_autoload_ticket)) {
 }
 ?>
 <!-- ========================================================================= -->
-<!-- TICKET CHAT POP-UP (opens at the lower right when a ticket row is clicked) -->
+<!-- TICKET CHAT DOCK - individual chat boxes are created here by JS, one per  -->
+<!-- open ticket, so several conversations can sit side by side at once       -->
 <!-- ========================================================================= -->
-<div id="ticketChatBox" class="hidden fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] sm:w-[390px] bg-white rounded-3xl border border-slate-200 shadow-2xl shadow-slate-900/20 overflow-hidden flex-col">
-
-    <!-- Header -->
-    <div class="shrink-0 bg-gradient-to-r from-[#EB3E0B] to-[#FA5915] text-white px-4 py-3 flex items-center gap-3">
-        <button type="button" onclick="toggleTicketChatMinimize()" class="min-w-0 flex-1 text-left" title="Click to minimize / expand">
-            <div class="flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0"></span>
-                <span id="ticketChatNumber" class="font-mono font-bold text-xs truncate"></span>
-            </div>
-            <div id="ticketChatClient" class="text-[11px] font-bold truncate opacity-95"></div>
-            <div id="ticketChatSubject" class="text-[10px] truncate opacity-80"></div>
-        </button>
-        <div class="flex items-center gap-1 shrink-0">
-            <span id="ticketChatStatus" class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/20 border border-white/30"></span>
-            <a id="ticketChatFullLink" href="#" title="Open full ticket console" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-            </a>
-            <button type="button" onclick="toggleTicketChatMinimize()" title="Minimize" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
-                <svg id="ticketChatMinIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 13H5"/></svg>
-            </button>
-            <button type="button" onclick="closeTicketChat()" title="Close chat" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-        </div>
-    </div>
-
-    <!-- Collapsible body: status bar + thread + composer -->
-    <div id="ticketChatBody" class="flex flex-col min-h-0">
-
-        <!-- Ticket status (changing it here also re-opens or closes the chat) -->
-        <div class="shrink-0 px-3.5 py-2 bg-white border-b border-slate-200 space-y-1.5">
-            <div class="flex items-center gap-2">
-                <label for="ticketChatStatusSelect" class="text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0">Status</label>
-                <select id="ticketChatStatusSelect" onchange="onTicketChatStatusPicked()" <?php if ($my_tier === 1) echo 'disabled'; ?>
-                        class="flex-1 min-w-0 bg-slate-50 border border-slate-200 text-slate-900 text-[11px] font-bold rounded-xl px-2.5 py-1.5 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed">
-                    <option value="Pending">Pending</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Resolved">Resolved</option>
-                    <option value="Closed">Closed</option>
-                </select>
-                <span id="ticketChatStatusSaved" class="hidden text-[10px] font-bold text-emerald-600 shrink-0">Saved</span>
-            </div>
-
-            <?php if ($my_tier === 1): ?>
-                <p class="text-[9px] font-bold text-slate-400">Level 1 (View Only) accounts cannot change the ticket status.</p>
-            <?php endif; ?>
-
-            <!-- Level 2 accounts confirm the change with their security access code -->
-            <div id="ticketChatCodeRow" class="hidden items-center gap-1.5">
-                <input type="password" id="ticketChatAccessCode" placeholder="Security access code"
-                       class="flex-1 min-w-0 bg-white border border-amber-300 text-slate-900 text-[10px] font-mono tracking-widest text-center rounded-xl px-2 py-1.5 focus:outline-none focus:border-[#EB3E0B] placeholder:tracking-normal placeholder:font-sans">
-                <button type="button" onclick="submitTicketChatStatus()" class="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold shrink-0 transition-colors">Apply</button>
-                <button type="button" onclick="cancelTicketChatStatus()" class="px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold shrink-0 transition-colors">Cancel</button>
-            </div>
-
-            <p id="ticketChatStatusError" class="hidden text-[10px] font-bold text-rose-600 leading-snug"></p>
-
-            <!-- Who moved this ticket to In Progress -->
-            <div id="ticketChatPickedUp" class="hidden items-center gap-1.5 rounded-xl bg-blue-50 border border-blue-200 px-2.5 py-1.5">
-                <svg class="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                </svg>
-                <p class="text-[10px] font-bold text-blue-900 leading-snug min-w-0">
-                    Set to In Progress by <span id="ticketChatPickedUpBy" class="font-extrabold"></span><span id="ticketChatPickedUpAt" class="font-medium text-blue-700"></span>
-                </p>
-            </div>
-        </div>
-
-        <!-- Conversation thread -->
-        <div id="ticketChatThread" class="h-[46vh] sm:h-[320px] overflow-y-auto bg-slate-50 px-3.5 py-4 space-y-3">
-            <div class="text-center text-[11px] text-slate-400 font-bold py-6">Loading conversation...</div>
-        </div>
-
-        <!-- Client typing indicator -->
-        <div id="ticketChatTyping" class="hidden px-4 py-1.5 bg-slate-50 border-t border-slate-100 text-[10px] font-bold text-slate-500 italic">
-            Client is typing...
-        </div>
-
-        <!-- Closed banner (shown instead of the composer on Resolved / Closed tickets) -->
-        <div id="ticketChatClosed" class="hidden shrink-0 px-4 py-3.5 bg-slate-100 border-t border-slate-200 text-center space-y-1">
-            <p class="text-[11px] font-bold text-slate-700">Chat closed - ticket is <span id="ticketChatClosedStatus"></span></p>
-            <p class="text-[10px] text-slate-500 leading-relaxed">Set the status back to Pending or In Progress above to resume the conversation.</p>
-        </div>
-
-        <!-- Composer -->
-        <div id="ticketChatComposer" class="shrink-0 border-t border-slate-200 bg-white p-3 space-y-2">
-            <div id="ticketChatError" class="hidden text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-2.5 py-1.5"></div>
-
-            <!-- Shown while this reply answers one specific message -->
-            <div id="ticketChatReplyBar" class="hidden items-start justify-between gap-2 bg-[#FFF5ED] border border-[#FECDAA] rounded-xl px-2.5 py-1.5">
-                <div class="min-w-0">
-                    <p class="text-[9px] font-bold uppercase tracking-wider text-[#9A2512]">Replying to <span id="ticketChatReplyName"></span></p>
-                    <p id="ticketChatReplySnippet" class="text-[10px] text-slate-600 truncate"></p>
-                </div>
-                <button type="button" onclick="cancelTicketChatReplyTo()" title="Cancel reply (Esc)" class="shrink-0 text-slate-400 hover:text-rose-600 transition-colors">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </div>
-
-            <!-- Attached / pasted photos -->
-            <div id="ticketChatPhotoBar" class="hidden bg-[#FFF5ED] border border-[#FECDAA] rounded-xl px-2.5 py-1.5 space-y-1.5">
-                <div class="flex items-center justify-between gap-2 text-[10px] font-bold">
-                    <span id="ticketChatPhotoCount" class="text-[#9A2512] truncate"></span>
-                    <button type="button" onclick="clearTicketChatPhotos()" class="text-rose-600 hover:underline shrink-0">Remove all</button>
-                </div>
-                <div id="ticketChatPhotoGrid" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto"></div>
-            </div>
-
-            <div class="flex items-end gap-2">
-                <label title="Attach photos" class="w-9 h-9 shrink-0 rounded-full bg-slate-100 hover:bg-[#FFE8D5] text-slate-500 hover:text-[#EB3E0B] flex items-center justify-center cursor-pointer transition-colors">
-                    <input type="file" id="ticketChatPhotoInput" accept=".png, .jpg, .jpeg, image/png, image/jpeg" multiple class="hidden" onchange="onTicketChatPhotosPicked(this)">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
-                </label>
-                <textarea id="ticketChatInput" rows="1" placeholder="Type a reply, or paste a screenshot with Ctrl + V..." class="flex-1 resize-none bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-2xl px-3.5 py-2.5 max-h-28 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
-                <button type="button" id="ticketChatSend" onclick="sendTicketChatReply()" title="Send reply (Enter)" class="w-9 h-9 shrink-0 rounded-full bg-[#EB3E0B] hover:bg-[#C32C0B] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-[#EB3E0B]/25">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
-                </button>
-            </div>
-            <p class="text-[9px] text-slate-400 font-medium px-1">Enter sends - Shift + Enter starts a new line - Ctrl + V pastes screenshots</p>
-        </div>
-    </div>
-</div>
+<div id="ticketChatDock" class="fixed bottom-4 right-4 z-50 flex flex-wrap-reverse justify-end items-end gap-3 max-w-[calc(100vw-2rem)]"></div>
 
 <script>
 // =========================================================================
 // TICKET CHAT POP-UP
-// Clicking a ticket row opens the conversation in a chat box at the lower
-// right, so a thread can be read and answered without leaving the list.
+// Clicking a ticket row opens the conversation in its own box docked at the
+// lower right. Up to CHAT_MAX_OPEN stay open together - opening one more than
+// that closes whichever open conversation has gone longest without being
+// looked at, so the list never grows without bound.
 // =========================================================================
-var chatTicketId = 0;
-var chatLastReplyId = 0;
-var chatPollTimer = null;
-var chatIsSending = false;
-var chatIsMinimized = false;
-var chatClientSeenId = 0;
-var chatLastTypingPing = 0;
-var chatReplyToId = 0;
+var CHAT_MAX_OPEN = 3;
+var chats = {};        // ticketId -> { ticketId, box, lastReplyId, pollTimer, isSending, isMinimized, clientSeenId, lastTypingPing, replyToId }
+var chatOrder = [];    // open ticket ids, least recently used first
 var chatMyTier = <?php echo intval($my_tier); ?>;
+var chatDock = document.getElementById('ticketChatDock');
 
 // The same colour table the rows were rendered with, so a live status change
 // repaints a row exactly as a page reload would
@@ -165,13 +47,6 @@ var TICKET_ROW_PALETTE = <?php echo json_encode(array(
     'Closed'      => ticket_row_palette('Closed')
 )); ?>;
 
-var chatBox = document.getElementById('ticketChatBox');
-var chatThread = document.getElementById('ticketChatThread');
-var chatInput = document.getElementById('ticketChatInput');
-var chatSendBtn = document.getElementById('ticketChatSend');
-var chatPhotoInput = document.getElementById('ticketChatPhotoInput');
-var chatStatusSelect = document.getElementById('ticketChatStatusSelect');
-
 function escapeChatHtml(str) {
     return String(str === null || typeof str === 'undefined' ? '' : str)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -181,6 +56,125 @@ function escapeChatHtml(str) {
 // Safe to drop inside a single-quoted inline handler
 function escapeChatAttr(str) {
     return escapeChatHtml(JSON.stringify(String(str === null || typeof str === 'undefined' ? '' : str)));
+}
+
+// One box's markup, scoped with data-role attributes instead of ids so any
+// number of these can exist on the page at once without id collisions.
+function buildChatBoxHtml(ticketId) {
+    var statusDisabled = (chatMyTier === 1) ? 'disabled' : '';
+    var tier1Notice = (chatMyTier === 1)
+        ? '<p class="text-[9px] font-bold text-slate-400">Level 1 (View Only) accounts cannot change the ticket status.</p>'
+        : '';
+
+    return '' +
+    '<div class="shrink-0 bg-gradient-to-r from-[#EB3E0B] to-[#FA5915] text-white px-4 py-3 flex items-center gap-3">' +
+        '<button type="button" onclick="toggleTicketChatMinimize(' + ticketId + ')" class="min-w-0 flex-1 text-left" title="Click to minimize / expand">' +
+            '<div class="flex items-center gap-1.5">' +
+                '<span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0"></span>' +
+                '<span data-role="number" class="font-mono font-bold text-xs truncate"></span>' +
+            '</div>' +
+            '<div data-role="client" class="text-[11px] font-bold truncate opacity-95"></div>' +
+            '<div data-role="subject" class="text-[10px] truncate opacity-80"></div>' +
+        '</button>' +
+        '<div class="flex items-center gap-1 shrink-0">' +
+            '<span data-role="statusPill" class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-white/20 border border-white/30"></span>' +
+            '<a data-role="fullLink" href="#" title="Open full ticket console" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">' +
+                '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
+            '</a>' +
+            '<button type="button" onclick="toggleTicketChatMinimize(' + ticketId + ')" title="Minimize" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">' +
+                '<svg data-role="minIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 13H5"/></svg>' +
+            '</button>' +
+            '<button type="button" onclick="closeTicketChat(' + ticketId + ')" title="Close chat" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">' +
+                '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>' +
+            '</button>' +
+        '</div>' +
+    '</div>' +
+
+    '<div data-role="body" class="flex flex-col min-h-0">' +
+
+        '<div class="shrink-0 px-3.5 py-2 bg-white border-b border-slate-200 space-y-1.5">' +
+            '<div class="flex items-center gap-2">' +
+                '<label class="text-[10px] font-bold uppercase tracking-wider text-slate-500 shrink-0">Status</label>' +
+                '<select data-role="statusSelect" onchange="onTicketChatStatusPicked(' + ticketId + ')" ' + statusDisabled +
+                    ' class="flex-1 min-w-0 bg-slate-50 border border-slate-200 text-slate-900 text-[11px] font-bold rounded-xl px-2.5 py-1.5 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed">' +
+                    '<option value="Pending">Pending</option>' +
+                    '<option value="In Progress">In Progress</option>' +
+                    '<option value="Resolved">Resolved</option>' +
+                    '<option value="Closed">Closed</option>' +
+                '</select>' +
+                '<span data-role="statusSaved" class="hidden text-[10px] font-bold text-emerald-600 shrink-0">Saved</span>' +
+            '</div>' +
+            tier1Notice +
+            '<div data-role="codeRow" class="hidden items-center gap-1.5">' +
+                '<input type="password" data-role="accessCode" placeholder="Security access code" ' +
+                    'class="flex-1 min-w-0 bg-white border border-amber-300 text-slate-900 text-[10px] font-mono tracking-widest text-center rounded-xl px-2 py-1.5 focus:outline-none focus:border-[#EB3E0B] placeholder:tracking-normal placeholder:font-sans">' +
+                '<button type="button" onclick="submitTicketChatStatus(' + ticketId + ')" class="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold shrink-0 transition-colors">Apply</button>' +
+                '<button type="button" onclick="cancelTicketChatStatus(' + ticketId + ')" class="px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold shrink-0 transition-colors">Cancel</button>' +
+            '</div>' +
+            '<p data-role="statusError" class="hidden text-[10px] font-bold text-rose-600 leading-snug"></p>' +
+            '<div data-role="pickedUp" class="hidden items-center gap-1.5 rounded-xl bg-blue-50 border border-blue-200 px-2.5 py-1.5">' +
+                '<svg class="w-3.5 h-3.5 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+                    '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>' +
+                '</svg>' +
+                '<p class="text-[10px] font-bold text-blue-900 leading-snug min-w-0">' +
+                    'Set to In Progress by <span data-role="pickedUpBy" class="font-extrabold"></span><span data-role="pickedUpAt" class="font-medium text-blue-700"></span>' +
+                '</p>' +
+            '</div>' +
+        '</div>' +
+
+        '<div data-role="thread" class="h-[46vh] sm:h-[320px] overflow-y-auto bg-slate-50 px-3.5 py-4 space-y-3">' +
+            '<div class="text-center text-[11px] text-slate-400 font-bold py-6">Loading conversation...</div>' +
+        '</div>' +
+
+        '<div data-role="typing" class="hidden px-4 py-1.5 bg-slate-50 border-t border-slate-100 text-[10px] font-bold text-slate-500 italic">' +
+            'Client is typing...' +
+        '</div>' +
+
+        '<div data-role="closedBanner" class="hidden shrink-0 px-4 py-3.5 bg-slate-100 border-t border-slate-200 text-center space-y-1">' +
+            '<p class="text-[11px] font-bold text-slate-700">Chat closed - ticket is <span data-role="closedStatus"></span></p>' +
+            '<p class="text-[10px] text-slate-500 leading-relaxed">Set the status back to Pending or In Progress above to resume the conversation.</p>' +
+        '</div>' +
+
+        '<div data-role="composer" class="shrink-0 border-t border-slate-200 bg-white p-3 space-y-2">' +
+            '<div data-role="error" class="hidden text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-2.5 py-1.5"></div>' +
+
+            '<div data-role="replyBar" class="hidden items-start justify-between gap-2 bg-[#FFF5ED] border border-[#FECDAA] rounded-xl px-2.5 py-1.5">' +
+                '<div class="min-w-0">' +
+                    '<p class="text-[9px] font-bold uppercase tracking-wider text-[#9A2512]">Replying to <span data-role="replyName"></span></p>' +
+                    '<p data-role="replySnippet" class="text-[10px] text-slate-600 truncate"></p>' +
+                '</div>' +
+                '<button type="button" onclick="cancelTicketChatReplyTo(' + ticketId + ')" title="Cancel reply (Esc)" class="shrink-0 text-slate-400 hover:text-rose-600 transition-colors">' +
+                    '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>' +
+                '</button>' +
+            '</div>' +
+
+            '<div data-role="photoBar" class="hidden bg-[#FFF5ED] border border-[#FECDAA] rounded-xl px-2.5 py-1.5 space-y-1.5">' +
+                '<div class="flex items-center justify-between gap-2 text-[10px] font-bold">' +
+                    '<span data-role="photoCount" class="text-[#9A2512] truncate"></span>' +
+                    '<button type="button" onclick="clearTicketChatPhotos(' + ticketId + ')" class="text-rose-600 hover:underline shrink-0">Remove all</button>' +
+                '</div>' +
+                '<div data-role="photoGrid" class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto"></div>' +
+            '</div>' +
+
+            '<div class="flex items-end gap-2">' +
+                '<label title="Attach photos" class="w-9 h-9 shrink-0 rounded-full bg-slate-100 hover:bg-[#FFE8D5] text-slate-500 hover:text-[#EB3E0B] flex items-center justify-center cursor-pointer transition-colors">' +
+                    '<input type="file" data-role="photoInput" accept=".png, .jpg, .jpeg, image/png, image/jpeg" multiple class="hidden" onchange="onTicketChatPhotosPicked(this, ' + ticketId + ')">' +
+                    '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>' +
+                '</label>' +
+                '<textarea data-role="input" rows="1" placeholder="Type a reply, or paste a screenshot with Ctrl + V..." class="flex-1 resize-none bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-2xl px-3.5 py-2.5 max-h-28 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>' +
+                '<button type="button" data-role="sendBtn" onclick="sendTicketChatReply(' + ticketId + ')" title="Send reply (Enter)" class="w-9 h-9 shrink-0 rounded-full bg-[#EB3E0B] hover:bg-[#C32C0B] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-[#EB3E0B]/25">' +
+                    '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>' +
+                '</button>' +
+            '</div>' +
+            '<p class="text-[9px] text-slate-400 font-medium px-1">Enter sends - Shift + Enter starts a new line - Ctrl + V pastes screenshots</p>' +
+        '</div>' +
+    '</div>';
+}
+
+// Finds one element inside a specific chat box by its data-role
+function chatEl(ticketId, role) {
+    var chat = chats[ticketId];
+    return chat ? chat.box.querySelector('[data-role="' + role + '"]') : null;
 }
 
 // -------------------------------------------------------------------------
@@ -196,26 +190,72 @@ function openTicketChat(row, e) {
     var ticketId = parseInt(row.getAttribute('data-ticket-id'), 10);
     if (!ticketId) return;
 
-    var reopeningSame = (ticketId === chatTicketId && !chatBox.classList.contains('hidden'));
+    // Already open - bring it back to front and un-minimize rather than
+    // opening a second box for the same conversation.
+    if (chats[ticketId]) {
+        if (chats[ticketId].isMinimized) toggleTicketChatMinimize(ticketId);
+        bringChatToFront(ticketId);
+        return;
+    }
 
-    chatTicketId = ticketId;
-    chatLastReplyId = 0;
-    chatClientSeenId = 0;
+    // Only a handful of conversations stay open at once - the one that has
+    // gone longest without attention makes room for a newly opened ticket.
+    if (chatOrder.length >= CHAT_MAX_OPEN) {
+        closeTicketChat(chatOrder[0]);
+    }
 
-    document.getElementById('ticketChatNumber').textContent = row.getAttribute('data-ticket-number') || '';
-    document.getElementById('ticketChatClient').textContent = row.getAttribute('data-client') || '';
-    document.getElementById('ticketChatSubject').textContent = row.getAttribute('data-subject') || '';
-    document.getElementById('ticketChatFullLink').href = 'ticket_detail.php?id=' + ticketId;
+    createTicketChatBox(ticketId, row);
+}
 
-    applyTicketChatStatus(row.getAttribute('data-status') || '');
-    renderTicketChatPickedUp('', '');  // filled in by the first poll
-    cancelTicketChatStatus();
+// Moves an already-open chat box to the front of the dock (visually the
+// rightmost / most prominent position) and marks it most-recently-used.
+function bringChatToFront(ticketId) {
+    var chat = chats[ticketId];
+    if (!chat) return;
+    chatDock.appendChild(chat.box);
+    var idx = chatOrder.indexOf(ticketId);
+    if (idx !== -1) {
+        chatOrder.splice(idx, 1);
+        chatOrder.push(ticketId);
+    }
+}
+
+function createTicketChatBox(ticketId, row) {
+    var box = document.createElement('div');
+    box.className = 'w-[calc(100vw-2rem)] sm:w-[360px] bg-white rounded-3xl border border-slate-200 shadow-2xl shadow-slate-900/20 overflow-hidden flex flex-col';
+    box.setAttribute('data-ticket-id', ticketId);
+    box.innerHTML = buildChatBoxHtml(ticketId);
+    chatDock.appendChild(box);
+
+    var chat = {
+        ticketId: ticketId,
+        box: box,
+        lastReplyId: 0,
+        pollTimer: null,
+        isSending: false,
+        isMinimized: false,
+        clientSeenId: 0,
+        lastTypingPing: 0,
+        replyToId: 0
+    };
+    chats[ticketId] = chat;
+    chatOrder.push(ticketId);
+
+    var thread = chatEl(ticketId, 'thread');
+
+    chatEl(ticketId, 'number').textContent = row.getAttribute('data-ticket-number') || '';
+    chatEl(ticketId, 'client').textContent = row.getAttribute('data-client') || '';
+    chatEl(ticketId, 'subject').textContent = row.getAttribute('data-subject') || '';
+    chatEl(ticketId, 'fullLink').href = 'ticket_detail.php?id=' + ticketId;
+
+    applyTicketChatStatus(ticketId, row.getAttribute('data-status') || '');
+    renderTicketChatPickedUp(ticketId, '', '');  // filled in by the first poll
+    cancelTicketChatStatus(ticketId);
 
     // Seed bubble: tickets with no replies yet still show the reported issue
-    chatThread.setAttribute('data-seed-issue', row.getAttribute('data-issue') || '');
-    chatThread.setAttribute('data-seed-client', row.getAttribute('data-client') || '');
-    chatThread.setAttribute('data-seed-date', row.getAttribute('data-created') || '');
-    chatThread.innerHTML = '<div class="text-center text-[11px] text-slate-400 font-bold py-6">Loading conversation...</div>';
+    thread.setAttribute('data-seed-issue', row.getAttribute('data-issue') || '');
+    thread.setAttribute('data-seed-client', row.getAttribute('data-client') || '');
+    thread.setAttribute('data-seed-date', row.getAttribute('data-created') || '');
 
     // Opening the thread marks it read on the server, so drop the red unread
     // badge straight away instead of leaving it until the next page load.
@@ -227,19 +267,58 @@ function openTicketChat(row, e) {
         }
     }
 
-    chatBox.classList.remove('hidden');
-    chatBox.classList.add('flex');
-    if (chatIsMinimized && !reopeningSame) {
-        toggleTicketChatMinimize();
+    bindChatBoxEvents(ticketId);
+
+    loadTicketChatThread(ticketId, true);
+    chat.pollTimer = setInterval(function() { loadTicketChatThread(ticketId, false); }, 3000);
+}
+
+// Wires the composer textarea and the access-code field for one box. Done
+// once at creation time since each box gets its own fresh elements.
+function bindChatBoxEvents(ticketId) {
+    var chat = chats[ticketId];
+    var input = chatEl(ticketId, 'input');
+    if (input) {
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                cancelTicketChatReplyTo(ticketId);
+                return;
+            }
+            if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                e.preventDefault();
+                sendTicketChatReply(ticketId);
+            }
+        });
+
+        input.addEventListener('input', function() {
+            // Grow with the text, up to the max height the class caps it at
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 112) + 'px';
+
+            // Let the client see the typing indicator, at most one ping every 2s
+            var now = Date.now();
+            if (!chat) return;
+            if ((now - chat.lastTypingPing) > 2000) {
+                chat.lastTypingPing = now;
+                var ping = new FormData();
+                ping.append('action', 'typing');
+                ping.append('id', ticketId);
+                fetch('api_ticket_replies.php?id=' + ticketId, { method: 'POST', body: ping }).catch(function() {});
+            }
+        });
     }
-    hideTicketChatError();
-    clearTicketChatPhotos();
-    cancelTicketChatReplyTo();
 
-    loadTicketChatThread(true);
-
-    if (chatPollTimer) clearInterval(chatPollTimer);
-    chatPollTimer = setInterval(function() { loadTicketChatThread(false); }, 3000);
+    var codeField = chatEl(ticketId, 'accessCode');
+    if (codeField) {
+        codeField.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitTicketChatStatus(ticketId);
+            } else if (e.key === 'Escape') {
+                cancelTicketChatStatus(ticketId);
+            }
+        });
+    }
 }
 
 // Opens a ticket the page was asked to show on load - a notification click
@@ -277,28 +356,27 @@ function openTicketChatById(meta) {
     openTicketChat(holder, null);
 }
 
-function closeTicketChat() {
-    chatBox.classList.add('hidden');
-    chatBox.classList.remove('flex');
-    if (chatPollTimer) {
-        clearInterval(chatPollTimer);
-        chatPollTimer = null;
+function closeTicketChat(ticketId) {
+    var chat = chats[ticketId];
+    if (!chat) return;
+    if (chat.pollTimer) {
+        clearInterval(chat.pollTimer);
     }
-    chatTicketId = 0;
-    chatLastReplyId = 0;
-    chatInput.value = '';
-    chatInput.style.height = 'auto';
-    clearTicketChatPhotos();
-    cancelTicketChatReplyTo();
-    cancelTicketChatStatus();
-    hideTicketChatError();
+    if (chat.box && chat.box.parentNode) {
+        chat.box.parentNode.removeChild(chat.box);
+    }
+    delete chats[ticketId];
+    var idx = chatOrder.indexOf(ticketId);
+    if (idx !== -1) chatOrder.splice(idx, 1);
 }
 
-function toggleTicketChatMinimize() {
-    chatIsMinimized = !chatIsMinimized;
-    var body = document.getElementById('ticketChatBody');
-    var icon = document.getElementById('ticketChatMinIcon');
-    if (chatIsMinimized) {
+function toggleTicketChatMinimize(ticketId) {
+    var chat = chats[ticketId];
+    if (!chat) return;
+    chat.isMinimized = !chat.isMinimized;
+    var body = chatEl(ticketId, 'body');
+    var icon = chatEl(ticketId, 'minIcon');
+    if (chat.isMinimized) {
         body.classList.add('hidden');
         body.classList.remove('flex');
         icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>';
@@ -306,7 +384,7 @@ function toggleTicketChatMinimize() {
         body.classList.remove('hidden');
         body.classList.add('flex');
         icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 13H5"/>';
-        scrollTicketChatToBottom();
+        scrollTicketChatToBottom(ticketId);
     }
 }
 
@@ -315,19 +393,23 @@ function toggleTicketChatMinimize() {
 // Resolved / Closed swap the composer for a notice, exactly as the full
 // console does, and the select stays in sync with whatever the poll reports.
 // -------------------------------------------------------------------------
-function applyTicketChatStatus(status, badgeClass) {
-    document.getElementById('ticketChatStatus').textContent = status || '-';
-    if (chatStatusSelect && status) {
-        chatStatusSelect.value = status;
+function applyTicketChatStatus(ticketId, status, badgeClass) {
+    var statusPill = chatEl(ticketId, 'statusPill');
+    if (!statusPill) return;
+    statusPill.textContent = status || '-';
+
+    var select = chatEl(ticketId, 'statusSelect');
+    if (select && status) {
+        select.value = status;
     }
 
     var isClosed = (status === 'Resolved' || status === 'Closed');
-    document.getElementById('ticketChatComposer').classList.toggle('hidden', isClosed);
-    document.getElementById('ticketChatClosed').classList.toggle('hidden', !isClosed);
-    document.getElementById('ticketChatClosedStatus').textContent = status;
+    chatEl(ticketId, 'composer').classList.toggle('hidden', isClosed);
+    chatEl(ticketId, 'closedBanner').classList.toggle('hidden', !isClosed);
+    chatEl(ticketId, 'closedStatus').textContent = status;
 
     // Keep the row in the table honest - replying flips Pending to In Progress
-    var row = document.querySelector('.ticket-row[data-ticket-id="' + chatTicketId + '"]');
+    var row = document.querySelector('.ticket-row[data-ticket-id="' + ticketId + '"]');
     if (row && row.getAttribute('data-status') !== status) {
         row.setAttribute('data-status', status);
         applyTicketRowPalette(row, status, badgeClass);
@@ -367,102 +449,112 @@ function applyTicketRowPalette(row, status, badgeClass) {
 
 // Names the technician who moved the ticket to In Progress. Stays visible
 // after the ticket moves on, since it is a record of who picked it up.
-function renderTicketChatPickedUp(by, at) {
-    var box = document.getElementById('ticketChatPickedUp');
+function renderTicketChatPickedUp(ticketId, by, at) {
+    var box = chatEl(ticketId, 'pickedUp');
+    if (!box) return;
     if (!by) {
         box.classList.add('hidden');
         box.classList.remove('flex');
         return;
     }
-    document.getElementById('ticketChatPickedUpBy').textContent = by;
-    document.getElementById('ticketChatPickedUpAt').textContent = at ? (' - ' + at) : '';
+    chatEl(ticketId, 'pickedUpBy').textContent = by;
+    chatEl(ticketId, 'pickedUpAt').textContent = at ? (' - ' + at) : '';
     box.classList.remove('hidden');
     box.classList.add('flex');
 }
 
-function showTicketChatStatusError(msg) {
-    var box = document.getElementById('ticketChatStatusError');
+function showTicketChatStatusError(ticketId, msg) {
+    var box = chatEl(ticketId, 'statusError');
+    if (!box) return;
     box.textContent = msg;
     box.classList.remove('hidden');
 }
 
 // Puts the select back on the status the server last confirmed
-function cancelTicketChatStatus() {
-    var codeRow = document.getElementById('ticketChatCodeRow');
-    codeRow.classList.add('hidden');
-    codeRow.classList.remove('flex');
-    document.getElementById('ticketChatAccessCode').value = '';
-    document.getElementById('ticketChatStatusError').classList.add('hidden');
+function cancelTicketChatStatus(ticketId) {
+    var codeRow = chatEl(ticketId, 'codeRow');
+    if (codeRow) {
+        codeRow.classList.add('hidden');
+        codeRow.classList.remove('flex');
+    }
+    var codeInput = chatEl(ticketId, 'accessCode');
+    if (codeInput) codeInput.value = '';
+    var errEl = chatEl(ticketId, 'statusError');
+    if (errEl) errEl.classList.add('hidden');
 
-    var row = document.querySelector('.ticket-row[data-ticket-id="' + chatTicketId + '"]');
-    if (chatStatusSelect && row && row.getAttribute('data-status')) {
-        chatStatusSelect.value = row.getAttribute('data-status');
+    var row = document.querySelector('.ticket-row[data-ticket-id="' + ticketId + '"]');
+    var select = chatEl(ticketId, 'statusSelect');
+    if (select && row && row.getAttribute('data-status')) {
+        select.value = row.getAttribute('data-status');
     }
 }
 
 // Level 2 accounts have to type their access code before the change is sent
-function onTicketChatStatusPicked() {
-    document.getElementById('ticketChatStatusError').classList.add('hidden');
+function onTicketChatStatusPicked(ticketId) {
+    var errEl = chatEl(ticketId, 'statusError');
+    if (errEl) errEl.classList.add('hidden');
     if (chatMyTier === 2) {
-        var codeRow = document.getElementById('ticketChatCodeRow');
+        var codeRow = chatEl(ticketId, 'codeRow');
         codeRow.classList.remove('hidden');
         codeRow.classList.add('flex');
-        document.getElementById('ticketChatAccessCode').focus();
+        chatEl(ticketId, 'accessCode').focus();
         return;
     }
-    submitTicketChatStatus();
+    submitTicketChatStatus(ticketId);
 }
 
-function submitTicketChatStatus() {
-    if (!chatTicketId || !chatStatusSelect) return;
+function submitTicketChatStatus(ticketId) {
+    var select = chatEl(ticketId, 'statusSelect');
+    if (!chats[ticketId] || !select) return;
 
-    var newStatus = chatStatusSelect.value;
-    var codeInput = document.getElementById('ticketChatAccessCode');
+    var newStatus = select.value;
+    var codeInput = chatEl(ticketId, 'accessCode');
 
     var body = new FormData();
     body.append('action', 'update_status');
-    body.append('id', chatTicketId);
+    body.append('id', ticketId);
     body.append('status', newStatus);
     body.append('action_access_code', codeInput ? codeInput.value : '');
 
-    var sentToTicket = chatTicketId;
-
-    fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: body })
+    fetch('api_ticket_replies.php?id=' + ticketId, { method: 'POST', body: body })
         .then(function(res) { return res.json(); })
         .then(function(data) {
-            if (sentToTicket !== chatTicketId) return;
+            if (!chats[ticketId]) return;   // closed while this request was in flight
 
             if (!data || !data.success) {
-                showTicketChatStatusError((data && data.error) ? data.error : 'Could not update the status.');
+                showTicketChatStatusError(ticketId, (data && data.error) ? data.error : 'Could not update the status.');
                 if (data && data.needs_code) {
-                    var codeRow = document.getElementById('ticketChatCodeRow');
+                    var codeRow = chatEl(ticketId, 'codeRow');
                     codeRow.classList.remove('hidden');
                     codeRow.classList.add('flex');
                 } else {
                     // Roll the select back so it never shows a status that was not saved
-                    var row = document.querySelector('.ticket-row[data-ticket-id="' + chatTicketId + '"]');
+                    var row = document.querySelector('.ticket-row[data-ticket-id="' + ticketId + '"]');
                     if (row && row.getAttribute('data-status')) {
-                        chatStatusSelect.value = row.getAttribute('data-status');
+                        select.value = row.getAttribute('data-status');
                     }
                 }
                 return;
             }
 
             if (codeInput) codeInput.value = '';
-            var codeRowOk = document.getElementById('ticketChatCodeRow');
+            var codeRowOk = chatEl(ticketId, 'codeRow');
             codeRowOk.classList.add('hidden');
             codeRowOk.classList.remove('flex');
-            document.getElementById('ticketChatStatusError').classList.add('hidden');
+            chatEl(ticketId, 'statusError').classList.add('hidden');
 
-            applyTicketChatStatus(data.status, data.status_badge_class);
-            if (data.in_progress_by) renderTicketChatPickedUp(data.in_progress_by, data.in_progress_at);
+            applyTicketChatStatus(ticketId, data.status, data.status_badge_class);
+            if (data.in_progress_by) renderTicketChatPickedUp(ticketId, data.in_progress_by, data.in_progress_at);
 
-            var savedTag = document.getElementById('ticketChatStatusSaved');
+            var savedTag = chatEl(ticketId, 'statusSaved');
             savedTag.classList.remove('hidden');
-            setTimeout(function() { savedTag.classList.add('hidden'); }, 1800);
+            setTimeout(function() {
+                if (chats[ticketId]) savedTag.classList.add('hidden');
+            }, 1800);
         })
         .catch(function(err) {
-            showTicketChatStatusError('Network error - the status was not changed.');
+            if (!chats[ticketId]) return;
+            showTicketChatStatusError(ticketId, 'Network error - the status was not changed.');
             console.error('Ticket status error:', err);
         });
 }
@@ -470,7 +562,7 @@ function submitTicketChatStatus() {
 // -------------------------------------------------------------------------
 // Thread rendering
 // -------------------------------------------------------------------------
-function buildTicketChatBubble(reply) {
+function buildTicketChatBubble(ticketId, reply) {
     var isTech = !!reply.is_tech;
     var replyId = parseInt(reply.id, 10) || 0;
 
@@ -509,7 +601,7 @@ function buildTicketChatBubble(reply) {
     // The message this one answers - click it to jump back up the thread
     var quote = '';
     if (reply.reply_to && reply.reply_to.id) {
-        quote = '<button type="button" onclick="jumpToTicketChatMessage(' + parseInt(reply.reply_to.id, 10) + ')" ' +
+        quote = '<button type="button" onclick="jumpToTicketChatMessage(' + ticketId + ', ' + parseInt(reply.reply_to.id, 10) + ')" ' +
             'class="w-full text-left mb-1.5 pl-2 border-l-2 ' + (reply.reply_to.is_tech ? 'border-[#EB3E0B]' : 'border-slate-400') + ' hover:opacity-75 transition-opacity">' +
             '<span class="block text-[9px] font-bold uppercase tracking-wider text-slate-500">Replying to ' + escapeChatHtml(reply.reply_to.sender_name) + '</span>' +
             '<span class="block text-[10px] text-slate-500 truncate">' + escapeChatHtml(reply.reply_to.snippet) + '</span></button>';
@@ -522,7 +614,7 @@ function buildTicketChatBubble(reply) {
                 (reply.edited_at ? ' title="Edited ' + escapeChatHtml(reply.edited_at) + '"' : '') + '> (edited)</span>' +
         '</span>' +
         '<div class="chat-bubble ' + bubbleClass + '">' + quote + body + '</div>' +
-        buildTicketChatActions(reply, isTech, replyId) +
+        buildTicketChatActions(ticketId, reply, isTech, replyId) +
         (isTech ? '<span class="chat-seen hidden text-[9px] font-bold text-slate-400 mt-0.5 px-1">Seen</span>' : '');
 
     return wrap;
@@ -530,7 +622,7 @@ function buildTicketChatBubble(reply) {
 
 // Heart + Reply row under each real message, plus the pill holder for the
 // hearts already on it. The seeded issue bubble (id 0) has no row.
-function buildTicketChatActions(reply, isTech, replyId) {
+function buildTicketChatActions(ticketId, reply, isTech, replyId) {
     if (!replyId) return '';
     if (reply.unsent) return '';   // nothing left to react to, quote or change
 
@@ -539,21 +631,21 @@ function buildTicketChatActions(reply, isTech, replyId) {
 
     return '<div class="flex items-center flex-wrap gap-1 mt-1 px-1 ' + (isTech ? 'justify-end' : '') + '">' +
         '<div class="chat-reactions flex items-center flex-wrap gap-1" data-reactions-for="' + replyId + '"></div>' +
-        '<button type="button" onclick="sendTicketChatReaction(' + replyId + ')" title="Love this message" ' +
+        '<button type="button" onclick="sendTicketChatReaction(' + ticketId + ', ' + replyId + ')" title="Love this message" ' +
             'class="inline-flex items-center justify-center w-6 h-6 rounded-full border border-dashed border-slate-300 text-slate-400 hover:text-[#9A2512] hover:border-[#FECDAA] hover:bg-white transition-colors">' +
             '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>' +
         '</button>' +
-        '<button type="button" onclick=\'startTicketChatReplyTo(' + replyId + ', ' + senderArg + ', ' + snippetArg + ')\' title="Reply to this message" ' +
+        '<button type="button" onclick=\'startTicketChatReplyTo(' + ticketId + ', ' + replyId + ', ' + senderArg + ', ' + snippetArg + ')\' title="Reply to this message" ' +
             'class="inline-flex items-center justify-center w-6 h-6 rounded-full border border-slate-200 bg-white text-slate-400 hover:text-[#EB3E0B] hover:border-[#FECDAA] transition-colors">' +
             '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>' +
         '</button>' +
         // Own support messages can be corrected or taken back
         (reply.can_edit
-            ? '<button type="button" onclick="startTicketChatEdit(' + replyId + ')" title="Edit this message" ' +
+            ? '<button type="button" onclick="startTicketChatEdit(' + ticketId + ', ' + replyId + ')" title="Edit this message" ' +
                 'class="inline-flex items-center justify-center w-6 h-6 rounded-full border border-slate-200 bg-white text-slate-400 hover:text-[#EB3E0B] hover:border-[#FECDAA] transition-colors">' +
                 '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>' +
               '</button>' +
-              '<button type="button" onclick="unsendTicketChatMessage(' + replyId + ')" title="Unsend this message" ' +
+              '<button type="button" onclick="unsendTicketChatMessage(' + ticketId + ', ' + replyId + ')" title="Unsend this message" ' +
                 'class="inline-flex items-center justify-center w-6 h-6 rounded-full border border-slate-200 bg-white text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-colors">' +
                 '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>' +
               '</button>'
@@ -561,14 +653,16 @@ function buildTicketChatActions(reply, isTech, replyId) {
     '</div>';
 }
 
-function renderTicketChatSeed() {
-    var issue = chatThread.getAttribute('data-seed-issue');
+function renderTicketChatSeed(ticketId) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
+    var issue = thread.getAttribute('data-seed-issue');
     if (!issue) return;
-    chatThread.appendChild(buildTicketChatBubble({
+    thread.appendChild(buildTicketChatBubble(ticketId, {
         id: 0,
         is_tech: false,
-        sender_name: chatThread.getAttribute('data-seed-client') || 'Client',
-        formatted_date: chatThread.getAttribute('data-seed-date') || '',
+        sender_name: thread.getAttribute('data-seed-client') || 'Client',
+        formatted_date: thread.getAttribute('data-seed-date') || '',
         message: issue,
         attachments: []
     }));
@@ -577,8 +671,10 @@ function renderTicketChatSeed() {
 // -------------------------------------------------------------------------
 // Heart reactions (the only reaction the ticket chat supports)
 // -------------------------------------------------------------------------
-function renderTicketChatReactions(replyId, list) {
-    var box = chatThread.querySelector('.chat-reactions[data-reactions-for="' + parseInt(replyId, 10) + '"]');
+function renderTicketChatReactions(ticketId, replyId, list) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
+    var box = thread.querySelector('.chat-reactions[data-reactions-for="' + parseInt(replyId, 10) + '"]');
     if (!box) return;
 
     var html = '';
@@ -587,7 +683,7 @@ function renderTicketChatReactions(replyId, list) {
         var cls = rx.mine
             ? 'bg-[#FFE8D5] border-[#FECDAA] text-[#9A2512]'
             : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300';
-        html += '<button type="button" onclick="sendTicketChatReaction(' + parseInt(replyId, 10) + ')" ' +
+        html += '<button type="button" onclick="sendTicketChatReaction(' + ticketId + ', ' + parseInt(replyId, 10) + ')" ' +
             'title="' + escapeChatHtml(rx.who || rx.label) + '" ' +
             'class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border text-[10px] font-bold transition-colors ' + cls + '">' +
             '<span>' + rx.emoji + '</span><span>' + rx.count + '</span></button>';
@@ -597,30 +693,33 @@ function renderTicketChatReactions(replyId, list) {
 
 // Applies the whole-thread map the poll returns, so hearts added by the
 // client show up on messages that are already on screen.
-function applyTicketChatReactionMap(map) {
-    var boxes = chatThread.querySelectorAll('.chat-reactions[data-reactions-for]');
+function applyTicketChatReactionMap(ticketId, map) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
+    var boxes = thread.querySelectorAll('.chat-reactions[data-reactions-for]');
     for (var i = 0; i < boxes.length; i++) {
         var rid = boxes[i].getAttribute('data-reactions-for');
-        renderTicketChatReactions(rid, (map && map[rid]) ? map[rid] : []);
+        renderTicketChatReactions(ticketId, rid, (map && map[rid]) ? map[rid] : []);
     }
 }
 
-function sendTicketChatReaction(replyId) {
-    if (!chatTicketId || !replyId) return;
+function sendTicketChatReaction(ticketId, replyId) {
+    if (!ticketId || !replyId) return;
 
     var body = new FormData();
     body.append('action', 'toggle_reaction');
-    body.append('id', chatTicketId);
+    body.append('id', ticketId);
     body.append('reply_id', replyId);
     body.append('reaction', 'heart');
 
-    fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: body })
+    fetch('api_ticket_replies.php?id=' + ticketId, { method: 'POST', body: body })
         .then(function(res) { return res.json(); })
         .then(function(data) {
+            if (!chats[ticketId]) return;
             if (data && data.success) {
-                renderTicketChatReactions(replyId, data.reactions || []);
+                renderTicketChatReactions(ticketId, replyId, data.reactions || []);
             } else {
-                showTicketChatError((data && data.error) ? data.error : 'Could not save your reaction.');
+                showTicketChatError(ticketId, (data && data.error) ? data.error : 'Could not save your reaction.');
             }
         })
         .catch(function(err) {
@@ -633,8 +732,10 @@ function sendTicketChatReaction(replyId) {
 // The bubble turns into a small editor in place, so the conversation keeps
 // its position instead of the text jumping down to the composer.
 // -------------------------------------------------------------------------
-function startTicketChatEdit(replyId) {
-    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+function startTicketChatEdit(ticketId, replyId) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
+    var msg = thread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
     if (!msg || msg.querySelector('.chat-edit-box')) return;
 
     var textEl = msg.querySelector('.chat-text');
@@ -652,8 +753,8 @@ function startTicketChatEdit(replyId) {
             : '') +
         '<p class="chat-edit-error hidden text-[10px] font-bold text-rose-600"></p>' +
         '<div class="flex items-center justify-end gap-1.5">' +
-            '<button type="button" onclick="cancelTicketChatEdit(' + replyId + ')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold transition-colors">Cancel</button>' +
-            '<button type="button" onclick="saveTicketChatEdit(' + replyId + ')" class="px-2.5 py-1 rounded-lg bg-[#EB3E0B] hover:bg-[#C32C0B] text-white text-[10px] font-bold transition-colors">Save</button>' +
+            '<button type="button" onclick="cancelTicketChatEdit(' + ticketId + ', ' + replyId + ')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold transition-colors">Cancel</button>' +
+            '<button type="button" onclick="saveTicketChatEdit(' + ticketId + ', ' + replyId + ')" class="px-2.5 py-1 rounded-lg bg-[#EB3E0B] hover:bg-[#C32C0B] text-white text-[10px] font-bold transition-colors">Save</button>' +
         '</div>';
 
     textEl.classList.add('hidden');
@@ -668,16 +769,18 @@ function startTicketChatEdit(replyId) {
     input.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             e.preventDefault();
-            cancelTicketChatEdit(replyId);
+            cancelTicketChatEdit(ticketId, replyId);
         } else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
             e.preventDefault();
-            saveTicketChatEdit(replyId);
+            saveTicketChatEdit(ticketId, replyId);
         }
     });
 }
 
-function cancelTicketChatEdit(replyId) {
-    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+function cancelTicketChatEdit(ticketId, replyId) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
+    var msg = thread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
     if (!msg) return;
     var box = msg.querySelector('.chat-edit-box');
     if (box && box.parentNode) box.parentNode.removeChild(box);
@@ -685,8 +788,10 @@ function cancelTicketChatEdit(replyId) {
     if (textEl) textEl.classList.remove('hidden');
 }
 
-function saveTicketChatEdit(replyId) {
-    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+function saveTicketChatEdit(ticketId, replyId) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
+    var msg = thread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
     if (!msg) return;
     var box = msg.querySelector('.chat-edit-box');
     if (!box) return;
@@ -704,21 +809,22 @@ function saveTicketChatEdit(replyId) {
 
     var body = new FormData();
     body.append('action', 'edit_reply');
-    body.append('id', chatTicketId);
+    body.append('id', ticketId);
     body.append('reply_id', replyId);
     body.append('reply_message', newText);
     body.append('action_access_code', codeEl ? codeEl.value : '');
 
-    fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: body })
+    fetch('api_ticket_replies.php?id=' + ticketId, { method: 'POST', body: body })
         .then(function(res) { return res.json(); })
         .then(function(data) {
+            if (!chats[ticketId]) return;
             if (!data || !data.success) {
                 errEl.textContent = (data && data.error) ? data.error : 'The message could not be saved.';
                 errEl.classList.remove('hidden');
                 return;
             }
-            applyTicketChatEdit(replyId, data.message, data.edited_at);
-            cancelTicketChatEdit(replyId);
+            applyTicketChatEdit(ticketId, replyId, data.message, data.edited_at);
+            cancelTicketChatEdit(ticketId, replyId);
         })
         .catch(function(err) {
             errEl.textContent = 'Network error - the message was not saved.';
@@ -732,8 +838,8 @@ function saveTicketChatEdit(replyId) {
 // The bubble stays in place as a plain notice, so replies quoting it still
 // make sense, but the text and any photos are gone for the client too.
 // -------------------------------------------------------------------------
-function unsendTicketChatMessage(replyId) {
-    if (!chatTicketId) return;
+function unsendTicketChatMessage(ticketId, replyId) {
+    if (!ticketId) return;
     if (!confirm('Unsend this message?\n\nThe text and any photos are removed for the client as well. This cannot be undone.')) {
         return;
     }
@@ -746,31 +852,34 @@ function unsendTicketChatMessage(replyId) {
 
     var body = new FormData();
     body.append('action', 'unsend_reply');
-    body.append('id', chatTicketId);
+    body.append('id', ticketId);
     body.append('reply_id', replyId);
     body.append('action_access_code', code);
 
-    fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: body })
+    fetch('api_ticket_replies.php?id=' + ticketId, { method: 'POST', body: body })
         .then(function(res) { return res.json(); })
         .then(function(data) {
+            if (!chats[ticketId]) return;
             if (!data || !data.success) {
-                showTicketChatError((data && data.error) ? data.error : 'The message could not be unsent.');
+                showTicketChatError(ticketId, (data && data.error) ? data.error : 'The message could not be unsent.');
                 return;
             }
-            applyTicketChatUnsent(replyId);
+            applyTicketChatUnsent(ticketId, replyId);
         })
         .catch(function(err) {
-            showTicketChatError('Network error - the message was not unsent.');
+            showTicketChatError(ticketId, 'Network error - the message was not unsent.');
             console.error('Ticket chat unsend error:', err);
         });
 }
 
 // Turns a bubble already on screen into the unsent notice
-function applyTicketChatUnsent(replyId) {
-    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+function applyTicketChatUnsent(ticketId, replyId) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
+    var msg = thread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
     if (!msg) return;
 
-    cancelTicketChatEdit(replyId);
+    cancelTicketChatEdit(ticketId, replyId);
 
     var bubble = msg.querySelector('.chat-bubble');
     if (bubble) {
@@ -786,15 +895,17 @@ function applyTicketChatUnsent(replyId) {
     if (tag) tag.classList.add('hidden');
 
     // A quote of this message elsewhere in the thread now reads as unsent
-    var quotes = chatThread.querySelectorAll('button[onclick="jumpToTicketChatMessage(' + parseInt(replyId, 10) + ')"] span:last-child');
+    var quotes = thread.querySelectorAll('button[onclick="jumpToTicketChatMessage(' + ticketId + ', ' + parseInt(replyId, 10) + ')"] span:last-child');
     for (var i = 0; i < quotes.length; i++) {
         quotes[i].textContent = 'Message unsent';
     }
 }
 
 // Writes new text into a bubble already on screen and flags it as edited
-function applyTicketChatEdit(replyId, message, editedAt) {
-    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+function applyTicketChatEdit(ticketId, replyId, message, editedAt) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
+    var msg = thread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
     if (!msg) return;
 
     var textEl = msg.querySelector('.chat-text');
@@ -809,16 +920,18 @@ function applyTicketChatEdit(replyId, message, editedAt) {
 
 // Applies the whole-thread edit map the poll returns, so a correction made
 // elsewhere reaches messages that are already drawn.
-function applyTicketChatEditMap(map) {
+function applyTicketChatEditMap(ticketId, map) {
     if (!map) return;
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
     for (var id in map) {
         if (!map.hasOwnProperty(id)) continue;
-        var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(id, 10) + '"]');
+        var msg = thread.querySelector('.chat-msg[data-reply-id="' + parseInt(id, 10) + '"]');
         if (!msg) continue;
 
         if (map[id].unsent) {
             if (!msg.querySelector('.chat-unsent')) {
-                applyTicketChatUnsent(id);
+                applyTicketChatUnsent(ticketId, id);
             }
             continue;
         }
@@ -826,7 +939,7 @@ function applyTicketChatEditMap(map) {
         if (msg.querySelector('.chat-edit-box')) continue;   // never overwrite an open editor
         var textEl = msg.querySelector('.chat-text');
         if (textEl && textEl.textContent !== map[id].message) {
-            applyTicketChatEdit(id, map[id].message, map[id].edited_at);
+            applyTicketChatEdit(ticketId, id, map[id].message, map[id].edited_at);
         } else {
             var tag = msg.querySelector('.chat-edited-tag');
             if (tag) tag.classList.remove('hidden');
@@ -837,31 +950,37 @@ function applyTicketChatEditMap(map) {
 // -------------------------------------------------------------------------
 // Replying to one specific message
 // -------------------------------------------------------------------------
-function startTicketChatReplyTo(replyId, senderName, snippet) {
+function startTicketChatReplyTo(ticketId, replyId, senderName, snippet) {
+    var chat = chats[ticketId];
+    if (!chat) return;
     // Nothing to reply into while the ticket is Resolved / Closed
-    if (document.getElementById('ticketChatComposer').classList.contains('hidden')) return;
-    chatReplyToId = parseInt(replyId, 10) || 0;
+    if (chatEl(ticketId, 'composer').classList.contains('hidden')) return;
+    chat.replyToId = parseInt(replyId, 10) || 0;
 
-    document.getElementById('ticketChatReplyName').textContent = senderName || 'this message';
-    document.getElementById('ticketChatReplySnippet').textContent = snippet || '';
+    chatEl(ticketId, 'replyName').textContent = senderName || 'this message';
+    chatEl(ticketId, 'replySnippet').textContent = snippet || '';
 
-    var bar = document.getElementById('ticketChatReplyBar');
+    var bar = chatEl(ticketId, 'replyBar');
     bar.classList.remove('hidden');
     bar.classList.add('flex');
 
-    chatInput.focus();
+    chatEl(ticketId, 'input').focus();
 }
 
-function cancelTicketChatReplyTo() {
-    chatReplyToId = 0;
-    var bar = document.getElementById('ticketChatReplyBar');
+function cancelTicketChatReplyTo(ticketId) {
+    var chat = chats[ticketId];
+    if (chat) chat.replyToId = 0;
+    var bar = chatEl(ticketId, 'replyBar');
+    if (!bar) return;
     bar.classList.add('hidden');
     bar.classList.remove('flex');
 }
 
 // Jump to a quoted message and flash it so it is easy to spot
-function jumpToTicketChatMessage(replyId) {
-    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+function jumpToTicketChatMessage(ticketId, replyId) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return;
+    var msg = thread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
     if (!msg) return;
 
     var bubble = msg.querySelector('div');
@@ -872,56 +991,64 @@ function jumpToTicketChatMessage(replyId) {
 }
 
 // Only the newest tech message carries the "Seen" tag, as in any chat app
-function renderTicketChatSeen() {
-    var marks = chatThread.querySelectorAll('.chat-seen');
+function renderTicketChatSeen(ticketId) {
+    var chat = chats[ticketId];
+    var thread = chatEl(ticketId, 'thread');
+    if (!chat || !thread) return;
+
+    var marks = thread.querySelectorAll('.chat-seen');
     for (var i = 0; i < marks.length; i++) {
         marks[i].classList.add('hidden');
     }
-    var techMsgs = chatThread.querySelectorAll('.chat-msg[data-sender-type="support"]');
-    if (!techMsgs.length || !chatClientSeenId) return;
+    var techMsgs = thread.querySelectorAll('.chat-msg[data-sender-type="support"]');
+    if (!techMsgs.length || !chat.clientSeenId) return;
 
     var last = techMsgs[techMsgs.length - 1];
-    if (parseInt(last.getAttribute('data-reply-id'), 10) <= chatClientSeenId) {
+    if (parseInt(last.getAttribute('data-reply-id'), 10) <= chat.clientSeenId) {
         var mark = last.querySelector('.chat-seen');
         if (mark) mark.classList.remove('hidden');
     }
 }
 
-function isTicketChatNearBottom() {
-    return (chatThread.scrollHeight - chatThread.scrollTop - chatThread.clientHeight) < 80;
+function isTicketChatNearBottom(ticketId) {
+    var thread = chatEl(ticketId, 'thread');
+    if (!thread) return true;
+    return (thread.scrollHeight - thread.scrollTop - thread.clientHeight) < 80;
 }
 
-function scrollTicketChatToBottom() {
-    chatThread.scrollTop = chatThread.scrollHeight;
+function scrollTicketChatToBottom(ticketId) {
+    var thread = chatEl(ticketId, 'thread');
+    if (thread) thread.scrollTop = thread.scrollHeight;
 }
 
 // -------------------------------------------------------------------------
 // Polling: the first call paints the whole thread, later ones append
 // -------------------------------------------------------------------------
-function loadTicketChatThread(isFirstLoad) {
-    if (!chatTicketId || chatIsSending) return;
-    var requestedTicket = chatTicketId;
+function loadTicketChatThread(ticketId, isFirstLoad) {
+    var chat = chats[ticketId];
+    if (!chat || chat.isSending) return;
+    var thread = chatEl(ticketId, 'thread');
 
-    fetch('api_ticket_replies.php?id=' + requestedTicket + '&after_id=' + chatLastReplyId)
+    fetch('api_ticket_replies.php?id=' + ticketId + '&after_id=' + chat.lastReplyId)
         .then(function(res) { return res.json(); })
         .then(function(data) {
-            // A different ticket may have been opened while this was in flight
-            if (requestedTicket !== chatTicketId) return;
+            // The box may have been closed while this request was in flight
+            if (!chats[ticketId]) return;
 
             if (!data || !data.success) {
                 if (isFirstLoad) {
-                    chatThread.innerHTML = '<div class="text-center text-[11px] text-rose-500 font-bold py-6">' +
+                    thread.innerHTML = '<div class="text-center text-[11px] text-rose-500 font-bold py-6">' +
                         escapeChatHtml((data && data.error) ? data.error : 'Failed to load conversation.') + '</div>';
                 }
                 return;
             }
 
-            var stickToBottom = isFirstLoad || isTicketChatNearBottom();
+            var stickToBottom = isFirstLoad || isTicketChatNearBottom(ticketId);
 
             if (isFirstLoad) {
-                chatThread.innerHTML = '';
+                thread.innerHTML = '';
                 if (!data.replies || !data.replies.length) {
-                    renderTicketChatSeed();
+                    renderTicketChatSeed(ticketId);
                 }
             }
 
@@ -930,37 +1057,37 @@ function loadTicketChatThread(isFirstLoad) {
             if (data.replies && data.replies.length) {
                 for (var i = 0; i < data.replies.length; i++) {
                     var r = data.replies[i];
-                    if (chatThread.querySelector('.chat-msg[data-reply-id="' + r.id + '"]')) continue;
-                    chatThread.appendChild(buildTicketChatBubble(r));
-                    if (r.id > chatLastReplyId) chatLastReplyId = r.id;
+                    if (thread.querySelector('.chat-msg[data-reply-id="' + r.id + '"]')) continue;
+                    thread.appendChild(buildTicketChatBubble(ticketId, r));
+                    if (r.id > chat.lastReplyId) chat.lastReplyId = r.id;
                     if (!isFirstLoad && !r.is_tech) {
                         clientReplyArrived = true;
                     }
                 }
             }
 
-            // A message landing in the open thread sounds the same alarm as one
-            // arriving on any other ticket. The footer poller skips this ticket
-            // while the chat is open, so it only ever sounds once.
+            // A message landing in an open thread sounds the same alarm as one
+            // arriving on any other ticket. The footer poller skips a ticket
+            // that already has a box open, so it only ever sounds once.
             if (clientReplyArrived && typeof playNewTicketChime === 'function') {
                 playNewTicketChime();
             }
 
-            applyTicketChatReactionMap(data.reactions);
-            applyTicketChatEditMap(data.edits);
+            applyTicketChatReactionMap(ticketId, data.reactions);
+            applyTicketChatEditMap(ticketId, data.edits);
 
-            chatClientSeenId = parseInt(data.client_seen_id, 10) || 0;
-            renderTicketChatSeen();
+            chat.clientSeenId = parseInt(data.client_seen_id, 10) || 0;
+            renderTicketChatSeen(ticketId);
 
-            document.getElementById('ticketChatTyping').classList.toggle('hidden', !data.client_typing);
+            chatEl(ticketId, 'typing').classList.toggle('hidden', !data.client_typing);
 
             // Do not fight a status change the user is still confirming
-            if (document.getElementById('ticketChatCodeRow').classList.contains('hidden')) {
-                applyTicketChatStatus(data.ticket_status, data.status_badge_class);
+            if (chatEl(ticketId, 'codeRow').classList.contains('hidden')) {
+                applyTicketChatStatus(ticketId, data.ticket_status, data.status_badge_class);
             }
-            renderTicketChatPickedUp(data.in_progress_by, data.in_progress_at);
+            renderTicketChatPickedUp(ticketId, data.in_progress_by, data.in_progress_at);
 
-            if (stickToBottom) scrollTicketChatToBottom();
+            if (stickToBottom) scrollTicketChatToBottom(ticketId);
         })
         .catch(function(err) {
             console.warn('Ticket chat poll error:', err);
@@ -970,20 +1097,22 @@ function loadTicketChatThread(isFirstLoad) {
 // -------------------------------------------------------------------------
 // Photos: picked from disk or pasted straight into the box with Ctrl + V
 // -------------------------------------------------------------------------
-function showTicketChatError(msg) {
-    var box = document.getElementById('ticketChatError');
+function showTicketChatError(ticketId, msg) {
+    var box = chatEl(ticketId, 'error');
+    if (!box) return;
     box.textContent = msg;
     box.classList.remove('hidden');
 }
 
-function hideTicketChatError() {
-    document.getElementById('ticketChatError').classList.add('hidden');
+function hideTicketChatError(ticketId) {
+    var box = chatEl(ticketId, 'error');
+    if (box) box.classList.add('hidden');
 }
 
-function onTicketChatPhotosPicked(input) {
+function onTicketChatPhotosPicked(input, ticketId) {
     var count = (input.files && input.files.length) ? input.files.length : 0;
     if (!count) {
-        clearTicketChatPhotos();
+        clearTicketChatPhotos(ticketId);
         return;
     }
 
@@ -994,16 +1123,16 @@ function onTicketChatPhotosPicked(input) {
         if (validExts.indexOf(ext) === -1) invalid.push(input.files[f].name);
     }
     if (invalid.length > 0) {
-        showTicketChatError('Only PNG, JPG and JPEG photos are allowed: ' + invalid.join(', '));
-        clearTicketChatPhotos();
+        showTicketChatError(ticketId, 'Only PNG, JPG and JPEG photos are allowed: ' + invalid.join(', '));
+        clearTicketChatPhotos(ticketId);
         return;
     }
 
-    hideTicketChatError();
-    document.getElementById('ticketChatPhotoCount').textContent = count + (count === 1 ? ' photo attached' : ' photos attached');
-    document.getElementById('ticketChatPhotoBar').classList.remove('hidden');
+    hideTicketChatError(ticketId);
+    chatEl(ticketId, 'photoCount').textContent = count + (count === 1 ? ' photo attached' : ' photos attached');
+    chatEl(ticketId, 'photoBar').classList.remove('hidden');
 
-    var grid = document.getElementById('ticketChatPhotoGrid');
+    var grid = chatEl(ticketId, 'photoGrid');
     grid.innerHTML = '';
     for (var i = 0; i < count; i++) {
         (function(file) {
@@ -1020,16 +1149,20 @@ function onTicketChatPhotosPicked(input) {
     }
 }
 
-function clearTicketChatPhotos() {
-    if (chatPhotoInput) chatPhotoInput.value = '';
-    document.getElementById('ticketChatPhotoBar').classList.add('hidden');
-    document.getElementById('ticketChatPhotoGrid').innerHTML = '';
+function clearTicketChatPhotos(ticketId) {
+    var input = chatEl(ticketId, 'photoInput');
+    if (input) input.value = '';
+    var bar = chatEl(ticketId, 'photoBar');
+    if (bar) bar.classList.add('hidden');
+    var grid = chatEl(ticketId, 'photoGrid');
+    if (grid) grid.innerHTML = '';
 }
 
-// Ctrl + V anywhere in the chat box drops the clipboard image into the
-// same file input the attach button fills, so both paths send identically.
-function handleTicketChatPaste(e) {
-    if (!chatPhotoInput) return;
+// Ctrl + V drops the clipboard image into the same file input the attach
+// button fills, so both paths send identically.
+function handleTicketChatPaste(ticketId, e) {
+    var photoInput = chatEl(ticketId, 'photoInput');
+    if (!photoInput) return;
 
     var items = (e.clipboardData || window.clipboardData || {}).items;
     if (!items) return;
@@ -1046,9 +1179,9 @@ function handleTicketChatPaste(e) {
     e.preventDefault();
 
     var dt = new DataTransfer();
-    if (chatPhotoInput.files) {
-        for (var f = 0; f < chatPhotoInput.files.length; f++) {
-            dt.items.add(chatPhotoInput.files[f]);
+    if (photoInput.files) {
+        for (var f = 0; f < photoInput.files.length; f++) {
+            dt.items.add(photoInput.files[f]);
         }
     }
 
@@ -1058,127 +1191,109 @@ function handleTicketChatPaste(e) {
         dt.items.add(new File([pasted[p]], 'pasted-image-' + stamp + '-' + p + '.' + ext, { type: pasted[p].type }));
     }
 
-    chatPhotoInput.files = dt.files;
-    onTicketChatPhotosPicked(chatPhotoInput);
+    photoInput.files = dt.files;
+    onTicketChatPhotosPicked(photoInput, ticketId);
 }
 
 // -------------------------------------------------------------------------
 // Sending
 // -------------------------------------------------------------------------
-function sendTicketChatReply() {
-    if (!chatTicketId || chatIsSending) return;
+function sendTicketChatReply(ticketId) {
+    var chat = chats[ticketId];
+    if (!chat || chat.isSending) return;
 
-    var msg = chatInput.value.trim();
-    var hasPhotos = chatPhotoInput && chatPhotoInput.files && chatPhotoInput.files.length > 0;
+    var input = chatEl(ticketId, 'input');
+    var photoInput = chatEl(ticketId, 'photoInput');
+    var sendBtn = chatEl(ticketId, 'sendBtn');
+    var thread = chatEl(ticketId, 'thread');
+
+    var msg = input.value.trim();
+    var hasPhotos = photoInput && photoInput.files && photoInput.files.length > 0;
     if (!msg && !hasPhotos) return;
 
-    hideTicketChatError();
-    chatIsSending = true;
-    chatSendBtn.disabled = true;
-    chatSendBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    hideTicketChatError(ticketId);
+    chat.isSending = true;
+    sendBtn.disabled = true;
+    sendBtn.classList.add('opacity-50', 'cursor-not-allowed');
 
     var body = new FormData();
     body.append('action', 'send_tech_reply');
-    body.append('id', chatTicketId);
+    body.append('id', ticketId);
     body.append('reply_message', msg);
-    body.append('reply_to_id', chatReplyToId);
+    body.append('reply_to_id', chat.replyToId);
     if (hasPhotos) {
-        for (var i = 0; i < chatPhotoInput.files.length; i++) {
-            body.append('attachments[]', chatPhotoInput.files[i]);
+        for (var i = 0; i < photoInput.files.length; i++) {
+            body.append('attachments[]', photoInput.files[i]);
         }
     }
 
-    var sentToTicket = chatTicketId;
-
-    fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: body })
+    fetch('api_ticket_replies.php?id=' + ticketId, { method: 'POST', body: body })
         .then(function(res) { return res.json(); })
         .then(function(data) {
-            chatIsSending = false;
-            chatSendBtn.disabled = false;
-            chatSendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            if (!chats[ticketId]) return;   // closed while the reply was in flight
+            chat.isSending = false;
+            sendBtn.disabled = false;
+            sendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
 
             if (!data || !data.success) {
-                showTicketChatError((data && data.error) ? data.error : 'Failed to send reply.');
+                showTicketChatError(ticketId, (data && data.error) ? data.error : 'Failed to send reply.');
                 return;
             }
 
-            chatInput.value = '';
-            chatInput.style.height = 'auto';
-            clearTicketChatPhotos();
-            cancelTicketChatReplyTo();
+            input.value = '';
+            input.style.height = 'auto';
+            clearTicketChatPhotos(ticketId);
+            cancelTicketChatReplyTo(ticketId);
 
-            if (sentToTicket !== chatTicketId) return;
-            if (!chatThread.querySelector('.chat-msg[data-reply-id="' + data.reply.id + '"]')) {
-                chatThread.appendChild(buildTicketChatBubble(data.reply));
-                if (data.reply.id > chatLastReplyId) chatLastReplyId = data.reply.id;
-                renderTicketChatReactions(data.reply.id, data.reply.reactions || []);
-                renderTicketChatSeen();
-                scrollTicketChatToBottom();
+            if (!thread.querySelector('.chat-msg[data-reply-id="' + data.reply.id + '"]')) {
+                thread.appendChild(buildTicketChatBubble(ticketId, data.reply));
+                if (data.reply.id > chat.lastReplyId) chat.lastReplyId = data.reply.id;
+                renderTicketChatReactions(ticketId, data.reply.id, data.reply.reactions || []);
+                renderTicketChatSeen(ticketId);
+                scrollTicketChatToBottom(ticketId);
             }
         })
         .catch(function(err) {
-            chatIsSending = false;
-            chatSendBtn.disabled = false;
-            chatSendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            showTicketChatError('Network error - reply was not sent.');
+            if (chats[ticketId]) {
+                chat.isSending = false;
+                sendBtn.disabled = false;
+                sendBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                showTicketChatError(ticketId, 'Network error - reply was not sent.');
+            }
             console.error('Ticket chat send error:', err);
         });
 }
 
-// Enter sends; Shift + Enter starts a new line
-if (chatInput) {
-    chatInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            cancelTicketChatReplyTo();
-            return;
-        }
-        if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
-            e.preventDefault();
-            sendTicketChatReply();
-        }
-    });
-
-    chatInput.addEventListener('input', function() {
-        // Grow with the text, up to the max height the class caps it at
-        chatInput.style.height = 'auto';
-        chatInput.style.height = Math.min(chatInput.scrollHeight, 112) + 'px';
-
-        // Let the client see the typing indicator, at most one ping every 2s
-        var now = Date.now();
-        if (chatTicketId && (now - chatLastTypingPing) > 2000) {
-            chatLastTypingPing = now;
-            var ping = new FormData();
-            ping.append('action', 'typing');
-            ping.append('id', chatTicketId);
-            fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: ping }).catch(function() {});
-        }
-    });
-}
-
-// Ctrl + V works anywhere while the chat is open, not just inside the
-// textarea - but a paste aimed at another field on the page is left alone.
+// Ctrl + V works anywhere while a chat box is open, not just inside its own
+// textarea. Focus inside a specific box targets that box; otherwise it falls
+// back to whichever open box was most recently used.
 document.addEventListener('paste', function(e) {
-    if (!chatTicketId || chatBox.classList.contains('hidden') || chatIsMinimized) return;
-    if (document.getElementById('ticketChatComposer').classList.contains('hidden')) return;
+    if (!chatOrder.length) return;
+
+    var active = document.activeElement;
+    var targetId = null;
+
+    for (var i = 0; i < chatOrder.length; i++) {
+        var tid = chatOrder[i];
+        var chat = chats[tid];
+        if (chat && active && active !== document.body && chat.box.contains(active)) {
+            targetId = tid;
+            break;
+        }
+    }
+    if (targetId === null) {
+        targetId = chatOrder[chatOrder.length - 1];
+    }
+
+    var target = chats[targetId];
+    if (!target || target.isMinimized) return;
+    if (chatEl(targetId, 'composer').classList.contains('hidden')) return;
 
     var el = document.activeElement;
-    if (el && el !== document.body && !chatBox.contains(el)) return;
+    if (el && el !== document.body && !target.box.contains(el)) return;
 
-    handleTicketChatPaste(e);
+    handleTicketChatPaste(targetId, e);
 });
-
-// The access code field submits on Enter like the rest of the pop-up
-var chatCodeField = document.getElementById('ticketChatAccessCode');
-if (chatCodeField) {
-    chatCodeField.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            submitTicketChatStatus();
-        } else if (e.key === 'Escape') {
-            cancelTicketChatStatus();
-        }
-    });
-}
 
 // A notification click asked for one ticket - open its thread once the rows
 // are on the page.
@@ -1189,17 +1304,28 @@ if (TICKET_CHAT_AUTOLOAD) {
     });
 }
 
-// Polling is pointless while the tab is hidden
+// Polling is pointless while the tab is hidden - every open box pauses and
+// resumes together.
 document.addEventListener('visibilitychange', function() {
-    if (!chatTicketId) return;
     if (document.hidden) {
-        if (chatPollTimer) {
-            clearInterval(chatPollTimer);
-            chatPollTimer = null;
+        for (var i = 0; i < chatOrder.length; i++) {
+            var chat = chats[chatOrder[i]];
+            if (chat && chat.pollTimer) {
+                clearInterval(chat.pollTimer);
+                chat.pollTimer = null;
+            }
         }
-    } else if (!chatPollTimer) {
-        loadTicketChatThread(false);
-        chatPollTimer = setInterval(function() { loadTicketChatThread(false); }, 3000);
+        return;
+    }
+    var openNow = chatOrder.slice();
+    for (var j = 0; j < openNow.length; j++) {
+        (function(tid) {
+            var chat = chats[tid];
+            if (chat && !chat.pollTimer) {
+                loadTicketChatThread(tid, false);
+                chat.pollTimer = setInterval(function() { loadTicketChatThread(tid, false); }, 3000);
+            }
+        })(openNow[j]);
     }
 });
 </script>

@@ -662,10 +662,23 @@ function pollForNewTickets() {
     xhr.send();
 }
 
+// Shared dock for both toast types below, docked top-center so it never sits
+// over the chat boxes stacked at the lower right.
+function getAdminToastDock() {
+    var el = document.getElementById('adminToastDock');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'adminToastDock';
+        el.className = 'fixed top-4 inset-x-0 z-[60] flex flex-col items-center gap-3 px-4 pointer-events-none';
+        document.body.appendChild(el);
+    }
+    return el;
+}
+
 function showNewTicketToastPopup(ticket, pendingCount, latestType, latestId, notifKey) {
     var toast = document.createElement('div');
-    toast.className = 'fixed bottom-6 right-6 z-50 bg-slate-900 text-white rounded-3xl p-5 shadow-2xl border border-[#FA5915] max-w-sm w-full space-y-3 animate-bounce';
-    
+    toast.className = 'pointer-events-auto w-full max-w-sm bg-slate-900 text-white rounded-3xl p-5 shadow-2xl border border-[#FA5915] space-y-3 animate-bounce';
+
     var isMaint = (latestType === 'maintenance');
     var targetLink = isMaint ? 'maintenance.php' : ('tickets.php?open_ticket=' + (ticket ? ticket.id : 0));
     var labelText = isMaint ? 'NEW POS MAINTENANCE REQUEST' : 'NEW SUPPORT TICKET';
@@ -693,8 +706,8 @@ function showNewTicketToastPopup(ticket, pendingCount, latestType, latestId, not
     }
     
     toast.innerHTML = html;
-    document.body.appendChild(toast);
-    
+    getAdminToastDock().appendChild(toast);
+
     setTimeout(function() {
         if (toast && toast.parentElement) {
             toast.remove();
@@ -711,9 +724,9 @@ function handleNewClientReply(reply) {
     var ticketId = parseInt(reply.ticket_id, 10) || 0;
     if (!ticketId) return;
 
-    // The chat pop-up sounds for the thread it has open, so skip that one here
-    var chatIsOpenForThis = (typeof chatTicketId !== 'undefined' && chatTicketId === ticketId &&
-        typeof chatBox !== 'undefined' && chatBox && !chatBox.classList.contains('hidden'));
+    // The chat pop-up sounds for any thread that already has its own box open,
+    // so skip that one here rather than sounding the alarm twice.
+    var chatIsOpenForThis = (typeof chats !== 'undefined' && !!chats[ticketId]);
     if (chatIsOpenForThis) return;
 
     playNewTicketChime();
@@ -745,7 +758,7 @@ function bumpTicketUnreadBadge(ticketId) {
 
 function showClientReplyToast(reply) {
     var toast = document.createElement('div');
-    toast.className = 'fixed bottom-6 right-6 z-50 bg-slate-900 text-white rounded-3xl p-5 shadow-2xl border border-[#FA5915] max-w-sm w-full space-y-3';
+    toast.className = 'pointer-events-auto w-full max-w-sm bg-slate-900 text-white rounded-3xl p-5 shadow-2xl border border-[#FA5915] space-y-3';
 
     var link = 'tickets.php?open_ticket=' + parseInt(reply.ticket_id, 10);
     var html = '';
@@ -766,7 +779,7 @@ function showClientReplyToast(reply) {
     html += '</div>';
 
     toast.innerHTML = html;
-    document.body.appendChild(toast);
+    getAdminToastDock().appendChild(toast);
 
     setTimeout(function() {
         if (toast && toast.parentElement) {
