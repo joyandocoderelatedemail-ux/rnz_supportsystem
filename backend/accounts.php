@@ -597,10 +597,12 @@ if (!$selected_client) {
                 $global_wo_summary = $stmt_gwo_sum->fetch(PDO::FETCH_ASSOC);
             }
 
+            // Legacy blank placeholder rows (no account, no date, no nature of work)
+            // never belong to a real client - hide them instead of showing "Acct #".
             $gwo_sql = "SELECT w.*, c.tradename, c.clientname as cl_owner 
                 FROM bucket_workorder w 
                 LEFT JOIN bucket_client c ON w.accountnum = c.accountnum 
-                WHERE 1=1 ";
+                WHERE NOT (TRIM(w.accountnum) = '' AND TRIM(w.xdate) = '') ";
             $gwo_p = array();
 
             if ($global_wo_status === 'paid') {
