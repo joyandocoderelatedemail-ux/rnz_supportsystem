@@ -480,7 +480,7 @@ function closeNewServiceNoteModal() {
 }
 
 // Notification Alarm - plays the submarine warning tone recording
-var TICKET_ALARM_FILE = 'ehh.mp3';
+var TICKET_ALARM_FILE = 'freesound_community-siren-alert-96052.mp3';
 var TICKET_ALARM_VOLUME = 0.85;
 var TICKET_ALARM_MAX_SECONDS = 4;    // the clip runs ~10s; 0 plays all of it
 var TICKET_ALARM_FADE_SECONDS = 0.5;
