@@ -260,9 +260,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
                     $update_msg = "$asset_type \"$asset_name\" recorded for Account #$accountnum.";
 
-                    // Hardware handed over leaves the warehouse and gets billed:
-                    // deduct the good stock, log the movement, and raise an unpaid
-                    // work order the tech only has to mark Paid once settled.
+                    // Client details for the work order (and the movement log)
+                    $wo_clientname = '';
+                    $wo_address = '';
+                    $stmt_cli = $pdo->prepare("SELECT tradename, clientname, address FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+                    $stmt_cli->execute(array(':acct' => $accountnum));
+                    $cli_row = $stmt_cli->fetch();
+                    if ($cli_row) {
+                        $wo_clientname = !empty($cli_row['tradename']) ? $cli_row['tradename'] : $cli_row['clientname'];
+                        $wo_address = isset($cli_row['address']) ? $cli_row['address'] : '';
+                    }
+                    if ($wo_clientname === '') {
+                        $wo_clientname = 'Account #' . $accountnum;
+                    }
+
+                    // Hardware handed over also leaves the warehouse, so its stock
+                    // is deducted and the movement logged before the billing.
+                    $stock_note = '';
                     if ($asset_type === 'Hardware' && $item_id !== null) {
                         $prev_qty = intval($inv_item['quantity']);
 
@@ -271,20 +285,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             WHERE id = :id");
                         $stmt_deduct->execute(array(':amt' => $quantity, ':now' => $now, ':id' => $item_id));
                         $new_qty = resync_item_total_quantity($pdo, $item_id);
-
-                        // Client details for the work order and the movement log
-                        $wo_clientname = '';
-                        $wo_address = '';
-                        $stmt_cli = $pdo->prepare("SELECT tradename, clientname, address FROM bucket_client WHERE accountnum = :acct LIMIT 1");
-                        $stmt_cli->execute(array(':acct' => $accountnum));
-                        $cli_row = $stmt_cli->fetch();
-                        if ($cli_row) {
-                            $wo_clientname = !empty($cli_row['tradename']) ? $cli_row['tradename'] : $cli_row['clientname'];
-                            $wo_address = isset($cli_row['address']) ? $cli_row['address'] : '';
-                        }
-                        if ($wo_clientname === '') {
-                            $wo_clientname = 'Account #' . $accountnum;
-                        }
+                        $stock_note = ' ' . $quantity . ' unit(s) deducted from inventory (' . $new_qty . ' left in stock) and';
 
                         $log_notes = 'Released to client via Software & Hardware record';
                         if ($serial_number !== '') {
@@ -308,33 +309,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                             ':notes' => $log_notes,
                             ':now' => $now
                         ));
-
-                        $wo_nature = $quantity . 'x ' . $asset_name;
-                        // Some items carry their name as the code; no point printing it twice
-                        if (!empty($item_code) && strcasecmp(trim($item_code), trim($asset_name)) !== 0) {
-                            $wo_nature .= ' (' . $item_code . ')';
-                        }
-                        if ($serial_number !== '') {
-                            $wo_nature .= ' - S/N: ' . $serial_number;
-                        }
-
-                        $stmt_wo_new = $pdo->prepare("INSERT INTO bucket_workorder
-                            (accountnum, xdate, clientname, address, natureofwork, amount, status, ornum)
-                            VALUES (:acct, :xdate, :cname, :addr, :nature, :amount, 'unpaid', '')");
-                        $stmt_wo_new->execute(array(
-                            ':acct' => $accountnum,
-                            ':xdate' => date('Y-m-d'),
-                            ':cname' => $wo_clientname,
-                            ':addr' => $wo_address,
-                            ':nature' => $wo_nature,
-                            ':amount' => ($unit_price * $quantity)
-                        ));
-                        $new_wo_id = intval($pdo->lastInsertId());
-
-                        $update_msg = "Hardware \"$asset_name\" recorded for Account #$accountnum. " .
-                            $quantity . " unit(s) deducted from inventory (" . $new_qty . " left in stock) and Work Order #WO-" . $new_wo_id .
-                            " raised as Unpaid - open the Work Orders tab to mark it Paid once settled.";
                     }
+
+                    // Anything handed to a client gets billed, software included:
+                    // raise an unpaid work order the tech only has to mark Paid.
+                    $wo_nature = ($quantity > 1) ? ($quantity . 'x ' . $asset_name) : $asset_name;
+                    // Some items carry their name as the code; no point printing it twice
+                    if (!empty($item_code) && strcasecmp(trim($item_code), trim($asset_name)) !== 0) {
+                        $wo_nature .= ' (' . $item_code . ')';
+                    }
+                    if ($serial_number !== '') {
+                        $wo_nature .= ' - S/N: ' . $serial_number;
+                    }
+
+                    $stmt_wo_new = $pdo->prepare("INSERT INTO bucket_workorder
+                        (accountnum, xdate, clientname, address, natureofwork, amount, status, ornum)
+                        VALUES (:acct, :xdate, :cname, :addr, :nature, :amount, 'unpaid', '')");
+                    $stmt_wo_new->execute(array(
+                        ':acct' => $accountnum,
+                        ':xdate' => date('Y-m-d'),
+                        ':cname' => $wo_clientname,
+                        ':addr' => $wo_address,
+                        ':nature' => $wo_nature,
+                        ':amount' => ($unit_price * $quantity)
+                    ));
+                    $new_wo_id = intval($pdo->lastInsertId());
+
+                    $update_msg = "$asset_type \"$asset_name\" recorded for Account #$accountnum." . $stock_note .
+                        " Work Order #WO-" . $new_wo_id . " raised as Unpaid - open the Work Orders tab to mark it Paid once settled.";
 
                     $pdo->commit();
                 } catch (PDOException $e) {
@@ -1932,7 +1934,7 @@ $page_title = 'Manage Accounts';
                             }
                             ?>
 
-                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-<?php echo $can_view_spend ? '3' : '2'; ?> gap-3">
                                 <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                                     <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Software Records</p>
                                     <p class="text-xl font-extrabold text-slate-900 font-mono mt-0.5"><?php echo $count_software; ?></p>
@@ -1941,10 +1943,13 @@ $page_title = 'Manage Accounts';
                                     <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Hardware Records</p>
                                     <p class="text-xl font-extrabold text-slate-900 font-mono mt-0.5"><?php echo $count_hardware; ?></p>
                                 </div>
-                                <div class="bg-[#FFF5ED] border border-[#FECDAA] rounded-2xl p-4">
-                                    <p class="text-[10px] font-bold text-[#7C2112] uppercase tracking-wider">Total Value</p>
-                                    <p class="text-xl font-extrabold text-[#EB3E0B] font-mono mt-0.5">&#8369;<?php echo number_format($assets_total, 2); ?></p>
-                                </div>
+                                <!-- Client spend is commercially sensitive: Super Admin (Master) only -->
+                                <?php if ($can_view_spend): ?>
+                                    <div class="bg-[#FFF5ED] border border-[#FECDAA] rounded-2xl p-4">
+                                        <p class="text-[10px] font-bold text-[#7C2112] uppercase tracking-wider">Total Value</p>
+                                        <p class="text-xl font-extrabold text-[#EB3E0B] font-mono mt-0.5">&#8369;<?php echo number_format($assets_total, 2); ?></p>
+                                    </div>
+                                <?php endif; ?>
                             </div>
 
                             <div class="overflow-x-auto">
@@ -1955,8 +1960,10 @@ $page_title = 'Manage Accounts';
                                             <th class="py-3 px-4">Item</th>
                                             <th class="py-3 px-4">Serial Number</th>
                                             <th class="py-3 px-4 text-center">Qty</th>
-                                            <th class="py-3 px-4 text-right">Unit Price</th>
-                                            <th class="py-3 px-4 text-right">Total</th>
+                                            <?php if ($can_view_spend): ?>
+                                                <th class="py-3 px-4 text-right">Unit Price</th>
+                                                <th class="py-3 px-4 text-right">Total</th>
+                                            <?php endif; ?>
                                             <th class="py-3 px-4">Warranty</th>
                                             <th class="py-3 px-4">Recorded</th>
                                             <th class="py-3 px-4 text-right">Actions</th>
@@ -1965,7 +1972,7 @@ $page_title = 'Manage Accounts';
                                     <tbody class="divide-y divide-slate-100 font-medium">
                                         <?php if (empty($client_assets)): ?>
                                             <tr>
-                                                <td colspan="9" class="py-8 text-center text-slate-400">
+                                                <td colspan="<?php echo $can_view_spend ? 9 : 7; ?>" class="py-8 text-center text-slate-400">
                                                     No software or hardware recorded for this account yet.
                                                 </td>
                                             </tr>
@@ -1992,8 +1999,10 @@ $page_title = 'Manage Accounts';
                                                         <?php echo !empty($ca['serial_number']) ? sanitize($ca['serial_number']) : '<span class="text-slate-300">&mdash;</span>'; ?>
                                                     </td>
                                                     <td class="py-3 px-4 text-center font-mono font-bold text-slate-800"><?php echo intval($ca['quantity']); ?></td>
-                                                    <td class="py-3 px-4 text-right font-mono text-slate-600">&#8369;<?php echo number_format($ca['unit_price'], 2); ?></td>
-                                                    <td class="py-3 px-4 text-right font-mono font-bold text-slate-900">&#8369;<?php echo number_format($ca['total_amount'], 2); ?></td>
+                                                    <?php if ($can_view_spend): ?>
+                                                        <td class="py-3 px-4 text-right font-mono text-slate-600">&#8369;<?php echo number_format($ca['unit_price'], 2); ?></td>
+                                                        <td class="py-3 px-4 text-right font-mono font-bold text-slate-900">&#8369;<?php echo number_format($ca['total_amount'], 2); ?></td>
+                                                    <?php endif; ?>
                                                     <td class="py-3 px-4">
                                                         <?php
                                                         $ca_today   = strtotime(date('Y-m-d'));
@@ -2139,6 +2148,7 @@ $page_title = 'Manage Accounts';
                             <div>
                                 <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Software Price</label>
                                 <input type="number" step="0.01" min="0" name="unit_price" value="0.00" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 font-mono focus:bg-white focus:border-blue-500 focus:outline-none transition-all">
+                                <p class="text-[10px] text-slate-500 mt-1">Saving raises an <strong class="text-amber-700">Unpaid</strong> work order for this client at this price &mdash; mark it Paid in the Work Orders tab once settled.</p>
                             </div>
 
                             <div>
