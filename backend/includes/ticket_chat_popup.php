@@ -21,7 +21,7 @@ if (!isset($chat_autoload_ticket)) {
 <!-- TICKET CHAT DOCK - individual chat boxes are created here by JS, one per  -->
 <!-- open ticket, so several conversations can sit side by side at once       -->
 <!-- ========================================================================= -->
-<div id="ticketChatDock" class="fixed bottom-4 right-4 z-50 flex flex-wrap-reverse justify-end items-end gap-3 max-w-[calc(100vw-2rem)]"></div>
+<div id="ticketChatDock" class="fixed bottom-4 right-4 z-50 flex items-end gap-3 max-w-[calc(100vw-2rem)] overflow-x-auto"></div>
 
 <script>
 // =========================================================================
