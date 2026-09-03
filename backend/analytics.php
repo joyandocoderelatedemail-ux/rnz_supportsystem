@@ -333,6 +333,58 @@ if (empty($tkt_categories)) {
     $tkt_category_counts = array(0, 0, 0);
 }
 
+// Staff Technotes Distribution - who logged the service notes in the period.
+// Same shape as the ticket category split, read off bucket_technotes.techname.
+// Every name on a note counts, including past staff whose account is gone.
+$tnote_staff_labels = array();
+$tnote_staff_counts = array();
+$tnote_staff_total = 0;
+$tnote_staff_has_others = false;
+try {
+    $tns_where = " WHERE techname IS NOT NULL AND TRIM(techname) != '' ";
+    $tns_p = array();
+    if ($is_filtered && !empty($start_date) && !empty($end_date)) {
+        $tns_where .= " AND xdate >= :s_date AND xdate <= :e_date ";
+        $tns_p = array(':s_date' => $start_date, ':e_date' => $end_date);
+    }
+
+    $stmt_tns = $pdo->prepare("SELECT
+        TRIM(techname) as staff_name,
+        COUNT(*) as note_count
+        FROM bucket_technotes
+        " . $tns_where . "
+        GROUP BY staff_name
+        ORDER BY note_count DESC
+        LIMIT 6");
+    $stmt_tns->execute($tns_p);
+    $raw_tns = $stmt_tns ? $stmt_tns->fetchAll(PDO::FETCH_ASSOC) : array();
+
+    // Everyone in the period, so the slices can be read as a real share
+    $stmt_tns_all = $pdo->prepare("SELECT COUNT(*) FROM bucket_technotes " . $tns_where);
+    $stmt_tns_all->execute($tns_p);
+    $tnote_staff_total = intval($stmt_tns_all->fetchColumn());
+
+    $top_sum = 0;
+    foreach ($raw_tns as $ts) {
+        $tnote_staff_labels[] = $ts['staff_name'];
+        $tnote_staff_counts[] = intval($ts['note_count']);
+        $top_sum += intval($ts['note_count']);
+    }
+
+    // Anything past the top 6 is rolled into one slice rather than dropped
+    if ($tnote_staff_total > $top_sum) {
+        $tnote_staff_labels[] = 'Other staff';
+        $tnote_staff_counts[] = ($tnote_staff_total - $top_sum);
+        $tnote_staff_has_others = true;
+    }
+} catch (PDOException $e) {}
+
+$tnote_staff_shown = count($tnote_staff_labels);
+if (empty($tnote_staff_labels)) {
+    $tnote_staff_labels = array('No service notes');
+    $tnote_staff_counts = array(0);
+}
+
 // Top 5 Technicians by Field Visits (Within Filter Period)
 $top_technicians = array();
 try {
@@ -859,6 +911,34 @@ $page_title = 'Executive Analytics & BI';
                     </div>
                 </div>
 
+                <!-- Chart 3b: Staff Service Notes (Technotes) by Staff -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 print-card">
+                    <div class="border-b border-slate-800 pb-3">
+                        <h2 class="text-base font-extrabold text-white flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                            <span>Technotes by Staff</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">Share of service notes logged per staff member</p>
+                    </div>
+
+                    <div class="relative h-56 flex items-center justify-center">
+                        <canvas id="staffTechnoteChart"></canvas>
+                    </div>
+
+                    <div class="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-800">
+                        <span><?php echo number_format($tnote_staff_total); ?> service note<?php echo ($tnote_staff_total === 1) ? '' : 's'; ?> in period</span>
+                        <span><?php
+                            if ($tnote_staff_shown <= 0) {
+                                echo 'No staff activity';
+                            } elseif ($tnote_staff_has_others) {
+                                echo 'Top 6 + all others';
+                            } else {
+                                echo 'All ' . $tnote_staff_shown . ' staff';
+                            }
+                        ?></span>
+                    </div>
+                </div>
+
                 <!-- Chart 4: Hardware Devices Diagnosed -->
                 <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 print-card">
                     <div class="border-b border-slate-800 pb-3">
@@ -1205,6 +1285,44 @@ $page_title = 'Executive Analytics & BI';
                         legend: {
                             position: 'bottom',
                             labels: { color: '#cbd5e1', font: { size: 10 }, boxWidth: 12 }
+                        }
+                    },
+                    cutout: '65%'
+                }
+            });
+        }
+
+        // 3b. Technotes by Staff Doughnut Chart
+        var ctxStaffNotes = document.getElementById('staffTechnoteChart');
+        if (ctxStaffNotes) {
+            var staffNoteTotal = <?php echo intval($tnote_staff_total); ?>;
+            new Chart(ctxStaffNotes.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: <?php echo json_encode($tnote_staff_labels); ?>,
+                    datasets: [{
+                        data: <?php echo json_encode($tnote_staff_counts); ?>,
+                        backgroundColor: ['#f43f5e', '#f59e0b', '#10b981', '#3b82f6', '#a855f7', '#14b8a6', '#64748b'],
+                        borderColor: '#0f172a',
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#cbd5e1', font: { size: 10 }, boxWidth: 12 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    var val = Number(context.raw) || 0;
+                                    var pct = staffNoteTotal ? Math.round((val / staffNoteTotal) * 100) : 0;
+                                    return ' ' + context.label + ': ' + val + ' note' + (val === 1 ? '' : 's') + ' (' + pct + '%)';
+                                }
+                            }
                         }
                     },
                     cutout: '65%'

@@ -326,7 +326,7 @@ foreach ($raw_users as $u) {
 // KPI Stats
 $total_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user")->fetchColumn());
 $master_admin_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) IN ('master', 'admin', 'administrator')")->fetchColumn());
-$tech_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) IN ('tech support', 'technician', 'junior programmer', 'junior_programmer', 'senior programmer', 'senior_programmer', 'ojt')")->fetchColumn());
+$tech_users_cnt = intval($pdo->query("SELECT COUNT(*) FROM user WHERE LOWER(accesslevel) IN ('tech support', 'technician', 'junior tech support', 'senior tech support', 'junior programmer', 'junior_programmer', 'senior programmer', 'senior_programmer', 'ojt')")->fetchColumn());
 $my_tier = get_logged_tech_access_tier();
 $my_code = get_logged_tech_access_code();
 
@@ -343,6 +343,10 @@ function get_role_badge($level) {
         return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 shadow-xs">Senior Programmer</span>';
     } elseif ($lvl === 'junior programmer' || $lvl === 'junior_programmer') {
         return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-200 shadow-xs">Junior Programmer</span>';
+    } elseif ($lvl === 'senior tech support') {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200 shadow-xs">Senior Tech Support</span>';
+    } elseif ($lvl === 'junior tech support') {
+        return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-teal-100 text-teal-800 border border-teal-200 shadow-xs">Junior Tech Support</span>';
     } elseif ($lvl === 'tech support' || $lvl === 'technician') {
         return '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-xs">Tech Support</span>';
     } elseif ($lvl === 'ojt') {
@@ -501,6 +505,8 @@ $page_title = 'Admin Settings & Page Permissions';
                         <select name="role" class="w-full bg-slate-50 text-slate-800 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all font-semibold">
                             <option value="" <?php echo empty($role_filter) ? 'selected' : ''; ?>>All Roles</option>
                             <option value="tech support" <?php echo ($role_filter === 'tech support' || $role_filter === 'technician') ? 'selected' : ''; ?>>Tech Support</option>
+                            <option value="junior tech support" <?php echo ($role_filter === 'junior tech support') ? 'selected' : ''; ?>>Junior Tech Support</option>
+                            <option value="senior tech support" <?php echo ($role_filter === 'senior tech support') ? 'selected' : ''; ?>>Senior Tech Support</option>
                             <option value="junior programmer" <?php echo ($role_filter === 'junior programmer' || $role_filter === 'junior_programmer') ? 'selected' : ''; ?>>Junior Programmer</option>
                             <option value="senior programmer" <?php echo ($role_filter === 'senior programmer' || $role_filter === 'senior_programmer') ? 'selected' : ''; ?>>Senior Programmer</option>
                             <option value="ojt" <?php echo ($role_filter === 'ojt') ? 'selected' : ''; ?>>OJT</option>
@@ -745,6 +751,8 @@ $page_title = 'Admin Settings & Page Permissions';
                     <label class="text-xs font-bold text-slate-700">Primary Role / Profile <span class="text-[#EB3E0B]">*</span></label>
                     <select name="accesslevel" id="create_accesslevel" onchange="applyRolePreset('create', this.value)" required class="w-full bg-slate-50 text-slate-900 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
                         <option value="tech support" selected>Tech Support (Hardware, Tickets, Diagnostic logs & Inventory)</option>
+                        <option value="junior tech support">Junior Tech Support (Entry-level Hardware & Ticket Support, Edit w/ Code)</option>
+                        <option value="senior tech support">Senior Tech Support (Experienced Hardware & Ticket Support, Direct Edit)</option>
                         <option value="junior programmer">Junior Programmer (Development, Tickets, Bug Fixes & Maintenance)</option>
                         <option value="senior programmer">Senior Programmer (System Architecture, Full Technical & Page Access)</option>
                         <option value="ojt">OJT (On-the-Job Trainee - Guided Support & Tickets)</option>
@@ -922,6 +930,8 @@ $page_title = 'Admin Settings & Page Permissions';
                     <label class="text-xs font-bold text-slate-700">Primary Role / Profile <span class="text-[#EB3E0B]">*</span></label>
                     <select name="accesslevel" id="edit_accesslevel" onchange="applyRolePreset('edit', this.value)" required class="w-full bg-slate-50 text-slate-900 text-xs px-4 py-3 rounded-2xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none font-semibold">
                         <option value="tech support">Tech Support (Hardware, Tickets, Diagnostic logs & Inventory)</option>
+                        <option value="junior tech support">Junior Tech Support (Entry-level Hardware & Ticket Support, Edit w/ Code)</option>
+                        <option value="senior tech support">Senior Tech Support (Experienced Hardware & Ticket Support, Direct Edit)</option>
                         <option value="junior programmer">Junior Programmer (Development, Tickets, Bug Fixes & Maintenance)</option>
                         <option value="senior programmer">Senior Programmer (System Architecture, Full Technical & Page Access)</option>
                         <option value="ojt">OJT (On-the-Job Trainee - Guided Support & Tickets)</option>
@@ -1066,6 +1076,23 @@ function applyRolePreset(prefix, role) {
     if (role === 'master' || role === 'admin' || role === 'administrator' || role === 'senior programmer' || role === 'senior_programmer') {
         setAllPages(prefix, true);
         setTierRadio(prefix, 3);
+    } else if (role === 'senior tech support') {
+        // Same page reach as Tech Support - seniority raises edit trust, not
+        // page access, so this deliberately does not reach into Settings the
+        // way Senior Programmer does.
+        setAllPages(prefix, false);
+        ['dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance'].forEach(function(k) {
+            var el = document.getElementById(prefix + '_page_' + k);
+            if (el) el.checked = true;
+        });
+        setTierRadio(prefix, 3);
+    } else if (role === 'junior tech support') {
+        setAllPages(prefix, false);
+        ['dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance'].forEach(function(k) {
+            var el = document.getElementById(prefix + '_page_' + k);
+            if (el) el.checked = true;
+        });
+        setTierRadio(prefix, 2);
     } else if (role === 'junior programmer' || role === 'junior_programmer' || role === 'tech support' || role === 'technician') {
         setAllPages(prefix, false);
         ['dashboard', 'tickets', 'accounts', 'inventory', 'maintenance'].forEach(function(k) {

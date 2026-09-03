@@ -27,6 +27,53 @@ touch_user_presence('Dashboard');
 $online_staff = get_online_staff();
 $presence_counts = count_staff_presence($online_staff);
 
+// Staff directory with each account's service note tally. Commercially and
+// personally sensitive, so it is Super Admin (Master) only - the API behind
+// the panel enforces the same rule independently.
+$can_view_staff = is_super_admin();
+$staff_accounts = array();
+
+if ($can_view_staff) {
+    try {
+        $pdo_staff = get_db_connection();
+
+        // One grouped pass over the notes rather than a query per staff member
+        $note_counts = array();
+        $stmt_counts = $pdo_staff->query("SELECT LOWER(TRIM(techname)) AS name_key, COUNT(*) AS note_cnt
+            FROM bucket_technotes
+            WHERE TRIM(techname) <> ''
+            GROUP BY LOWER(TRIM(techname))");
+        foreach ($stmt_counts->fetchAll() as $nc) {
+            $note_counts[$nc['name_key']] = intval($nc['note_cnt']);
+        }
+
+        // Super Admin (Master) accounts are owners, not staff on the floor, so
+        // they are left out of the directory - same levels is_super_admin() uses.
+        $stmt_staff = $pdo_staff->query("SELECT id, user, fname, lname, accesslevel, emailadd, contactnum
+            FROM user
+            WHERE LOWER(TRIM(accesslevel)) NOT IN ('master', 'super admin', 'superadmin')
+            ORDER BY fname ASC, lname ASC");
+        foreach ($stmt_staff->fetchAll() as $su) {
+            $full_name = trim($su['fname'] . ' ' . $su['lname']);
+            if ($full_name === '') {
+                $full_name = $su['user'];
+            }
+            $key = strtolower($full_name);
+            $staff_accounts[] = array(
+                'id' => intval($su['id']),
+                'name' => $full_name,
+                'username' => $su['user'],
+                'accesslevel' => (trim($su['accesslevel']) !== '') ? $su['accesslevel'] : 'Staff',
+                'role_class' => presence_role_badge_class($su['accesslevel']),
+                'initials' => presence_initials($full_name),
+                'note_count' => isset($note_counts[$key]) ? $note_counts[$key] : 0
+            );
+        }
+    } catch (PDOException $e) {
+        error_log("Staff directory error: " . $e->getMessage());
+    }
+}
+
 $total_tickets = 0;
 $pending_tickets = 0;
 $pending_orders = 0;
@@ -346,6 +393,73 @@ $auto_open_popup = ($today_events_count > 0);
                 </div>
             </div>
 
+            <!-- Staff Accounts & their service notes (Super Admin / Master only) -->
+            <?php if ($can_view_staff): ?>
+                <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div class="p-5 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                        <div class="flex items-center space-x-3.5 min-w-0">
+                            <div class="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h3 class="text-lg font-extrabold text-slate-900">Staff Accounts</h3>
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        Super Admin Only
+                                    </span>
+                                </div>
+                                <p class="text-xs text-slate-500 mt-0.5">Open a staff member to read every service note they have logged.</p>
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-extrabold bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+                            <?php echo count($staff_accounts); ?> Account<?php echo (count($staff_accounts) === 1) ? '' : 's'; ?>
+                        </span>
+                    </div>
+
+                    <div class="p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                        <?php if (empty($staff_accounts)): ?>
+                            <div class="col-span-full py-8 text-center text-xs text-slate-400 space-y-1">
+                                <p class="font-bold text-slate-600">No staff accounts found</p>
+                                <p>Accounts created in Admin Settings appear here.</p>
+                            </div>
+                        <?php else: ?>
+                            <?php foreach ($staff_accounts as $sa): ?>
+                                <button type="button"
+                                        onclick="openStaffNotes(<?php echo $sa['id']; ?>, '<?php echo addslashes($sa['name']); ?>')"
+                                        title="View service notes by <?php echo sanitize($sa['name']); ?>"
+                                        class="text-left flex items-center space-x-3 p-3.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white hover:border-[#FECDAA] hover:shadow-sm transition-all group">
+                                    <div class="w-10 h-10 rounded-full bg-slate-900 text-white text-xs font-extrabold flex items-center justify-center shrink-0">
+                                        <?php echo sanitize($sa['initials']); ?>
+                                    </div>
+                                    <div class="min-w-0 flex-1 space-y-1">
+                                        <div class="flex items-center gap-1.5 min-w-0">
+                                            <span class="font-extrabold text-xs text-slate-900 truncate group-hover:text-[#EB3E0B]"><?php echo sanitize($sa['name']); ?></span>
+                                            <span class="text-[10px] font-mono text-slate-400 shrink-0">@<?php echo sanitize($sa['username']); ?></span>
+                                        </div>
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize <?php echo $sa['role_class']; ?>">
+                                            <?php echo sanitize($sa['accesslevel']); ?>
+                                        </span>
+                                        <p class="text-[11px] font-bold <?php echo ($sa['note_count'] > 0) ? 'text-slate-600' : 'text-slate-400'; ?>">
+                                            <?php echo number_format($sa['note_count']); ?> service note<?php echo ($sa['note_count'] === 1) ? '' : 's'; ?>
+                                        </p>
+                                    </div>
+                                    <svg class="w-4 h-4 text-slate-300 group-hover:text-[#EB3E0B] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                                    </svg>
+                                </button>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+
+                    <div class="px-5 sm:px-6 py-3 bg-slate-50 border-t border-slate-100 text-[11px] text-slate-500 font-medium">
+                        Notes are matched to a person by the name stamped on them, so a renamed account only shows notes logged under its current name.
+                    </div>
+                </div>
+            <?php endif; ?>
+
             <!-- Incoming Support Tickets Queue -->
             <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
                 <div class="p-6 border-b border-slate-100 flex items-center justify-between">
@@ -437,6 +551,66 @@ $auto_open_popup = ($today_events_count > 0);
         </main>
     </div>
 </div>
+
+<!-- ========================================================================= -->
+<!-- STAFF SERVICE NOTES MODAL (Super Admin / Master only) -->
+<!-- ========================================================================= -->
+<?php if ($can_view_staff): ?>
+<div id="staffNotesModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/75 backdrop-blur-md p-4 overflow-y-auto" onclick="handleStaffNotesBackdrop(event)">
+    <div class="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8 max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
+
+        <div class="p-6 border-b border-slate-100 bg-gradient-to-r from-purple-50/70 via-slate-50 to-white flex items-center justify-between gap-3">
+            <div class="flex items-center space-x-3.5 min-w-0">
+                <div id="staffNotesInitials" class="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-extrabold shrink-0"></div>
+                <div class="min-w-0">
+                    <h3 id="staffNotesName" class="text-lg sm:text-xl font-extrabold text-slate-900 truncate"></h3>
+                    <p id="staffNotesMeta" class="text-xs text-slate-500 font-medium mt-0.5"></p>
+                </div>
+            </div>
+            <button type="button" onclick="closeStaffNotes()" class="w-9 h-9 rounded-2xl bg-white/80 hover:bg-slate-100 text-slate-400 hover:text-slate-700 flex items-center justify-center border border-slate-200/80 transition-colors shrink-0" title="Close">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Date range: filters on the note date (xdate), blank sides are open-ended -->
+        <div class="px-6 py-3.5 border-b border-slate-100 bg-white flex flex-wrap items-end gap-3">
+            <div>
+                <label for="staffNotesFrom" class="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">From</label>
+                <input type="date" id="staffNotesFrom" onchange="applyStaffNotesFilter()"
+                       class="bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl px-3 py-2 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono font-bold">
+            </div>
+            <div>
+                <label for="staffNotesTo" class="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">To</label>
+                <input type="date" id="staffNotesTo" onchange="applyStaffNotesFilter()"
+                       class="bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl px-3 py-2 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-mono font-bold">
+            </div>
+            <button type="button" onclick="applyStaffNotesFilter()"
+                    class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all">Apply</button>
+            <button type="button" onclick="clearStaffNotesFilter()"
+                    class="bg-white hover:bg-slate-100 text-slate-600 text-xs font-bold px-4 py-2.5 rounded-xl border border-slate-200 transition-all">Clear</button>
+            <span id="staffNotesRangeHint" class="text-[11px] text-slate-400 font-medium ml-auto"></span>
+        </div>
+
+        <div id="staffNotesBody" class="p-6 overflow-y-auto flex-1 space-y-3">
+            <div class="text-center text-xs text-slate-400 font-bold py-10">Loading service notes...</div>
+        </div>
+
+        <div class="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <span id="staffNotesFooter" class="text-[11px] text-slate-500 font-medium"></span>
+            <div class="flex items-center gap-2">
+                <button type="button" id="staffNotesPrev" onclick="staffNotesGoPage(-1)" disabled
+                        class="bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-200 transition-all">&larr; Prev</button>
+                <span id="staffNotesPageLabel" class="text-[11px] font-bold text-slate-600 px-1"></span>
+                <button type="button" id="staffNotesNext" onclick="staffNotesGoPage(1)" disabled
+                        class="bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-200 transition-all">Next &rarr;</button>
+                <button type="button" onclick="closeStaffNotes()" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all ml-1">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- ========================================================================= -->
 <!-- SIMPLIFIED EVENT & SCHEDULE POP-UP MODAL (Auto-shown on login & on-demand) -->
@@ -618,8 +792,185 @@ function handlePopupBackdropClick(e) {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeSchedulePopup();
+        if (typeof closeStaffNotes === 'function') closeStaffNotes();
     }
 });
+
+<?php if ($can_view_staff): ?>
+/* ----- Staff Accounts: service notes by person (Super Admin only) -----
+   The panel is hidden for everyone else and api_staff_notes.php refuses the
+   request independently, so this is never the only gate. */
+var staffNotesState = { userId: 0, page: 1, from: '', to: '' };
+
+function openStaffNotes(userId, staffName) {
+    var modal = document.getElementById('staffNotesModal');
+    if (!modal) return;
+
+    staffNotesState = { userId: userId, page: 1, from: '', to: '' };
+    document.getElementById('staffNotesFrom').value = '';
+    document.getElementById('staffNotesTo').value = '';
+
+    document.getElementById('staffNotesName').textContent = staffName || 'Staff member';
+    document.getElementById('staffNotesInitials').textContent = staffInitialsFrom(staffName);
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    loadStaffNotes();
+}
+
+/* Pulls one 20-note page for the account in staffNotesState, honouring the
+   date range. Every paging / filter action funnels back through here. */
+function loadStaffNotes() {
+    if (!staffNotesState.userId) return;
+
+    document.getElementById('staffNotesMeta').textContent = 'Loading service notes...';
+    document.getElementById('staffNotesFooter').textContent = '';
+    document.getElementById('staffNotesPageLabel').textContent = '';
+    document.getElementById('staffNotesPrev').disabled = true;
+    document.getElementById('staffNotesNext').disabled = true;
+    document.getElementById('staffNotesBody').innerHTML =
+        '<div class="text-center text-xs text-slate-400 font-bold py-10">Loading service notes...</div>';
+
+    var url = 'api_staff_notes.php?user_id=' + encodeURIComponent(staffNotesState.userId) +
+        '&page=' + encodeURIComponent(staffNotesState.page);
+    if (staffNotesState.from) url += '&date_from=' + encodeURIComponent(staffNotesState.from);
+    if (staffNotesState.to) url += '&date_to=' + encodeURIComponent(staffNotesState.to);
+
+    fetch(url, { credentials: 'same-origin' })
+        .then(function(res) { return res.json(); })
+        .then(function(data) { renderStaffNotes(data); })
+        .catch(function(err) {
+            document.getElementById('staffNotesBody').innerHTML =
+                '<div class="text-center text-xs text-rose-500 font-bold py-10">Network error - the notes could not be loaded.</div>';
+            console.error('Staff notes error:', err);
+        });
+}
+
+function applyStaffNotesFilter() {
+    staffNotesState.from = document.getElementById('staffNotesFrom').value || '';
+    staffNotesState.to = document.getElementById('staffNotesTo').value || '';
+    staffNotesState.page = 1;
+    loadStaffNotes();
+}
+
+function clearStaffNotesFilter() {
+    document.getElementById('staffNotesFrom').value = '';
+    document.getElementById('staffNotesTo').value = '';
+    staffNotesState.from = '';
+    staffNotesState.to = '';
+    staffNotesState.page = 1;
+    loadStaffNotes();
+}
+
+function staffNotesGoPage(delta) {
+    var next = staffNotesState.page + delta;
+    if (next < 1) return;
+    staffNotesState.page = next;
+    loadStaffNotes();
+    document.getElementById('staffNotesBody').scrollTop = 0;
+}
+
+function staffInitialsFrom(name) {
+    var parts = String(name || '').trim().split(/\s+/);
+    if (!parts[0]) return '?';
+    if (parts.length >= 2) {
+        return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    }
+    return parts[0].substring(0, 2).toUpperCase();
+}
+
+function renderStaffNotes(data) {
+    var body = document.getElementById('staffNotesBody');
+
+    if (!data || !data.success) {
+        document.getElementById('staffNotesMeta').textContent = '';
+        body.innerHTML = '<div class="text-center text-xs text-rose-500 font-bold py-10">' +
+            escOnlineStaffHtml((data && data.error) ? data.error : 'The notes could not be loaded.') + '</div>';
+        return;
+    }
+
+    var filtered = !!(data.date_from || data.date_to);
+
+    document.getElementById('staffNotesMeta').textContent =
+        '@' + data.staff.username + ' · ' + data.staff.accesslevel + ' · ' +
+        data.total + ' service note' + (data.total === 1 ? '' : 's') +
+        (filtered ? ' in range' : '') +
+        (data.done_count ? (' · ' + data.done_count + ' marked Done') : '');
+
+    document.getElementById('staffNotesRangeHint').textContent = filtered
+        ? ('Showing ' + (data.date_from || 'the earliest note') + ' to ' + (data.date_to || 'today'))
+        : 'All dates';
+
+    document.getElementById('staffNotesFooter').textContent = (data.total > 0)
+        ? ('Showing ' + data.range_start + '-' + data.range_end + ' of ' + data.total + ' note' + (data.total === 1 ? '' : 's'))
+        : 'No notes to show';
+
+    document.getElementById('staffNotesPageLabel').textContent =
+        'Page ' + data.page + ' of ' + data.total_pages;
+    document.getElementById('staffNotesPrev').disabled = !data.has_prev;
+    document.getElementById('staffNotesNext').disabled = !data.has_next;
+    staffNotesState.page = data.page;
+
+    if (!data.notes.length) {
+        body.innerHTML = '<div class="text-center py-12 px-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-1">' +
+            '<p class="text-sm font-bold text-slate-800">' +
+                (filtered ? 'No service notes in this date range' : 'No service notes yet') + '</p>' +
+            '<p class="text-xs text-slate-500 max-w-sm mx-auto">' +
+                (filtered
+                    ? 'Try widening the range or clearing it. Notes with a blank or malformed date will not match a range.'
+                    : 'Notes are matched by the name on the note, so anything logged under a different spelling of this name will not appear here.') +
+            '</p></div>';
+        return;
+    }
+
+    var html = '';
+    for (var i = 0; i < data.notes.length; i++) {
+        var n = data.notes[i];
+        html += '<div class="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-white transition-colors space-y-2">' +
+            '<div class="flex items-start justify-between gap-2 flex-wrap">' +
+                '<div class="min-w-0">' +
+                    '<div class="flex items-center gap-2 flex-wrap">' +
+                        '<span class="font-mono text-[10px] text-slate-400">#' + n.id + '</span>' +
+                        '<span class="font-extrabold text-xs text-slate-900">' + escOnlineStaffHtml(n.client) + '</span>' +
+                        (n.is_pullout
+                            ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">Hardware Pull-Out</span>'
+                            : '') +
+                    '</div>' +
+                    '<span class="text-[11px] text-slate-500 font-mono">' + escOnlineStaffHtml(n.date) +
+                        (n.accountnum ? (' · Acct #' + escOnlineStaffHtml(n.accountnum)) : '') + '</span>' +
+                '</div>' +
+                '<span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border shrink-0 ' + (n.status_badge_class || '') + '">' +
+                    escOnlineStaffHtml(n.status || 'N/A') + '</span>' +
+            '</div>' +
+            (n.reason ? '<div><span class="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Reason / Concern</span>' +
+                '<p class="text-[11.5px] text-slate-800 leading-relaxed whitespace-pre-wrap break-words">' + escOnlineStaffHtml(n.reason) + '</p></div>' : '') +
+            (n.cause ? '<div><span class="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Cause</span>' +
+                '<p class="text-[11.5px] text-slate-700 leading-relaxed whitespace-pre-wrap break-words">' + escOnlineStaffHtml(n.cause) + '</p></div>' : '') +
+            (n.solution ? '<div><span class="block text-[9px] font-bold uppercase tracking-wider text-slate-400">Technical Solution</span>' +
+                '<p class="text-[11.5px] text-slate-700 leading-relaxed whitespace-pre-wrap break-words">' + escOnlineStaffHtml(n.solution) + '</p></div>' : '') +
+            '<div class="flex items-center justify-end gap-2 pt-1">' +
+                (n.ticket_id ? '<a href="tickets.php?open_ticket=' + n.ticket_id + '" class="text-[10px] font-bold text-[#EB3E0B] hover:underline">Open ticket &rarr;</a>' : '') +
+                (n.accountnum ? '<a href="accounts.php?q=' + encodeURIComponent(n.accountnum) + '&tab=notes" class="text-[10px] font-bold text-slate-500 hover:text-[#EB3E0B]">View client account &rarr;</a>' : '') +
+            '</div>' +
+        '</div>';
+    }
+    body.innerHTML = html;
+}
+
+function closeStaffNotes() {
+    var modal = document.getElementById('staffNotesModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+function handleStaffNotesBackdrop(e) {
+    if (e.target && e.target.id === 'staffNotesModal') {
+        closeStaffNotes();
+    }
+}
+<?php endif; ?>
 
 /* Clicking a ticket row opens the same chat pop-up the tickets center uses.
    The row also counts as reading that ticket, so its notification badge

@@ -43,6 +43,117 @@ function count_online_support_staff($pdo) {
 }
 
 /**
+ * The technicians signed into the support center right now, for the client
+ * portal's availability panel. Same window as count_online_support_staff, so
+ * what the client is shown and what the ticket auto-reply says always agree.
+ *
+ * @param PDO $pdo
+ * @return array list of array('name', 'role', 'initials', 'ago')
+ */
+function get_available_support_staff($pdo) {
+    if (!$pdo) {
+        return array();
+    }
+    $cutoff = date('Y-m-d H:i:s', time() - (SUPPORT_ONLINE_WINDOW_MINUTES * 60));
+
+    try {
+        $stmt = $pdo->prepare("SELECT p.fullname, p.username, p.accesslevel, p.last_activity,
+                u.fname, u.lname
+            FROM `support_user_presence` p
+            LEFT JOIN `user` u ON u.id = p.user_id
+            WHERE p.last_activity >= :cutoff
+            ORDER BY p.last_activity DESC");
+        $stmt->execute(array(':cutoff' => $cutoff));
+        $rows = $stmt->fetchAll();
+    } catch (PDOException $e) {
+        // Table is created by the backend on first sign-in; missing means
+        // nobody has ever signed in, which is still nobody available.
+        return array();
+    }
+
+    $staff = array();
+    foreach ($rows as $r) {
+        $name = trim($r['fullname']);
+        if ($name === '') {
+            $name = trim($r['fname'] . ' ' . $r['lname']);
+        }
+        if ($name === '') {
+            $name = $r['username'];
+        }
+        if ($name === '') {
+            continue;
+        }
+        $staff[] = array(
+            'name'     => $name,
+            'role'     => support_role_label($r['accesslevel']),
+            'initials' => support_staff_initials($name),
+            'ago'      => support_active_ago($r['last_activity'])
+        );
+    }
+    return $staff;
+}
+
+/**
+ * Backend access levels are internal wording; give the client something that
+ * reads like a job title instead.
+ *
+ * @param string $accesslevel
+ * @return string
+ */
+function support_role_label($accesslevel) {
+    $lvl = strtolower(trim($accesslevel));
+    if ($lvl === 'master' || $lvl === 'super admin' || $lvl === 'superadmin') {
+        return 'Support Lead';
+    }
+    if ($lvl === 'admin' || $lvl === 'administrator') {
+        return 'Senior Technician';
+    }
+    if (strpos($lvl, 'programmer') !== false) {
+        return 'Systems Programmer';
+    }
+    return 'Technician';
+}
+
+/**
+ * Two-letter avatar initials from a name.
+ * @param string $name
+ * @return string
+ */
+function support_staff_initials($name) {
+    $parts = preg_split('/\s+/', trim($name));
+    if (empty($parts[0])) {
+        return '?';
+    }
+    if (count($parts) >= 2) {
+        return strtoupper(substr($parts[0], 0, 1) . substr($parts[count($parts) - 1], 0, 1));
+    }
+    return strtoupper(substr($parts[0], 0, 2));
+}
+
+/**
+ * Short "last seen" label for an availability row, e.g. "active just now".
+ * @param string $datetime
+ * @return string
+ */
+function support_active_ago($datetime) {
+    if (empty($datetime)) {
+        return '';
+    }
+    $ts = strtotime($datetime);
+    if ($ts === false) {
+        return '';
+    }
+    $secs = time() - $ts;
+    if ($secs < 0) {
+        $secs = 0;
+    }
+    if ($secs < 60) {
+        return 'active just now';
+    }
+    return 'active ' . intval(round($secs / 60)) . 'm ago';
+}
+
+/**
  * Working hours per technician, in 24-hour time.
  * @return array name => array('start' => 'HH:MM', 'end' => 'HH:MM')
  */
@@ -243,6 +354,68 @@ function build_offline_autoreply_message($timestamp = null) {
     }
 
     return $msg;
+}
+
+/**
+ * The message posted into a new ticket while a technician IS online - the
+ * counterpart to build_offline_autoreply_message(). Tells the client they have
+ * been picked up and to give the technician a few minutes.
+ *
+ * @param array $staff rows from get_available_support_staff()
+ * @return string
+ */
+function build_online_ack_message($staff) {
+    $count = count($staff);
+
+    $msg  = "Thank you for reaching out to RNZ Support. Your ticket has been received and a technician is online right now.\n\n";
+
+    if ($count > 0) {
+        $msg .= ($count === 1) ? "AVAILABLE TECHNICIAN\n" : "AVAILABLE TECHNICIANS\n";
+        foreach ($staff as $s) {
+            $msg .= '- ' . $s['name'] . ' (' . $s['role'] . ")\n";
+        }
+        $msg .= "\n";
+    }
+
+    $msg .= "You will be assisted shortly. Please stay on this chat and allow a few minutes while the technician reviews your request - your reply will appear right here.";
+    return $msg;
+}
+
+/**
+ * Post the "someone is on it" reply on a brand new ticket while at least one
+ * technician is signed into the support center. Does nothing when nobody is
+ * online - send_offline_autoreply_if_unattended() covers that case.
+ *
+ * @param PDO $pdo
+ * @param int $ticket_id
+ * @return bool true when the message was posted
+ */
+function send_online_ack_if_attended($pdo, $ticket_id) {
+    $ticket_id = intval($ticket_id);
+    if (!$pdo || $ticket_id <= 0) {
+        return false;
+    }
+
+    $staff = get_available_support_staff($pdo);
+    if (empty($staff)) {
+        return false;
+    }
+
+    try {
+        $stmt = $pdo->prepare("INSERT INTO client_ticket_replies
+            (ticket_id, sender_type, sender_name, message, created_at)
+            VALUES (:tid, 'support', :sname, :msg, :c_at)");
+        $stmt->execute(array(
+            ':tid'   => $ticket_id,
+            ':sname' => SUPPORT_AUTOREPLY_SENDER,
+            ':msg'   => build_online_ack_message($staff),
+            ':c_at'  => date('Y-m-d H:i:s')
+        ));
+        return true;
+    } catch (PDOException $e) {
+        error_log("Online ack reply error: " . $e->getMessage());
+        return false;
+    }
 }
 
 /**

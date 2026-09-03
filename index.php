@@ -2,6 +2,7 @@
 // Client Portal Dashboard
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/db_init.php';
+require_once __DIR__ . '/includes/support_availability.php';
 
 if (!is_logged_in()) {
     // Serve RNZ Landing Website to public visitors
@@ -79,6 +80,13 @@ try {
 } catch (PDOException $e) {
     error_log("Dashboard client query error: " . $e->getMessage());
 }
+
+// Who can take a ticket right now. The same list decides the automatic first
+// reply posted into a new ticket's chat, so the panel and the chat agree.
+$available_staff = get_available_support_staff($pdo);
+$on_duty_today = get_technicians_on_duty();
+$working_now = get_technicians_working_now();
+$next_duty_phrase = next_duty_day_phrase();
 
 $has_active_warranty = (is_array($client) && isset($client['warranty_status']) && $client['warranty_status'] === 'Active');
 
@@ -390,8 +398,90 @@ $page_title = 'Dashboard';
                     </div>
                 </div>
 
-                <!-- Right Column: Tech Service History Feed -->
+                <!-- Right Column: Technician Availability + Tech Service History Feed -->
                 <div class="space-y-6">
+
+                    <!-- Available Technicians: who can pick up a ticket right now -->
+                    <div class="bg-white/90 rounded-3xl p-6 border <?php echo !empty($available_staff) ? 'border-emerald-200' : 'border-[#FECDAA]'; ?> shadow-sm">
+                        <div class="flex items-start justify-between mb-5 gap-3">
+                            <div>
+                                <h3 class="text-base font-extrabold text-[#430D07] flex items-center gap-2">
+                                    <span class="relative flex h-2.5 w-2.5">
+                                        <?php if (!empty($available_staff)): ?>
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                        <?php else: ?>
+                                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-300"></span>
+                                        <?php endif; ?>
+                                    </span>
+                                    <span>Available Technicians</span>
+                                </h3>
+                                <p class="text-xs text-[#7C2112]">Support staff signed in right now</p>
+                            </div>
+                            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold border shrink-0 <?php echo !empty($available_staff) ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'; ?>">
+                                <?php echo count($available_staff); ?> Online
+                            </span>
+                        </div>
+
+                        <?php if (!empty($available_staff)): ?>
+                            <div class="space-y-2.5">
+                                <?php foreach ($available_staff as $st): ?>
+                                    <div class="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-100 flex items-center gap-3">
+                                        <div class="w-9 h-9 rounded-2xl bg-[#430D07] text-white flex items-center justify-center text-[11px] font-extrabold shrink-0">
+                                            <?php echo sanitize($st['initials']); ?>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="text-xs font-extrabold text-[#430D07] truncate"><?php echo sanitize($st['name']); ?></p>
+                                            <p class="text-[11px] text-[#7C2112]"><?php echo sanitize($st['role']); ?></p>
+                                        </div>
+                                        <span class="text-[10px] font-semibold text-emerald-700 shrink-0"><?php echo sanitize($st['ago']); ?></span>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <p class="text-[11px] text-[#7C2112] mt-4 leading-relaxed">
+                                Submit a ticket now and a technician will be with you in a few minutes - watch for their message in the ticket chat.
+                            </p>
+                            <a href="tickets.php?action=create" class="mt-3 w-full bg-[#EB3E0B] hover:bg-[#C32C0B] text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                </svg>
+                                <span>Submit a Ticket Now</span>
+                            </a>
+                        <?php else: ?>
+                            <div class="p-4 rounded-2xl bg-[#FFF5ED] border border-dashed border-[#FECDAA] text-center space-y-1">
+                                <p class="text-xs font-bold text-[#430D07]">No technician is signed in right now</p>
+                                <p class="text-[11px] text-[#7C2112]">
+                                    You can still log a ticket - it is answered automatically and picked up within 24 to 48 hours.
+                                </p>
+                            </div>
+
+                            <div class="mt-4 space-y-1.5">
+                                <span class="block text-[9px] font-bold uppercase tracking-wider text-[#9A2512]">Today's Duty Roster</span>
+                                <?php if (empty($on_duty_today)): ?>
+                                    <p class="text-[11px] text-[#7C2112]">No technician on duty today. The team picks this up <?php echo sanitize($next_duty_phrase); ?>.</p>
+                                <?php else: ?>
+                                    <?php foreach ($on_duty_today as $duty_name): ?>
+                                        <div class="flex items-center justify-between text-[11px]">
+                                            <span class="font-bold text-[#430D07] flex items-center gap-1.5">
+                                                <span class="w-1.5 h-1.5 rounded-full <?php echo in_array($duty_name, $working_now) ? 'bg-emerald-500' : 'bg-slate-300'; ?>"></span>
+                                                <?php echo sanitize($duty_name); ?>
+                                            </span>
+                                            <span class="font-mono text-[#7C2112]"><?php echo sanitize(format_technician_hours($duty_name)); ?></span>
+                                        </div>
+                                    <?php endforeach; ?>
+                                    <?php if (empty($working_now)): ?>
+                                        <p class="text-[11px] text-[#7C2112] pt-1">Outside support hours at the moment.</p>
+                                    <?php endif; ?>
+                                <?php endif; ?>
+                            </div>
+
+                            <a href="tickets.php?action=create" class="mt-4 w-full bg-white hover:bg-[#FFF5ED] text-[#EB3E0B] text-xs font-bold px-4 py-2.5 rounded-xl border border-[#FECDAA] transition-all flex items-center justify-center gap-2">
+                                <span>Log a Ticket Anyway</span>
+                            </a>
+                        <?php endif; ?>
+                    </div>
+
                     <div class="bg-white/90 rounded-3xl p-6 border border-[#FECDAA] shadow-sm">
                         <div class="flex items-center justify-between mb-5">
                             <div>

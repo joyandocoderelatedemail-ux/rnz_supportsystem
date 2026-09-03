@@ -171,7 +171,29 @@ function get_status_badge_class($status) {
 }
 
 /**
- * Safely upload ticket photo attachments (PNG, JPG, JPEG, WEBP, GIF)
+ * Extension -> max upload size (bytes) for one ticket chat attachment.
+ * Videos and office documents run far larger than a phone photo, so each
+ * kind gets its own ceiling instead of one limit fitting everything. This is
+ * also the whitelist of extensions the chat is allowed to store.
+ * @return array
+ */
+function get_ticket_attachment_size_limits() {
+    return array(
+        'jpg'  => 15 * 1024 * 1024,
+        'jpeg' => 15 * 1024 * 1024,
+        'png'  => 15 * 1024 * 1024,
+        'pdf'  => 20 * 1024 * 1024,
+        'xls'  => 20 * 1024 * 1024,
+        'xlsx' => 20 * 1024 * 1024,
+        'mp4'  => 50 * 1024 * 1024,
+        'mov'  => 50 * 1024 * 1024,
+        'webm' => 50 * 1024 * 1024,
+        'avi'  => 50 * 1024 * 1024
+    );
+}
+
+/**
+ * Safely upload ticket chat attachments: photos, videos, PDFs and Excel files.
  * Supports both single file and multiple files (e.g. name="attachments[]" or name="attachment")
  * @param string $file_key Name of the file input in $_FILES (default 'attachments')
  * @param string $subdir Target subdirectory inside uploads
@@ -192,7 +214,7 @@ function upload_ticket_photos($file_key = 'attachments', $subdir = 'ticket_attac
         @mkdir($upload_dir, 0777, true);
     }
 
-    $allowed_exts = array('jpg', 'jpeg', 'png');
+    $max_size_by_ext = get_ticket_attachment_size_limits();
     $saved_paths = array();
 
     // Check if multiple files were uploaded (name is array)
@@ -205,15 +227,15 @@ function upload_ticket_photos($file_key = 'attachments', $subdir = 'ticket_attac
             if ($file_data['error'][$i] !== UPLOAD_ERR_OK) {
                 continue;
             }
-            if ($file_data['size'][$i] > 15 * 1024 * 1024) {
+            $ext = strtolower(pathinfo($file_data['name'][$i], PATHINFO_EXTENSION));
+            if (!isset($max_size_by_ext[$ext])) {
                 continue;
             }
-            $ext = strtolower(pathinfo($file_data['name'][$i], PATHINFO_EXTENSION));
-            if (!in_array($ext, $allowed_exts)) {
+            if ($file_data['size'][$i] > $max_size_by_ext[$ext]) {
                 continue;
             }
 
-            $new_filename = 'photo_' . date('Ymd_His') . '_' . $i . '_' . rand(1000, 9999) . '.' . $ext;
+            $new_filename = 'attach_' . date('Ymd_His') . '_' . $i . '_' . rand(1000, 9999) . '.' . $ext;
             $target_file = $upload_dir . $new_filename;
 
             if (move_uploaded_file($file_data['tmp_name'][$i], $target_file)) {
@@ -222,10 +244,10 @@ function upload_ticket_photos($file_key = 'attachments', $subdir = 'ticket_attac
         }
     } else {
         // Single file format
-        if (!empty($file_data['name']) && $file_data['error'] === UPLOAD_ERR_OK && $file_data['size'] <= 15 * 1024 * 1024) {
+        if (!empty($file_data['name']) && $file_data['error'] === UPLOAD_ERR_OK) {
             $ext = strtolower(pathinfo($file_data['name'], PATHINFO_EXTENSION));
-            if (in_array($ext, $allowed_exts)) {
-                $new_filename = 'photo_' . date('Ymd_His') . '_' . rand(1000, 9999) . '.' . $ext;
+            if (isset($max_size_by_ext[$ext]) && $file_data['size'] <= $max_size_by_ext[$ext]) {
+                $new_filename = 'attach_' . date('Ymd_His') . '_' . rand(1000, 9999) . '.' . $ext;
                 $target_file = $upload_dir . $new_filename;
                 if (move_uploaded_file($file_data['tmp_name'], $target_file)) {
                     $saved_paths[] = 'uploads/' . $subdir . '/' . $new_filename;
@@ -249,6 +271,62 @@ function upload_ticket_photo($file_key = 'attachment', $subdir = 'ticket_attachm
     if (!$result) return false;
     $arr = parse_ticket_attachments($result);
     return !empty($arr) ? $arr[0] : false;
+}
+
+/**
+ * Renders one ticket chat attachment as whatever it actually is: an image
+ * thumbnail, an inline video player, or a labelled download chip for anything
+ * the browser cannot preview itself (PDF, Excel). Used by every page that
+ * shows the reply thread server-side, outside the shared chat pop-up (which
+ * renders the same three kinds in JS instead, for its live-polled replies).
+ *
+ * @param string $rel_path   Attachment path relative to the project root (e.g. "uploads/ticket_attachments/xxx.pdf")
+ * @param string $url_prefix Prepended to reach it from the current page (root pages need none)
+ * @param string $img_border Extra border colour class for the image thumbnail variant only
+ * @return string HTML
+ */
+function build_chat_attachment_html($rel_path, $url_prefix = '', $img_border = 'border-[#FECDAA]') {
+    $url = $url_prefix . ltrim($rel_path, '/\\');
+    $safe_url = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+    $ext = strtolower(pathinfo($rel_path, PATHINFO_EXTENSION));
+
+    if (in_array($ext, array('jpg', 'jpeg', 'png'), true)) {
+        return '<a href="' . $safe_url . '" target="_blank" rel="noopener" class="group relative inline-block">' .
+                '<img src="' . $safe_url . '" alt="Attachment" class="h-28 w-auto max-w-[200px] object-cover rounded-2xl border ' . $img_border . ' shadow-xs group-hover:opacity-90 group-hover:scale-[1.02] transition-all">' .
+                '<span class="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5 opacity-90 group-hover:opacity-100">' .
+                    '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' .
+                    '<span>View</span>' .
+                '</span>' .
+            '</a>';
+    }
+
+    if (in_array($ext, array('mp4', 'mov', 'webm', 'avi'), true)) {
+        return '<video controls preload="metadata" class="max-h-56 max-w-[260px] rounded-2xl border ' . $img_border . ' bg-black shadow-xs">' .
+                '<source src="' . $safe_url . '">' .
+                'Your browser cannot play this video. <a href="' . $safe_url . '" target="_blank" rel="noopener" class="underline">Download it instead</a>.' .
+            '</video>';
+    }
+
+    $type_label = 'File';
+    $icon_bg = 'bg-[#FFF5ED] text-[#B4785F]';
+    if ($ext === 'pdf') {
+        $type_label = 'PDF Document';
+        $icon_bg = 'bg-rose-50 text-rose-600';
+    } elseif ($ext === 'xls' || $ext === 'xlsx') {
+        $type_label = 'Excel Spreadsheet';
+        $icon_bg = 'bg-emerald-50 text-emerald-600';
+    }
+
+    return '<a href="' . $safe_url . '" target="_blank" rel="noopener" ' .
+            'class="flex items-center gap-2.5 bg-white border border-[#FFE8D5] rounded-2xl px-3 py-2.5 hover:border-[#FECDAA] hover:bg-[#FFF5ED]/50 transition-colors max-w-[220px] shadow-xs">' .
+            '<span class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ' . $icon_bg . '">' .
+                '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>' .
+            '</span>' .
+            '<span class="min-w-0">' .
+                '<span class="block text-[11px] font-bold text-[#430D07] truncate">' . htmlspecialchars($type_label, ENT_QUOTES, 'UTF-8') . '</span>' .
+                '<span class="block text-[9px] font-bold text-[#EB3E0B] uppercase tracking-wider">Tap to open / download</span>' .
+            '</span>' .
+        '</a>';
 }
 
 /**

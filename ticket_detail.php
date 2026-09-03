@@ -294,13 +294,7 @@ $page_title = 'Ticket #' . $ticket['ticket_number'];
                                 <div class="mt-3 pt-2 border-t <?php echo $is_client ? 'border-[#FFE8D5]' : 'border-emerald-100'; ?>">
                                     <div class="flex flex-wrap gap-2.5">
                                         <?php foreach ($att_list as $img_path): ?>
-                                            <a href="<?php echo sanitize($img_path); ?>" target="_blank" class="group relative inline-block">
-                                                <img src="<?php echo sanitize($img_path); ?>" alt="Attachment" class="h-28 w-auto max-w-[200px] object-cover rounded-2xl border <?php echo $is_client ? 'border-[#FECDAA]' : 'border-emerald-200'; ?> shadow-xs group-hover:opacity-90 group-hover:scale-[1.02] transition-all">
-                                                <span class="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5 opacity-90 group-hover:opacity-100">
-                                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
-                                                    <span>View</span>
-                                                </span>
-                                            </a>
+                                            <?php echo build_chat_attachment_html($img_path, '', $is_client ? 'border-[#FECDAA]' : 'border-emerald-200'); ?>
                                         <?php endforeach; ?>
                                     </div>
                                 </div>
@@ -400,6 +394,53 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+// Mirrors build_chat_attachment_html() in includes/config.php for the replies
+// this page live-polls in - a photo gets its real thumbnail, video gets an
+// inline player, and anything else (PDF, Excel) gets a labelled download chip
+// instead of a broken <img> tag.
+function buildChatAttachmentHtmlJs(url, imgBorder) {
+    var ext = (url.split('.').pop() || '').toLowerCase().split(/[?#]/)[0];
+    var safeUrl = escapeHtml(url);
+
+    if (['jpg', 'jpeg', 'png'].indexOf(ext) !== -1) {
+        return '<a href="' + safeUrl + '" target="_blank" rel="noopener" class="group relative inline-block">' +
+                '<img src="' + safeUrl + '" alt="Attachment" class="h-28 w-auto max-w-[200px] object-cover rounded-2xl border ' + imgBorder + ' shadow-xs group-hover:opacity-90 group-hover:scale-[1.02] transition-all">' +
+                '<span class="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5 opacity-90 group-hover:opacity-100">' +
+                    '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
+                    '<span>View</span>' +
+                '</span>' +
+            '</a>';
+    }
+
+    if (['mp4', 'mov', 'webm', 'avi'].indexOf(ext) !== -1) {
+        return '<video controls preload="metadata" class="max-h-56 max-w-[260px] rounded-2xl border ' + imgBorder + ' bg-black shadow-xs">' +
+                '<source src="' + safeUrl + '">' +
+                'Your browser cannot play this video. <a href="' + safeUrl + '" target="_blank" rel="noopener" class="underline">Download it instead</a>.' +
+            '</video>';
+    }
+
+    var typeLabel = 'File';
+    var iconBg = 'bg-[#FFF5ED] text-[#B4785F]';
+    if (ext === 'pdf') {
+        typeLabel = 'PDF Document';
+        iconBg = 'bg-rose-50 text-rose-600';
+    } else if (ext === 'xls' || ext === 'xlsx') {
+        typeLabel = 'Excel Spreadsheet';
+        iconBg = 'bg-emerald-50 text-emerald-600';
+    }
+
+    return '<a href="' + safeUrl + '" target="_blank" rel="noopener" ' +
+        'class="flex items-center gap-2.5 bg-white border border-[#FFE8D5] rounded-2xl px-3 py-2.5 hover:border-[#FECDAA] hover:bg-[#FFF5ED]/50 transition-colors max-w-[220px] shadow-xs">' +
+        '<span class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ' + iconBg + '">' +
+            '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>' +
+        '</span>' +
+        '<span class="min-w-0">' +
+            '<span class="block text-[11px] font-bold text-[#430D07] truncate">' + escapeHtml(typeLabel) + '</span>' +
+            '<span class="block text-[9px] font-bold text-[#EB3E0B] uppercase tracking-wider">Tap to open / download</span>' +
+        '</span>' +
+    '</a>';
+}
+
 function previewChatPhotos(input) {
     var previewBox = document.getElementById('chatPhotoPreviewBox');
     var grid = document.getElementById('chatPhotoGrid');
@@ -493,14 +534,7 @@ function buildReplyCard(reply) {
         contentHtml += '<div class="mt-3 pt-2 border-t ' + headerBorder + '">' +
             '<div class="flex flex-wrap gap-2.5">';
         for (var i = 0; i < atts.length; i++) {
-            var path = escapeHtml(atts[i]);
-            contentHtml += '<a href="' + path + '" target="_blank" class="group relative inline-block">' +
-                '<img src="' + path + '" alt="Attachment" class="h-28 w-auto max-w-[200px] object-cover rounded-2xl border ' + borderColor + ' shadow-xs group-hover:opacity-90 group-hover:scale-[1.02] transition-all">' +
-                '<span class="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-xs flex items-center gap-0.5 opacity-90 group-hover:opacity-100">' +
-                    '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
-                    '<span>View</span>' +
-                '</span>' +
-            '</a>';
+            contentHtml += buildChatAttachmentHtmlJs(String(atts[i]), borderColor);
         }
         contentHtml += '</div></div>';
     }

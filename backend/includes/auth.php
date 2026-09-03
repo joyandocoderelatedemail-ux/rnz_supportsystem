@@ -124,7 +124,7 @@ function get_user_allowed_pages($user_id, $accesslevel = '') {
         return array('dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance', 'settings');
     } elseif ($lvl === 'junior programmer' || $lvl === 'junior_programmer') {
         return array('dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance');
-    } elseif ($lvl === 'tech support' || $lvl === 'technician') {
+    } elseif ($lvl === 'tech support' || $lvl === 'technician' || $lvl === 'junior tech support' || $lvl === 'senior tech support') {
         return array('dashboard', 'tickets', 'orders', 'events', 'accounts', 'inventory', 'maintenance');
     } elseif ($lvl === 'ojt') {
         return array('dashboard', 'tickets', 'orders', 'events', 'accounts');
@@ -165,9 +165,9 @@ function get_user_permission_data($user_id, $accesslevel = '') {
     $default_tier = 3;
     if ($lvl === '1' || $lvl === 'level 1' || strpos($lvl, '1') !== false || $lvl === 'ojt' || $lvl === 'staff' || $lvl === 'support' || strpos($lvl, 'view') !== false) {
         $default_tier = 1;
-    } elseif ($lvl === '2' || $lvl === 'level 2' || strpos($lvl, '2') !== false || $lvl === 'junior programmer' || $lvl === 'junior_programmer' || $lvl === 'tech support' || $lvl === 'technician') {
+    } elseif ($lvl === '2' || $lvl === 'level 2' || strpos($lvl, '2') !== false || $lvl === 'junior programmer' || $lvl === 'junior_programmer' || $lvl === 'tech support' || $lvl === 'technician' || $lvl === 'junior tech support') {
         $default_tier = 2;
-    } elseif ($lvl === '3' || $lvl === 'level 3' || strpos($lvl, '3') !== false || $lvl === 'master' || $lvl === 'admin' || $lvl === 'administrator' || $lvl === 'senior programmer' || $lvl === 'senior_programmer') {
+    } elseif ($lvl === '3' || $lvl === 'level 3' || strpos($lvl, '3') !== false || $lvl === 'master' || $lvl === 'admin' || $lvl === 'administrator' || $lvl === 'senior programmer' || $lvl === 'senior_programmer' || $lvl === 'senior tech support') {
         $default_tier = 3;
     }
 

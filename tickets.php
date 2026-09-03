@@ -82,10 +82,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ':c_at'  => $now
             ));
 
-            // Nobody signed in to take the ticket? Answer it automatically with
-            // the wait time and the technician roster, instead of leaving the
-            // client on a silent thread.
-            send_offline_autoreply_if_unattended($pdo, $new_ticket_id);
+            // Answer the new ticket straight away either way: with the wait
+            // time and roster when nobody is signed in, or with who is online
+            // and a few-minutes heads-up when someone is there to take it.
+            if (!send_offline_autoreply_if_unattended($pdo, $new_ticket_id)) {
+                send_online_ack_if_attended($pdo, $new_ticket_id);
+            }
 
             // Back to the list with the new ticket's chat already open, so the
             // client lands in the conversation instead of a separate page
@@ -452,8 +454,10 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
 
             <div class="flex items-end gap-2">
-                <label title="Attach photos" class="w-9 h-9 shrink-0 rounded-full bg-[#FFF5ED] hover:bg-[#FFE8D5] text-[#B4785F] hover:text-[#EB3E0B] flex items-center justify-center cursor-pointer transition-colors">
-                    <input type="file" id="ticketChatPhotoInput" accept=".png, .jpg, .jpeg, image/png, image/jpeg" multiple class="hidden" onchange="onTicketChatPhotosPicked(this)">
+                <label title="Attach photos, videos, PDFs, or Excel files" class="w-9 h-9 shrink-0 rounded-full bg-[#FFF5ED] hover:bg-[#FFE8D5] text-[#B4785F] hover:text-[#EB3E0B] flex items-center justify-center cursor-pointer transition-colors">
+                    <input type="file" id="ticketChatPhotoInput"
+                           accept=".png,.jpg,.jpeg,.pdf,.xls,.xlsx,.mp4,.mov,.webm,.avi,image/png,image/jpeg,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,video/mp4,video/quicktime,video/webm,video/x-msvideo"
+                           multiple class="hidden" onchange="onTicketChatPhotosPicked(this)">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
                 </label>
                 <textarea id="ticketChatInput" rows="1" placeholder="Message support, or paste a screenshot with Ctrl + V..." class="flex-1 resize-none bg-[#FFF9F5] border border-[#FECDAA] text-[#430D07] text-xs rounded-2xl px-3.5 py-2.5 max-h-28 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
@@ -461,7 +465,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
                 </button>
             </div>
-            <p class="text-[9px] text-[#B4785F] font-medium px-1">Enter sends - Shift + Enter starts a new line - Ctrl + V pastes screenshots</p>
+            <p class="text-[9px] text-[#B4785F] font-medium px-1">Enter sends - Shift + Enter starts a new line - Ctrl + V pastes a screenshot or copied file</p>
         </div>
     </div>
 </div>
@@ -485,6 +489,16 @@ var chatThread = document.getElementById('ticketChatThread');
 var chatInput = document.getElementById('ticketChatInput');
 var chatSendBtn = document.getElementById('ticketChatSend');
 var chatPhotoInput = document.getElementById('ticketChatPhotoInput');
+
+var CHAT_IMAGE_EXTS = ['png', 'jpg', 'jpeg'];
+// Kept in step with get_ticket_attachment_size_limits() in includes/config.php -
+// the server has the final say, this only gives instant feedback instead of a
+// silent drop after the whole file has already been uploaded.
+var CHAT_ATTACHMENT_MAX_SIZE = {
+    png: 15 * 1024 * 1024, jpg: 15 * 1024 * 1024, jpeg: 15 * 1024 * 1024,
+    pdf: 20 * 1024 * 1024, xls: 20 * 1024 * 1024, xlsx: 20 * 1024 * 1024,
+    mp4: 50 * 1024 * 1024, mov: 50 * 1024 * 1024, webm: 50 * 1024 * 1024, avi: 50 * 1024 * 1024
+};
 
 function escapeChatHtml(str) {
     return String(str === null || typeof str === 'undefined' ? '' : str)
@@ -593,6 +607,49 @@ function applyTicketChatStatus(status) {
 // -------------------------------------------------------------------------
 // Thread rendering
 // -------------------------------------------------------------------------
+
+// One attachment rendered per its actual kind: a real thumbnail for photos,
+// an inline player for video, and a labelled download chip for anything the
+// browser cannot preview by itself (PDF, Excel). The server does not keep the
+// original filename, so documents are labelled by type rather than by name.
+function buildTicketChatAttachmentHtml(url) {
+    var ext = (url.split('.').pop() || '').toLowerCase().split(/[?#]/)[0];
+
+    if (CHAT_IMAGE_EXTS.indexOf(ext) !== -1) {
+        return '<a href="' + escapeChatHtml(url) + '" target="_blank" rel="noopener">' +
+            '<img src="' + escapeChatHtml(url) + '" alt="Attachment" loading="lazy" ' +
+            'class="h-20 w-auto max-w-[120px] object-cover rounded-xl border border-[#FECDAA] hover:opacity-90 transition-opacity"></a>';
+    }
+
+    if (['mp4', 'mov', 'webm', 'avi'].indexOf(ext) !== -1) {
+        return '<video controls preload="metadata" class="max-h-48 max-w-[220px] rounded-xl border border-[#FECDAA] bg-black">' +
+            '<source src="' + escapeChatHtml(url) + '">' +
+            'Your browser cannot play this video. <a href="' + escapeChatHtml(url) + '" target="_blank" rel="noopener" class="underline">Download it instead</a>.' +
+            '</video>';
+    }
+
+    var typeLabel = 'File';
+    var iconBg = 'bg-[#FFF5ED] text-[#B4785F]';
+    if (ext === 'pdf') {
+        typeLabel = 'PDF Document';
+        iconBg = 'bg-rose-50 text-rose-600';
+    } else if (ext === 'xls' || ext === 'xlsx') {
+        typeLabel = 'Excel Spreadsheet';
+        iconBg = 'bg-emerald-50 text-emerald-600';
+    }
+
+    return '<a href="' + escapeChatHtml(url) + '" target="_blank" rel="noopener" ' +
+        'class="flex items-center gap-2.5 bg-white border border-[#FFE8D5] rounded-xl px-3 py-2.5 hover:border-[#FECDAA] hover:bg-[#FFF5ED]/50 transition-colors max-w-[220px]">' +
+        '<span class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ' + iconBg + '">' +
+            '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>' +
+        '</span>' +
+        '<span class="min-w-0">' +
+            '<span class="block text-[11px] font-bold text-[#430D07] truncate">' + typeLabel + '</span>' +
+            '<span class="block text-[9px] font-bold text-[#EB3E0B] uppercase tracking-wider">Tap to open / download</span>' +
+        '</span>' +
+    '</a>';
+}
+
 function buildTicketChatBubble(reply) {
     var isMine = !!reply.is_client;
 
@@ -619,10 +676,7 @@ function buildTicketChatBubble(reply) {
     if (atts.length > 0) {
         body += '<div class="mt-2 flex flex-wrap gap-1.5">';
         for (var i = 0; i < atts.length; i++) {
-            var url = String(atts[i]);
-            body += '<a href="' + escapeChatHtml(url) + '" target="_blank" rel="noopener">' +
-                '<img src="' + escapeChatHtml(url) + '" alt="Attachment" loading="lazy" ' +
-                'class="h-20 w-auto max-w-[120px] object-cover rounded-xl border border-[#FECDAA] hover:opacity-90 transition-opacity"></a>';
+            body += buildTicketChatAttachmentHtml(String(atts[i]));
         }
         body += '</div>';
     }
@@ -768,35 +822,59 @@ function onTicketChatPhotosPicked(input) {
         return;
     }
 
-    var validExts = ['png', 'jpg', 'jpeg'];
     var invalid = [];
+    var oversized = [];
     for (var f = 0; f < input.files.length; f++) {
-        var ext = input.files[f].name.split('.').pop().toLowerCase();
-        if (validExts.indexOf(ext) === -1) invalid.push(input.files[f].name);
+        var file = input.files[f];
+        var ext = file.name.split('.').pop().toLowerCase();
+        var maxSize = CHAT_ATTACHMENT_MAX_SIZE[ext];
+        if (!maxSize) {
+            invalid.push(file.name);
+        } else if (file.size > maxSize) {
+            oversized.push(file.name + ' (max ' + Math.floor(maxSize / (1024 * 1024)) + 'MB)');
+        }
     }
     if (invalid.length > 0) {
-        showTicketChatError('Only PNG, JPG and JPEG photos are allowed: ' + invalid.join(', '));
+        showTicketChatError('Unsupported file type: ' + invalid.join(', ') +
+            '. Allowed: images (PNG/JPG), videos (MP4/MOV/WEBM/AVI), PDF, and Excel (XLS/XLSX).');
+        clearTicketChatPhotos();
+        return;
+    }
+    if (oversized.length > 0) {
+        showTicketChatError('Too large to attach: ' + oversized.join(', '));
         clearTicketChatPhotos();
         return;
     }
 
     hideTicketChatError();
-    document.getElementById('ticketChatPhotoCount').textContent = count + (count === 1 ? ' photo attached' : ' photos attached');
+    document.getElementById('ticketChatPhotoCount').textContent = count + (count === 1 ? ' file attached' : ' files attached');
     document.getElementById('ticketChatPhotoBar').classList.remove('hidden');
 
     var grid = document.getElementById('ticketChatPhotoGrid');
     grid.innerHTML = '';
     for (var i = 0; i < count; i++) {
         (function(file) {
-            var reader = new FileReader();
-            reader.onload = function(ev) {
-                var thumb = document.createElement('img');
-                thumb.src = ev.target.result;
-                thumb.alt = 'Preview';
-                thumb.className = 'h-12 w-12 rounded-lg object-cover border border-[#FECDAA]';
-                grid.appendChild(thumb);
-            };
-            reader.readAsDataURL(file);
+            var ext = file.name.split('.').pop().toLowerCase();
+            if (CHAT_IMAGE_EXTS.indexOf(ext) !== -1) {
+                var reader = new FileReader();
+                reader.onload = function(ev) {
+                    var thumb = document.createElement('img');
+                    thumb.src = ev.target.result;
+                    thumb.alt = 'Preview';
+                    thumb.className = 'h-12 w-12 rounded-lg object-cover border border-[#FECDAA]';
+                    grid.appendChild(thumb);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // Non-image picks show a text chip with the real filename instead
+                // of a thumbnail - the server does not keep the original name
+                // after upload, so this is the only place it is ever shown.
+                var chip = document.createElement('span');
+                chip.className = 'inline-flex items-center h-12 px-2.5 rounded-lg border border-[#FECDAA] bg-white text-[9px] font-bold text-[#9A2512] max-w-[150px] truncate';
+                chip.title = file.name;
+                chip.textContent = ext.toUpperCase() + ': ' + file.name;
+                grid.appendChild(chip);
+            }
         })(input.files[i]);
     }
 }
@@ -807,22 +885,33 @@ function clearTicketChatPhotos() {
     document.getElementById('ticketChatPhotoGrid').innerHTML = '';
 }
 
-// Drops the clipboard image into the same file input the attach button fills,
-// so pasted and picked photos travel the identical path
+// Drops the clipboard image or a copied file into the same file input the
+// attach button fills, so pasted and picked attachments travel the same path
 function handleTicketChatPaste(e) {
     if (!chatPhotoInput) return;
 
     var items = (e.clipboardData || window.clipboardData || {}).items;
     if (!items) return;
 
-    var pasted = [];
+    // Raw clipboard image data (an actual screenshot) has no real filename and
+    // always needs one synthesized; a file copied from Explorer/Finder already
+    // has its own name and extension, so it is kept as-is and just checked
+    // against the allowed types.
+    var pastedScreenshots = [];
+    var pastedFiles = [];
     for (var i = 0; i < items.length; i++) {
-        if (items[i].kind === 'file' && items[i].type.indexOf('image/') === 0) {
-            var file = items[i].getAsFile();
-            if (file) pasted.push(file);
+        if (items[i].kind !== 'file') continue;
+        var file = items[i].getAsFile();
+        if (!file) continue;
+
+        if (items[i].type.indexOf('image/') === 0) {
+            pastedScreenshots.push(file);
+        } else {
+            var ext = (file.name.split('.').pop() || '').toLowerCase();
+            if (CHAT_ATTACHMENT_MAX_SIZE[ext]) pastedFiles.push(file);
         }
     }
-    if (!pasted.length) return;
+    if (!pastedScreenshots.length && !pastedFiles.length) return;
 
     e.preventDefault();
 
@@ -834,9 +923,12 @@ function handleTicketChatPaste(e) {
     }
 
     var stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    for (var p = 0; p < pasted.length; p++) {
-        var ext = (pasted[p].type === 'image/jpeg') ? 'jpg' : 'png';
-        dt.items.add(new File([pasted[p]], 'pasted-image-' + stamp + '-' + p + '.' + ext, { type: pasted[p].type }));
+    for (var p = 0; p < pastedScreenshots.length; p++) {
+        var ext = (pastedScreenshots[p].type === 'image/jpeg') ? 'jpg' : 'png';
+        dt.items.add(new File([pastedScreenshots[p]], 'pasted-image-' + stamp + '-' + p + '.' + ext, { type: pastedScreenshots[p].type }));
+    }
+    for (var q = 0; q < pastedFiles.length; q++) {
+        dt.items.add(pastedFiles[q]);
     }
 
     chatPhotoInput.files = dt.files;
