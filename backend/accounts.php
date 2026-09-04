@@ -572,17 +572,34 @@ if ($searched) {
     $selected_client = $stmt_c->fetch();
 }
 
-// Global master data when no client is selected
+// Global master data when no client is selected. Each of the three hub lists
+// is paged 20 rows at a time off the same ?p= page number - only one tab is
+// ever queried per request, so they can share it.
+$hub_per_page = 20;
+$hub_page = isset($_GET['p']) ? intval($_GET['p']) : 1;
+if ($hub_page < 1) {
+    $hub_page = 1;
+}
+
 $global_wo_list = array();
 $global_wo_summary = array('total_cnt' => 0, 'total_amt' => 0.0, 'paid_amt' => 0.0, 'unpaid_amt' => 0.0);
 $global_wo_status = isset($_GET['status']) ? trim($_GET['status']) : 'all';
 $global_wo_q = isset($_GET['wo_q']) ? trim($_GET['wo_q']) : '';
+$global_wo_page = $hub_page;
+$global_wo_pages = 1;
+$global_wo_total = 0;
 
 $global_notes_list = array();
 $global_notes_q = isset($_GET['note_q']) ? trim($_GET['note_q']) : '';
+$global_notes_page = $hub_page;
+$global_notes_pages = 1;
+$global_notes_total = 0;
 
 $global_logs_list = array();
 $global_logs_q = isset($_GET['log_q']) ? trim($_GET['log_q']) : '';
+$global_logs_page = $hub_page;
+$global_logs_pages = 1;
+$global_logs_total = 0;
 
 if (!$selected_client) {
     if ($active_tab === 'orders' || $active_tab === 'workorders') {
@@ -599,24 +616,35 @@ if (!$selected_client) {
 
             // Legacy blank placeholder rows (no account, no date, no nature of work)
             // never belong to a real client - hide them instead of showing "Acct #".
-            $gwo_sql = "SELECT w.*, c.tradename, c.clientname as cl_owner 
-                FROM bucket_workorder w 
-                LEFT JOIN bucket_client c ON w.accountnum = c.accountnum 
+            // The FROM/WHERE is built once and used twice: to count the whole
+            // result set for the pager, then to fetch just the page being read.
+            $gwo_from = " FROM bucket_workorder w
+                LEFT JOIN bucket_client c ON w.accountnum = c.accountnum
                 WHERE NOT (TRIM(w.accountnum) = '' AND TRIM(w.xdate) = '') ";
             $gwo_p = array();
 
             if ($global_wo_status === 'paid') {
-                $gwo_sql .= " AND LOWER(TRIM(w.status)) = 'paid' ";
+                $gwo_from .= " AND LOWER(TRIM(w.status)) = 'paid' ";
             } elseif ($global_wo_status === 'unpaid' || $global_wo_status === 'pending') {
-                $gwo_sql .= " AND LOWER(TRIM(w.status)) != 'paid' ";
+                $gwo_from .= " AND LOWER(TRIM(w.status)) != 'paid' ";
             }
 
             if (!empty($global_wo_q)) {
-                $gwo_sql .= " AND (w.id LIKE :kw OR w.accountnum LIKE :kw OR LOWER(w.natureofwork) LIKE :kw OR LOWER(w.ornum) LIKE :kw OR LOWER(c.tradename) LIKE :kw OR LOWER(c.clientname) LIKE :kw) ";
+                $gwo_from .= " AND (w.id LIKE :kw OR w.accountnum LIKE :kw OR LOWER(w.natureofwork) LIKE :kw OR LOWER(w.ornum) LIKE :kw OR LOWER(c.tradename) LIKE :kw OR LOWER(c.clientname) LIKE :kw) ";
                 $gwo_p[':kw'] = '%' . strtolower($global_wo_q) . '%';
             }
 
-            $gwo_sql .= " ORDER BY w.xdate DESC, w.id DESC LIMIT 150 ";
+            $stmt_gwo_cnt = $pdo->prepare("SELECT COUNT(*) " . $gwo_from);
+            $stmt_gwo_cnt->execute($gwo_p);
+            $global_wo_total = intval($stmt_gwo_cnt->fetchColumn());
+            $global_wo_pages = ($global_wo_total > 0) ? intval(ceil($global_wo_total / $hub_per_page)) : 1;
+            if ($global_wo_page > $global_wo_pages) {
+                $global_wo_page = $global_wo_pages;
+            }
+
+            $gwo_sql = "SELECT w.*, c.tradename, c.clientname as cl_owner " . $gwo_from .
+                " ORDER BY w.xdate DESC, w.id DESC
+                LIMIT " . intval($hub_per_page) . " OFFSET " . intval(($global_wo_page - 1) * $hub_per_page);
             $stmt_gwo = $pdo->prepare($gwo_sql);
             $stmt_gwo->execute($gwo_p);
             $global_wo_list = $stmt_gwo->fetchAll(PDO::FETCH_ASSOC);
@@ -625,32 +653,52 @@ if (!$selected_client) {
         }
     } elseif ($active_tab === 'notes' || $active_tab === 'technotes') {
         try {
-            $n_sql = "SELECT n.*, c.tradename, c.clientname as cl_owner 
-                FROM bucket_technotes n 
-                LEFT JOIN bucket_client c ON n.accountnum = c.accountnum 
+            $n_from = " FROM bucket_technotes n
+                LEFT JOIN bucket_client c ON n.accountnum = c.accountnum
                 WHERE 1=1 ";
             $n_p = array();
             if (!empty($global_notes_q)) {
-                $n_sql .= " AND (n.accountnum LIKE :kw OR LOWER(n.techname) LIKE :kw OR LOWER(n.reasonoftech) LIKE :kw OR LOWER(n.solutionoftech) LIKE :kw OR LOWER(c.tradename) LIKE :kw) ";
+                $n_from .= " AND (n.accountnum LIKE :kw OR LOWER(n.techname) LIKE :kw OR LOWER(n.reasonoftech) LIKE :kw OR LOWER(n.solutionoftech) LIKE :kw OR LOWER(c.tradename) LIKE :kw) ";
                 $n_p[':kw'] = '%' . strtolower($global_notes_q) . '%';
             }
-            $n_sql .= " ORDER BY n.xdate DESC, n.id DESC LIMIT 150 ";
+
+            $stmt_gn_cnt = $pdo->prepare("SELECT COUNT(*) " . $n_from);
+            $stmt_gn_cnt->execute($n_p);
+            $global_notes_total = intval($stmt_gn_cnt->fetchColumn());
+            $global_notes_pages = ($global_notes_total > 0) ? intval(ceil($global_notes_total / $hub_per_page)) : 1;
+            if ($global_notes_page > $global_notes_pages) {
+                $global_notes_page = $global_notes_pages;
+            }
+
+            $n_sql = "SELECT n.*, c.tradename, c.clientname as cl_owner " . $n_from .
+                " ORDER BY n.xdate DESC, n.id DESC
+                LIMIT " . intval($hub_per_page) . " OFFSET " . intval(($global_notes_page - 1) * $hub_per_page);
             $stmt_gn = $pdo->prepare($n_sql);
             $stmt_gn->execute($n_p);
             $global_notes_list = $stmt_gn->fetchAll(PDO::FETCH_ASSOC);
         } catch (PDOException $e) {}
     } elseif ($active_tab === 'logs') {
         try {
-            $l_sql = "SELECT l.*, c.tradename, c.clientname as cl_owner 
-                FROM hardware_troubleshooting_logs l 
-                LEFT JOIN bucket_client c ON l.accountnum = c.accountnum 
+            $l_from = " FROM hardware_troubleshooting_logs l
+                LEFT JOIN bucket_client c ON l.accountnum = c.accountnum
                 WHERE 1=1 ";
             $l_p = array();
             if (!empty($global_logs_q)) {
-                $l_sql .= " AND (l.accountnum LIKE :kw OR LOWER(l.hardware_selected) LIKE :kw OR LOWER(l.issue_selected) LIKE :kw OR LOWER(c.tradename) LIKE :kw) ";
+                $l_from .= " AND (l.accountnum LIKE :kw OR LOWER(l.hardware_selected) LIKE :kw OR LOWER(l.issue_selected) LIKE :kw OR LOWER(c.tradename) LIKE :kw) ";
                 $l_p[':kw'] = '%' . strtolower($global_logs_q) . '%';
             }
-            $l_sql .= " ORDER BY l.created_at DESC LIMIT 150 ";
+
+            $stmt_gl_cnt = $pdo->prepare("SELECT COUNT(*) " . $l_from);
+            $stmt_gl_cnt->execute($l_p);
+            $global_logs_total = intval($stmt_gl_cnt->fetchColumn());
+            $global_logs_pages = ($global_logs_total > 0) ? intval(ceil($global_logs_total / $hub_per_page)) : 1;
+            if ($global_logs_page > $global_logs_pages) {
+                $global_logs_page = $global_logs_pages;
+            }
+
+            $l_sql = "SELECT l.*, c.tradename, c.clientname as cl_owner " . $l_from .
+                " ORDER BY l.created_at DESC
+                LIMIT " . intval($hub_per_page) . " OFFSET " . intval(($global_logs_page - 1) * $hub_per_page);
             $stmt_gl = $pdo->prepare($l_sql);
             $stmt_gl->execute($l_p);
             $global_logs_list = $stmt_gl->fetchAll(PDO::FETCH_ASSOC);
@@ -791,6 +839,67 @@ $stmt_all_accts = $pdo->query("SELECT accountnum, tradename, clientname FROM buc
 $all_accounts_list = $stmt_all_accts->fetchAll();
 
 $my_tier = get_logged_tech_access_tier();
+
+/**
+ * Pager under each of the three master hub lists. The filters and the search
+ * term live in the query string, so they are carried into every page link -
+ * paging through a filtered list keeps the filter.
+ *
+ * @param int    $page    page being shown, 1 based
+ * @param int    $pages   total pages
+ * @param int    $total   rows in the whole filtered set
+ * @param int    $per     rows per page
+ * @param array  $params  query string to preserve, e.g. array('tab' => 'notes')
+ * @param string $noun    what is being listed, for the "Showing" line
+ * @return void
+ */
+function render_hub_pager($page, $pages, $total, $per, $params, $noun) {
+    if ($total <= 0) {
+        return;
+    }
+    $page = max(1, intval($page));
+    $pages = max(1, intval($pages));
+    $start = (($page - 1) * $per) + 1;
+    $end = min($total, $page * $per);
+
+    $qs = array();
+    foreach ($params as $k => $v) {
+        if ($v === '' || $v === null) {
+            continue;
+        }
+        $qs[] = urlencode($k) . '=' . urlencode($v);
+    }
+    $base = 'accounts.php?' . implode('&amp;', $qs);
+
+    $btn_on  = 'bg-white hover:bg-[#EB3E0B] hover:text-white text-slate-700 border border-slate-200 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all';
+    $btn_off = 'bg-slate-50 text-slate-300 border border-slate-100 px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-not-allowed';
+
+    echo '<div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">';
+    echo '<span class="text-[11px] text-slate-500 font-medium">Showing <strong class="text-slate-800">' .
+        number_format($start) . '-' . number_format($end) . '</strong> of <strong class="text-slate-800">' .
+        number_format($total) . '</strong> ' . htmlspecialchars($noun, ENT_QUOTES, 'UTF-8') . '</span>';
+
+    echo '<div class="flex items-center gap-1.5">';
+    if ($page > 1) {
+        echo '<a href="' . $base . '&amp;p=1" class="' . $btn_on . '">&laquo; First</a>';
+        echo '<a href="' . $base . '&amp;p=' . ($page - 1) . '" class="' . $btn_on . '">&larr; Prev</a>';
+    } else {
+        echo '<span class="' . $btn_off . '">&laquo; First</span>';
+        echo '<span class="' . $btn_off . '">&larr; Prev</span>';
+    }
+
+    echo '<span class="px-3 py-1.5 text-[11px] font-extrabold text-slate-700">Page ' .
+        number_format($page) . ' of ' . number_format($pages) . '</span>';
+
+    if ($page < $pages) {
+        echo '<a href="' . $base . '&amp;p=' . ($page + 1) . '" class="' . $btn_on . '">Next &rarr;</a>';
+        echo '<a href="' . $base . '&amp;p=' . $pages . '" class="' . $btn_on . '">Last &raquo;</a>';
+    } else {
+        echo '<span class="' . $btn_off . '">Next &rarr;</span>';
+        echo '<span class="' . $btn_off . '">Last &raquo;</span>';
+    }
+    echo '</div></div>';
+}
 
 $active_page = 'accounts';
 $page_title = 'Manage Accounts';
@@ -1020,7 +1129,7 @@ $page_title = 'Manage Accounts';
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
                             <div class="flex items-center space-x-1.5 bg-slate-100 p-1 rounded-2xl">
                                 <a href="accounts.php?tab=orders&status=all<?php echo !empty($global_wo_q) ? '&wo_q=' . urlencode($global_wo_q) : ''; ?>" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($global_wo_status === 'all') ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'; ?>">
-                                    All (<?php echo count($global_wo_list); ?>)
+                                    All (<?php echo number_format($global_wo_total); ?>)
                                 </a>
                                 <a href="accounts.php?tab=orders&status=paid<?php echo !empty($global_wo_q) ? '&wo_q=' . urlencode($global_wo_q) : ''; ?>" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($global_wo_status === 'paid') ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'; ?>">
                                     Paid
@@ -1121,6 +1230,9 @@ $page_title = 'Manage Accounts';
                             </table>
                         </div>
 
+                        <?php render_hub_pager($global_wo_page, $global_wo_pages, $global_wo_total, $hub_per_page,
+                            array('tab' => 'orders', 'status' => $global_wo_status, 'wo_q' => $global_wo_q), 'work orders'); ?>
+
                     </div>
 
                 <!-- 2. MASTER TECHNICAL SERVICE NOTES VIEW -->
@@ -1191,6 +1303,9 @@ $page_title = 'Manage Accounts';
                                 </tbody>
                             </table>
                         </div>
+
+                        <?php render_hub_pager($global_notes_page, $global_notes_pages, $global_notes_total, $hub_per_page,
+                            array('tab' => 'notes', 'note_q' => $global_notes_q), 'service notes'); ?>
                     </div>
 
                 <!-- 3. MASTER DIAGNOSTIC LOGS VIEW -->
@@ -1263,6 +1378,9 @@ $page_title = 'Manage Accounts';
                                 </tbody>
                             </table>
                         </div>
+
+                        <?php render_hub_pager($global_logs_page, $global_logs_pages, $global_logs_total, $hub_per_page,
+                            array('tab' => 'logs', 'log_q' => $global_logs_q), 'diagnostic logs'); ?>
                     </div>
 
                 <!-- 4. DEFAULT SEARCH ACCOUNT VIEW -->
