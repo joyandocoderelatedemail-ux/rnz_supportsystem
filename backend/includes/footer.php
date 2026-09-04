@@ -550,6 +550,11 @@ function stopTicketAlarm() {
     ticketAlarmAudio.volume = TICKET_ALARM_VOLUME;
 }
 
+// Set when the browser refused to play the alarm - it is retried the moment
+// the tab is looked at again or touched, so a blocked alert is never a silent
+// one, it is only a late one.
+var ticketAlarmPending = false;
+
 function playNewTicketChime() {
     try {
         var audio = getTicketAlarmAudio();
@@ -560,10 +565,15 @@ function playNewTicketChime() {
         audio.currentTime = 0;
 
         var played = audio.play();
-        if (played && played['catch']) {
-            played['catch'](function(err) {
+        if (played && played.then) {
+            played.then(function() {
+                ticketAlarmPending = false;
+            })['catch'](function(err) {
+                ticketAlarmPending = true;
                 console.log('Notification alarm blocked by the browser:', err);
             });
+        } else {
+            ticketAlarmPending = false;
         }
 
         // Cut the clip short so one ticket does not hold the room for 10 seconds
@@ -794,6 +804,45 @@ function showClientReplyToast(reply) {
 function escapeHtml(str) {
     return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// ---------------------------------------------------------------------------
+// Keeping the alarm working while the technician is on another tab
+//
+// A hidden tab gets its timers throttled to once a minute after five minutes,
+// and Chrome can freeze the tab outright - so this poll simply stops running,
+// the new ticket is not noticed, and the alarm fires only when the tab is
+// opened again. That is the "it rings when I come back" behaviour.
+//
+// Holding a Web Lock for the life of the page opts the tab out of both the
+// intensive throttling and the freezing, so the poll keeps its 6 second beat
+// in the background and the alarm sounds when the ticket actually lands.
+// ---------------------------------------------------------------------------
+function keepTicketPollerAwake() {
+    try {
+        if (navigator.locks && navigator.locks.request) {
+            // Shared mode, so a technician with several backend tabs open keeps
+            // every one of them awake instead of the rest queueing behind the
+            // first. The promise never settles: the lock is held until the tab
+            // is closed.
+            navigator.locks.request('rnz_ticket_poller', { mode: 'shared' }, function() {
+                return new Promise(function() {});
+            })['catch'](function() {});
+        }
+    } catch (e) {}
+}
+keepTicketPollerAwake();
+
+// Coming back to the tab checks immediately instead of waiting out the rest of
+// the interval, and replays an alarm the browser refused while hidden - on an
+// older browser with no Web Locks this is what keeps the alert from being lost.
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) return;
+    pollForNewTickets();
+    if (ticketAlarmPending) {
+        ticketAlarmPending = false;
+        playNewTicketChime();
+    }
+});
 
 // Start polling every 6 seconds
 setInterval(pollForNewTickets, 6000);

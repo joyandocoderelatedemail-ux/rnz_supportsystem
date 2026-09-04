@@ -246,6 +246,7 @@ function get_ticket_attachment_size_limits() {
         'pdf'  => 20 * 1024 * 1024,
         'xls'  => 20 * 1024 * 1024,
         'xlsx' => 20 * 1024 * 1024,
+        'txt'  => 5 * 1024 * 1024,
         'mp4'  => 50 * 1024 * 1024,
         'mov'  => 50 * 1024 * 1024,
         'webm' => 50 * 1024 * 1024,
@@ -376,6 +377,9 @@ function build_chat_attachment_html($rel_path, $url_prefix = '', $img_border = '
     } elseif ($ext === 'xls' || $ext === 'xlsx') {
         $type_label = 'Excel Spreadsheet';
         $icon_bg = 'bg-emerald-50 text-emerald-600';
+    } elseif ($ext === 'txt') {
+        $type_label = 'Text File';
+        $icon_bg = 'bg-sky-50 text-sky-600';
     }
 
     return '<a href="' . $safe_url . '" target="_blank" rel="noopener" ' .

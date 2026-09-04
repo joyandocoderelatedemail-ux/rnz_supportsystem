@@ -39,12 +39,13 @@ var CHAT_MAX_OPEN = 3;
 var CHAT_ATTACHMENT_MAX_SIZE = {
     png: 15 * 1024 * 1024, jpg: 15 * 1024 * 1024, jpeg: 15 * 1024 * 1024,
     pdf: 20 * 1024 * 1024, xls: 20 * 1024 * 1024, xlsx: 20 * 1024 * 1024,
+    txt: 5 * 1024 * 1024,
     mp4: 50 * 1024 * 1024, mov: 50 * 1024 * 1024, webm: 50 * 1024 * 1024, avi: 50 * 1024 * 1024
 };
-var CHAT_ATTACHMENT_ACCEPT = '.png,.jpg,.jpeg,.pdf,.xls,.xlsx,.mp4,.mov,.webm,.avi,' +
+var CHAT_ATTACHMENT_ACCEPT = '.png,.jpg,.jpeg,.pdf,.xls,.xlsx,.txt,.mp4,.mov,.webm,.avi,' +
     'image/png,image/jpeg,application/pdf,' +
     'application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,' +
-    'video/mp4,video/quicktime,video/webm,video/x-msvideo';
+    'text/plain,video/mp4,video/quicktime,video/webm,video/x-msvideo';
 var chats = {};        // ticketId -> { ticketId, box, lastReplyId, pollTimer, isSending, isMinimized, clientSeenId, lastTypingPing, replyToId }
 var chatOrder = [];    // open ticket ids, least recently used first
 var chatMyTier = <?php echo intval($my_tier); ?>;
@@ -603,6 +604,9 @@ function buildTicketChatAttachmentHtml(url) {
     } else if (ext === 'xls' || ext === 'xlsx') {
         typeLabel = 'Excel Spreadsheet';
         iconBg = 'bg-emerald-50 text-emerald-600';
+    } else if (ext === 'txt') {
+        typeLabel = 'Text File';
+        iconBg = 'bg-sky-50 text-sky-600';
     }
 
     return '<a href="' + escapeChatHtml(url) + '" target="_blank" rel="noopener" ' +
@@ -1185,7 +1189,7 @@ function onTicketChatPhotosPicked(input, ticketId) {
     }
     if (invalid.length > 0) {
         showTicketChatError(ticketId, 'Unsupported file type: ' + invalid.join(', ') +
-            '. Allowed: images (PNG/JPG), videos (MP4/MOV/WEBM/AVI), PDF, and Excel (XLS/XLSX).');
+            '. Allowed: images (PNG/JPG), videos (MP4/MOV/WEBM/AVI), PDF, Excel (XLS/XLSX), and text (TXT).');
         clearTicketChatPhotos(ticketId);
         return;
     }

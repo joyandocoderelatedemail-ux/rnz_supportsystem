@@ -454,9 +454,9 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
 
             <div class="flex items-end gap-2">
-                <label title="Attach photos, videos, PDFs, or Excel files" class="w-9 h-9 shrink-0 rounded-full bg-[#FFF5ED] hover:bg-[#FFE8D5] text-[#B4785F] hover:text-[#EB3E0B] flex items-center justify-center cursor-pointer transition-colors">
+                <label title="Attach photos, videos, PDFs, Excel or text files" class="w-9 h-9 shrink-0 rounded-full bg-[#FFF5ED] hover:bg-[#FFE8D5] text-[#B4785F] hover:text-[#EB3E0B] flex items-center justify-center cursor-pointer transition-colors">
                     <input type="file" id="ticketChatPhotoInput"
-                           accept=".png,.jpg,.jpeg,.pdf,.xls,.xlsx,.mp4,.mov,.webm,.avi,image/png,image/jpeg,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,video/mp4,video/quicktime,video/webm,video/x-msvideo"
+                           accept=".png,.jpg,.jpeg,.pdf,.xls,.xlsx,.txt,.mp4,.mov,.webm,.avi,image/png,image/jpeg,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,video/mp4,video/quicktime,video/webm,video/x-msvideo"
                            multiple class="hidden" onchange="onTicketChatPhotosPicked(this)">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
                 </label>
@@ -497,6 +497,7 @@ var CHAT_IMAGE_EXTS = ['png', 'jpg', 'jpeg'];
 var CHAT_ATTACHMENT_MAX_SIZE = {
     png: 15 * 1024 * 1024, jpg: 15 * 1024 * 1024, jpeg: 15 * 1024 * 1024,
     pdf: 20 * 1024 * 1024, xls: 20 * 1024 * 1024, xlsx: 20 * 1024 * 1024,
+    txt: 5 * 1024 * 1024,
     mp4: 50 * 1024 * 1024, mov: 50 * 1024 * 1024, webm: 50 * 1024 * 1024, avi: 50 * 1024 * 1024
 };
 
@@ -636,6 +637,9 @@ function buildTicketChatAttachmentHtml(url) {
     } else if (ext === 'xls' || ext === 'xlsx') {
         typeLabel = 'Excel Spreadsheet';
         iconBg = 'bg-emerald-50 text-emerald-600';
+    } else if (ext === 'txt') {
+        typeLabel = 'Text File';
+        iconBg = 'bg-sky-50 text-sky-600';
     }
 
     return '<a href="' + escapeChatHtml(url) + '" target="_blank" rel="noopener" ' +
@@ -836,7 +840,7 @@ function onTicketChatPhotosPicked(input) {
     }
     if (invalid.length > 0) {
         showTicketChatError('Unsupported file type: ' + invalid.join(', ') +
-            '. Allowed: images (PNG/JPG), videos (MP4/MOV/WEBM/AVI), PDF, and Excel (XLS/XLSX).');
+            '. Allowed: images (PNG/JPG), videos (MP4/MOV/WEBM/AVI), PDF, Excel (XLS/XLSX), and text (TXT).');
         clearTicketChatPhotos();
         return;
     }

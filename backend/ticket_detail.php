@@ -784,6 +784,9 @@ function buildChatAttachmentHtmlJs(url, imgBorder) {
     } else if (ext === 'xls' || ext === 'xlsx') {
         typeLabel = 'Excel Spreadsheet';
         iconBg = 'bg-emerald-50 text-emerald-600';
+    } else if (ext === 'txt') {
+        typeLabel = 'Text File';
+        iconBg = 'bg-sky-50 text-sky-600';
     }
 
     return '<a href="' + safeUrl + '" target="_blank" rel="noopener" ' +
