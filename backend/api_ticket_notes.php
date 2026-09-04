@@ -50,14 +50,17 @@ function format_technote_row($row) {
 try {
     // The note logged from this ticket, and only this ticket. Notes for the same
     // client that came from somewhere else are deliberately not returned.
-    $stmt_note = $pdo->prepare("SELECT id, xdate, clientname, techname, reasonoftech, causeoftheissue, resso, status
-        FROM bucket_technotes WHERE ticket_id = :tid ORDER BY id DESC LIMIT 1");
-    $stmt_note->execute(array(':tid' => $ticket_id));
-    $row = $stmt_note->fetch();
+    $row = get_ticket_service_note($pdo, $ticket_id);
+
+    // Only the technician who logged the note may rewrite it, so the modal is
+    // told which it is - the save handler checks the same rule again.
+    $tech = get_logged_tech();
+    $techname = $tech ? $tech['fullname'] : '';
 
     echo json_encode(array(
         'success' => true,
-        'note' => $row ? format_technote_row($row) : null
+        'note' => $row ? format_technote_row($row) : null,
+        'can_edit' => can_edit_service_note($row, $techname)
     ));
     exit;
 } catch (PDOException $e) {

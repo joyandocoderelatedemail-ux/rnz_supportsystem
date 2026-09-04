@@ -14,7 +14,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $resso = isset($_POST['resso']) ? trim($_POST['resso']) : '';
     $status = isset($_POST['status']) ? trim($_POST['status']) : 'Done';
     $note_ticket_id = isset($_POST['ticket_id']) ? intval($_POST['ticket_id']) : 0;
-    $note_id = isset($_POST['note_id']) ? intval($_POST['note_id']) : 0;
     // ISO, like every other writer of this column - the date filters on
     // analytics and the staff notes panel compare xdate as text, so an
     // m/d/Y stamp sorts outside every range and the note goes missing.
@@ -38,28 +37,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 }
             }
 
-            // Reopening a ticket's note loads it back into this form, so saving
-            // updates that note rather than stacking a second one on the ticket.
-            if ($note_id > 0 && $note_ticket_id > 0) {
-                $stmt_up = $pdo->prepare("UPDATE bucket_technotes SET
-                    accountnum = :acct, xdate = :xdate, clientname = :cname, address = :addr,
-                    techname = :tname, reasonoftech = :reason, causeoftheissue = :cause,
-                    resso = :resso, status = :status
-                    WHERE id = :nid AND ticket_id = :tid");
+            // One service note per ticket. A second note is never added: the
+            // technician who logged it can rewrite that same note, and anyone
+            // else is refused. The modal enforces this too, but this is the
+            // check that holds when the form is bypassed.
+            $existing_note = get_ticket_service_note($pdo, $note_ticket_id);
 
+            if ($existing_note) {
+                if (!can_edit_service_note($existing_note, $techname)) {
+                    $blocked_msg = 'The service note for this ticket was logged by '
+                        . (!empty($existing_note['techname']) ? $existing_note['techname'] : 'another technician')
+                        . (!empty($existing_note['xdate']) ? ' on ' . $existing_note['xdate'] : '')
+                        . '. Only they can edit it.';
+                    echo "<script>alert(" . json_encode($blocked_msg) . "); window.location.href = window.location.pathname;</script>";
+                    exit;
+                }
+
+                // The author's own correction. xdate and techname stay as first
+                // saved - editing the write-up does not move the visit date or
+                // hand the note to whoever happens to be signed in.
+                $stmt_up = $pdo->prepare("UPDATE bucket_technotes SET
+                    accountnum = :acct, clientname = :cname, address = :addr,
+                    reasonoftech = :reason, causeoftheissue = :cause,
+                    resso = :resso, status = :status
+                    WHERE id = :nid");
                 $stmt_up->execute(array(
                     ':acct' => $accountnum,
-                    ':xdate' => $xdate,
                     ':cname' => $clientname,
                     ':addr' => $address,
-                    ':tname' => $techname,
                     ':reason' => $reasonoftech,
                     ':cause' => $causeoftheissue,
                     ':resso' => $resso,
                     ':status' => $status,
-                    ':nid' => $note_id,
-                    ':tid' => $note_ticket_id
+                    ':nid' => intval($existing_note['id'])
                 ));
+                $note_was_edit = true;
             } else {
                 $stmt_in = $pdo->prepare("INSERT INTO bucket_technotes
                     (accountnum, xdate, clientname, address, techname, reasonoftech, causeoftheissue, resso, status, ticket_id)
@@ -90,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 $ticket_resolved = true;
             }
 
-            $saved_word = ($note_id > 0 && $note_ticket_id > 0) ? 'updated' : 'recorded';
+            $saved_word = !empty($note_was_edit) ? 'updated' : 'recorded';
             $done_msg = $ticket_resolved
                 ? 'Technician Service Note ' . $saved_word . '. The support ticket is now marked as Resolved.'
                 : 'Technician Service Note ' . $saved_word . ' successfully!';
@@ -146,14 +158,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             </div>
         </div>
 
-        <form action="" method="POST" class="space-y-4">
+        <form action="" method="POST" class="space-y-4" id="note_form">
             <input type="hidden" name="action" value="save_tech_note">
             <!-- Set when the note is logged from a support ticket, so saving it
                  as Done can close that ticket out too -->
             <input type="hidden" name="ticket_id" id="note_ticket_id" value="">
-            <!-- Set when this ticket already has a note, so saving edits it
-                 instead of stacking a second note on the same ticket -->
-            <input type="hidden" name="note_id" id="note_id" value="">
+            <!-- Id of the note this ticket already has, if any. Nothing is
+                 posted with it - it marks the form as showing a logged note,
+                 which is read only. -->
+            <input type="hidden" id="note_id" value="">
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -214,9 +227,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 <button type="button" onclick="closeNewServiceNoteModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
                     Cancel
                 </button>
-                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                <button type="submit" id="note_save_btn" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
                     Save Service Note
                 </button>
+                <!-- Replaces Save once this ticket's note is already logged -->
+                <span id="note_locked_note" class="hidden text-[11px] font-bold text-slate-400">Already logged - read only</span>
             </div>
         </form>
     </div>
@@ -442,13 +457,46 @@ function summarizeTicketNote() {
         });
 }
 
+// A ticket gets one service note. Once it is logged the modal turns into a
+// read only copy of it - the fields lock and Save goes away, and the same rule
+// is enforced again when the form is posted.
+function setServiceNoteReadOnly(locked) {
+    var form = document.getElementById('note_form');
+    if (!form) return;
+
+    var fields = form.querySelectorAll('input:not([type="hidden"]), textarea, select');
+    for (var i = 0; i < fields.length; i++) {
+        fields[i].disabled = locked;
+        if (locked) {
+            fields[i].classList.add('opacity-70', 'cursor-not-allowed');
+        } else {
+            fields[i].classList.remove('opacity-70', 'cursor-not-allowed');
+        }
+    }
+
+    var saveBtn = document.getElementById('note_save_btn');
+    var lockedNote = document.getElementById('note_locked_note');
+    if (saveBtn) saveBtn.classList.toggle('hidden', locked);
+    if (lockedNote) lockedNote.classList.toggle('hidden', !locked);
+
+    // Nothing to draft into a form that can no longer be saved
+    if (locked) {
+        var aiRow = document.getElementById('note_ai_row');
+        if (aiRow) {
+            aiRow.classList.add('hidden');
+            aiRow.classList.remove('flex');
+        }
+    }
+}
+
 // Loads the note already logged for this ticket - and only for this ticket -
 // straight into the form, so reopening it shows what was saved rather than a
-// blank sheet. Saving then edits that note instead of adding a second one.
+// blank sheet. That note is final: the form locks instead of saving again.
 function loadTicketServiceNote(ticketId) {
     var banner = document.getElementById('note_existing_banner');
     banner.classList.add('hidden');
     document.getElementById('note_id').value = '';
+    setServiceNoteReadOnly(false);
 
     if (!ticketId) return;
 
@@ -468,10 +516,16 @@ function loadTicketServiceNote(ticketId) {
             var statusSelect = document.querySelector('#newServiceNoteModal select[name="status"]');
             if (statusSelect && note.status) statusSelect.value = note.status;
 
+            // Only the technician who logged it can correct it; for everyone
+            // else the form is a read only copy of what they wrote.
+            var mine = !!data.can_edit;
             document.getElementById('note_existing_meta').textContent =
-                'Logged ' + (note.xdate || '') + ' by ' + (note.techname || 'a technician') +
-                '. Editing it here updates that same note.';
+                'Logged ' + (note.xdate || '') + ' by ' + (note.techname || 'a technician') + '. ' +
+                (mine
+                    ? 'This is your note - saving updates it instead of adding a second one.'
+                    : 'Only ' + (note.techname || 'the technician who logged it') + ' can edit this note.');
             banner.classList.remove('hidden');
+            setServiceNoteReadOnly(!mine);
         })
         .catch(function(err) {
             console.error('Service note load error:', err);
