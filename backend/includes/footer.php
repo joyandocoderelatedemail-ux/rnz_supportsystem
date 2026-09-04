@@ -15,7 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $status = isset($_POST['status']) ? trim($_POST['status']) : 'Done';
     $note_ticket_id = isset($_POST['ticket_id']) ? intval($_POST['ticket_id']) : 0;
     $note_id = isset($_POST['note_id']) ? intval($_POST['note_id']) : 0;
-    $xdate = date('m/d/Y');
+    // ISO, like every other writer of this column - the date filters on
+    // analytics and the staff notes panel compare xdate as text, so an
+    // m/d/Y stamp sorts outside every range and the note goes missing.
+    $xdate = date('Y-m-d');
 
     $tech = get_logged_tech();
     $techname = $tech ? $tech['fullname'] : 'RNZ Support Tech';
