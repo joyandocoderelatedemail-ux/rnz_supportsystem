@@ -255,6 +255,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 'reply_snippet' => build_reply_snippet($reply_msg, $photo_attachments),
                 'reply_to' => $reply_to_info,
                 'reactions' => array(),
+                // The sender renders this bubble straight from the response and
+                // the poller never fetches it again, so the Edit / Unsend row
+                // has to be decided here too - without it those buttons only
+                // appeared after a page refresh.
+                'can_edit' => can_edit_ticket_reply(array(
+                    'sender_type' => 'support',
+                    'sender_name' => $tech_name,
+                    'unsent_at' => null
+                ), $tech_name),
                 'diagnostic_log' => (strpos($reply_msg, '=== HARDWARE DIAGNOSTIC LOG ===') !== false) ? format_diagnostic_log_text($reply_msg) : null
             )
         ));

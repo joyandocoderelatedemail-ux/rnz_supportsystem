@@ -64,6 +64,18 @@ if (!empty($custom_start) || !empty($custom_end)) {
     $end_date = date('Y-m-d');
     $is_filtered = true;
     $active_range_label = 'Last 30 Days (' . date('M d', strtotime('-29 days')) . ' - ' . date('M d, Y') . ')';
+} elseif ($range === 'last_2_months') {
+    // Rolling like the day presets above, not whole calendar months - the
+    // label prints the real start date so the window is never a guess.
+    $start_date = date('Y-m-d', strtotime('-2 months'));
+    $end_date = date('Y-m-d');
+    $is_filtered = true;
+    $active_range_label = 'Last 2 Months (' . date('M d', strtotime('-2 months')) . ' - ' . date('M d, Y') . ')';
+} elseif ($range === 'last_3_months') {
+    $start_date = date('Y-m-d', strtotime('-3 months'));
+    $end_date = date('Y-m-d');
+    $is_filtered = true;
+    $active_range_label = 'Last 3 Months (' . date('M d', strtotime('-3 months')) . ' - ' . date('M d, Y') . ')';
 } elseif ($range === 'this_month') {
     $start_date = date('Y-m-01');
     $end_date = date('Y-m-t');
@@ -601,32 +613,11 @@ $page_title = 'Executive Analytics & BI';
                             Quick Range Presets:
                         </label>
                         <div class="flex flex-wrap items-center gap-1.5">
-                            <a href="analytics.php?range=all" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'all') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                All Time
+                            <a href="analytics.php?range=last_2_months" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'last_2_months') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
+                                Last 2 Months
                             </a>
-                            <a href="analytics.php?range=today" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'today') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                Today
-                            </a>
-                            <a href="analytics.php?range=yesterday" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'yesterday') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                Yesterday
-                            </a>
-                            <a href="analytics.php?range=last_7_days" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'last_7_days') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                Last 7 Days
-                            </a>
-                            <a href="analytics.php?range=last_30_days" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'last_30_days') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                Last 30 Days
-                            </a>
-                            <a href="analytics.php?range=this_month" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'this_month') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                This Month
-                            </a>
-                            <a href="analytics.php?range=last_month" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'last_month') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                Last Month
-                            </a>
-                            <a href="analytics.php?range=this_year" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'this_year') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                This Year
-                            </a>
-                            <a href="analytics.php?range=last_year" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'last_year') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                Last Year
+                            <a href="analytics.php?range=last_3_months" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'last_3_months') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
+                                Last 3 Months
                             </a>
                         </div>
                     </div>
