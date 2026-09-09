@@ -268,7 +268,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=850, user-scalable=yes">
     <title><?php echo sanitize($doc_ref . ' - ' . $doc_title); ?></title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -294,6 +294,16 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                 background: #ffffff !important;
                 padding: 0 !important;
                 margin: 0 !important;
+                min-width: 0 !important;
+                width: 100% !important;
+            }
+            .print-wrapper {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                min-width: 0 !important;
+                overflow: visible !important;
+                display: block !important;
             }
             .print-page {
                 box-shadow: none !important;
@@ -302,6 +312,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                 margin: 0 !important;
                 width: 100% !important;
                 max-width: 100% !important;
+                min-width: 0 !important;
                 padding: 0 !important;
             }
             @page {
@@ -311,71 +322,73 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800 antialiased p-3 sm:p-6 min-h-screen flex flex-col items-center justify-start">
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
 
-    <!-- Top Action Bar (Hidden in Print & PDF) -->
-    <div class="no-print w-full max-w-4xl mb-4 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 text-white p-3.5 sm:p-4 rounded-2xl shadow-xl border border-slate-800">
-        <div class="flex items-center space-x-3">
-            <img src="rnzlogo.png" alt="RNZ Logo" class="w-9 h-9 rounded-full bg-black p-1 object-contain shrink-0">
-            <div>
-                <h2 class="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                    <span><?php echo sanitize($doc_ref); ?></span>
-                    <span class="text-slate-500">&bull;</span>
-                    <span class="text-slate-200"><?php echo sanitize($client_tradename); ?></span>
-                </h2>
-                <p class="text-[11px] text-slate-400">Account #<?php echo sanitize($client_acct); ?> &bull; <?php echo sanitize($doc_title); ?></p>
+    <div class="print-wrapper w-full overflow-x-auto flex flex-col items-center py-4 px-2">
+
+        <!-- Top Action Bar (Hidden in Print & PDF) -->
+        <div class="no-print w-[820px] min-w-[820px] mb-4 flex flex-row items-center justify-between gap-3 bg-slate-900 text-white p-4 rounded-2xl shadow-xl border border-slate-800">
+            <div class="flex items-center space-x-3">
+                <img src="rnzlogo.png" alt="RNZ Logo" class="w-9 h-9 rounded-full bg-black p-1 object-contain shrink-0">
+                <div>
+                    <h2 class="text-sm font-extrabold text-white flex items-center gap-2">
+                        <span><?php echo sanitize($doc_ref); ?></span>
+                        <span class="text-slate-500">&bull;</span>
+                        <span class="text-slate-200"><?php echo sanitize($client_tradename); ?></span>
+                    </h2>
+                    <p class="text-[11px] text-slate-400">Account #<?php echo sanitize($client_acct); ?> &bull; <?php echo sanitize($doc_title); ?></p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2 shrink-0">
+                <button type="button" onclick="downloadAsPDF()" class="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1.5 transition-all">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    <span>Download PDF</span>
+                </button>
+                <button type="button" onclick="window.print()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] active:scale-95 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-sm flex items-center space-x-1.5 transition-all">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                    </svg>
+                    <span>Print Document</span>
+                </button>
+                <button type="button" onclick="window.close()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs px-3 py-2 rounded-xl transition-all">
+                    Close
+                </button>
             </div>
         </div>
 
-        <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
-            <button type="button" onclick="downloadAsPDF()" class="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1.5 transition-all">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                </svg>
-                <span>Download PDF</span>
-            </button>
-            <button type="button" onclick="window.print()" class="bg-[#EB3E0B] hover:bg-[#C32C0B] active:scale-95 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-sm flex items-center space-x-1.5 transition-all">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
-                </svg>
-                <span>Print Document</span>
-            </button>
-            <button type="button" onclick="window.close()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs px-3 py-2 rounded-xl transition-all">
-                Close
-            </button>
-        </div>
-    </div>
-
-    <!-- Printable Paper Sheet Container (0.3in Top/Bottom, 0.5in Sides) -->
-    <div id="printDocumentCard" class="print-page bg-white rounded-2xl p-4 sm:py-[0.3in] sm:px-[0.5in] border border-slate-200 shadow-xl max-w-4xl w-full text-slate-800 space-y-5">
-        
-        <!-- Header: Company Info + Document Identification -->
-        <div class="flex flex-row items-start justify-between border-b-2 border-slate-900 pb-4 gap-4">
+        <!-- Printable Paper Sheet Container (0.3in Top/Bottom, 0.5in Sides) -->
+        <div id="printDocumentCard" class="print-page bg-white rounded-2xl py-[0.3in] px-[0.5in] border border-slate-200 shadow-xl w-[820px] min-w-[820px] text-slate-800 space-y-5 my-0 mx-auto">
             
-            <!-- Left: RNZ Corporate Header -->
-            <div class="space-y-1">
-                <div class="flex items-center space-x-3">
-                    <img src="rnzlogo.png" alt="RNZ Logo" class="w-12 h-12 rounded-full bg-black p-1.5 object-contain shrink-0 shadow-xs">
-                    <div>
-                        <h1 class="text-base sm:text-lg font-black tracking-tight text-slate-900 uppercase leading-none">
-                            RNZ SOFTWARE DEVELOPMENT SERVICES
-                        </h1>
-                        <p class="text-[9px] sm:text-[10px] font-bold text-[#EB3E0B] tracking-wider uppercase mt-0.5">
-                            POS Systems &bull; Hardware Maintenance &bull; Technical Support
-                        </p>
+            <!-- Header: Company Info + Document Identification -->
+            <div class="flex flex-row items-start justify-between border-b-2 border-slate-900 pb-4 gap-4">
+                
+                <!-- Left: RNZ Corporate Header -->
+                <div class="space-y-1">
+                    <div class="flex items-center space-x-3">
+                        <img src="rnzlogo.png" alt="RNZ Logo" class="w-12 h-12 rounded-full bg-black p-1.5 object-contain shrink-0 shadow-xs">
+                        <div>
+                            <h1 class="text-lg font-black tracking-tight text-slate-900 uppercase leading-none">
+                                RNZ SOFTWARE DEVELOPMENT SERVICES
+                            </h1>
+                            <p class="text-[10px] font-bold text-[#EB3E0B] tracking-wider uppercase mt-0.5">
+                                POS Systems &bull; Hardware Maintenance &bull; Technical Support
+                            </p>
+                        </div>
+                    </div>
+                    <div class="text-[11px] text-slate-500 pt-1 leading-snug space-y-0.5">
+                        <p class="font-medium">Technical Support Hotline: <strong class="text-slate-700 font-mono">09614694238</strong> &bull; Email: <strong class="text-slate-700">support@rnzsoftware.com</strong></p>
+                        <p class="text-[10px] text-slate-400">Website: rnzsoftware.com &bull; Official Customer Service Document</p>
                     </div>
                 </div>
-                <div class="text-[11px] text-slate-500 pt-1 leading-snug space-y-0.5">
-                    <p class="font-medium">Technical Support Hotline: <strong class="text-slate-700 font-mono">09614694238</strong> &bull; Email: <strong class="text-slate-700">support@rnzsoftware.com</strong></p>
-                    <p class="text-[10px] text-slate-400">Website: rnzsoftware.com &bull; Official Customer Service Document</p>
-                </div>
-            </div>
 
-            <!-- Right: Document Type & Reference Code -->
-            <div class="text-right shrink-0 space-y-1">
-                <div class="inline-block bg-slate-900 text-white rounded-lg px-3 py-1 font-mono text-xs sm:text-sm font-bold tracking-wider shadow-xs">
-                    <?php echo sanitize($doc_ref); ?>
-                </div>
+                <!-- Right: Document Type & Reference Code -->
+                <div class="text-right shrink-0 space-y-1">
+                    <div class="inline-block bg-slate-900 text-white rounded-lg px-3 py-1 font-mono text-sm font-bold tracking-wider shadow-xs">
+                        <?php echo sanitize($doc_ref); ?>
+                    </div>
                 <?php if ($doc_type !== 'soa'): ?>
                     <div class="text-[11px] text-slate-600 font-mono">Date: <strong class="text-slate-900"><?php echo format_date_only($doc_date); ?></strong></div>
                     <div>
@@ -402,7 +415,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         <!-- Document Headline Banner -->
         <div class="flex items-center justify-between bg-[#FFF5ED] border-l-4 border-[#EB3E0B] py-2 px-4 rounded-r-xl">
             <div>
-                <h2 class="text-xs sm:text-sm font-extrabold text-[#430D07] tracking-wider uppercase">
+                <h2 class="text-sm font-extrabold text-[#430D07] tracking-wider uppercase">
                     <?php echo sanitize($doc_title); ?>
                 </h2>
                 <p class="text-[10px] text-[#9A2512] font-semibold"><?php echo sanitize($doc_subtitle); ?></p>
@@ -422,7 +435,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                 
                 <div>
                     <span class="text-slate-400 block text-[9px] font-bold uppercase">Trade / Business Name</span>
-                    <span class="font-extrabold text-slate-900 text-xs sm:text-sm leading-tight block"><?php echo sanitize($client_tradename); ?></span>
+                    <span class="font-extrabold text-slate-900 text-sm leading-tight block"><?php echo sanitize($client_tradename); ?></span>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2 pt-0.5">
@@ -508,7 +521,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         <?php if ($doc_type === 'workorder'): ?>
             <div class="space-y-3">
                 <div class="flex items-center justify-between border-b-2 border-slate-800 pb-1.5">
-                    <h3 class="font-extrabold text-xs sm:text-sm text-slate-900 uppercase tracking-wider">
+                    <h3 class="font-extrabold text-sm text-slate-900 uppercase tracking-wider">
                         Itemized Scope of Work &amp; Service Statement
                     </h3>
                     <span class="text-[10px] text-slate-500 font-mono">Currency: Philippine Peso (PHP)</span>
@@ -527,7 +540,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                         <tr class="bg-white">
                             <td class="py-3.5 px-3 font-mono font-bold text-slate-400 text-center align-top">01</td>
                             <td class="py-3.5 px-3 text-slate-800 leading-relaxed align-top">
-                                <span class="block text-slate-900 font-bold text-xs sm:text-sm mb-1 uppercase tracking-wide">
+                                <span class="block text-slate-900 font-bold text-sm mb-1 uppercase tracking-wide">
                                     <?php echo sanitize($data['natureofwork']); ?>
                                 </span>
                                 <span class="text-slate-500 text-[11px] leading-tight block">
@@ -551,7 +564,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                 </table>
 
                 <!-- Summary Breakdown & Payment Notes Box -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1 items-start">
+                <div class="grid grid-cols-2 gap-4 pt-1 items-start">
                     
                     <!-- Left: Terms & Service Acknowledgment -->
                     <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[10px] text-slate-600 space-y-1">
@@ -585,7 +598,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                                 <span class="text-xs font-black uppercase tracking-wider text-white block">TOTAL BILLED AMOUNT</span>
                                 <span class="text-[9px] text-slate-400">Payment Status: <?php echo sanitize($doc_status); ?></span>
                             </div>
-                            <span class="font-mono text-base sm:text-lg font-black text-[#FA5915]">
+                            <span class="font-mono text-lg font-black text-[#FA5915]">
                                 &#8369;<?php echo number_format(floatval($data['amount']), 2); ?>
                             </span>
                         </div>
@@ -596,11 +609,11 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         <!-- 2. TECHNICAL SERVICE NOTE BODY -->
         <?php elseif ($doc_type === 'technote' || $doc_type === 'notes'): ?>
             <div class="space-y-3">
-                <h3 class="font-extrabold text-xs sm:text-sm text-slate-900 uppercase tracking-wider border-b-2 border-slate-800 pb-1.5">
+                <h3 class="font-extrabold text-sm text-slate-900 uppercase tracking-wider border-b-2 border-slate-800 pb-1.5">
                     Field Service Report &amp; Diagnostic Details
                 </h3>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div class="grid grid-cols-2 gap-3 text-xs">
                     <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
                         <span class="text-[10px] font-bold text-[#EB3E0B] uppercase tracking-wider block">1. Client Concern / Reason of Visit:</span>
                         <p class="text-xs text-slate-800 font-semibold leading-relaxed whitespace-pre-wrap">
@@ -626,7 +639,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         <!-- 3. HARDWARE & SOFTWARE PULL-OUT RECEIPT BODY -->
         <?php elseif ($doc_type === 'pullout'): ?>
             <div class="space-y-3">
-                <h3 class="font-extrabold text-xs sm:text-sm text-slate-900 uppercase tracking-wider border-b-2 border-slate-800 pb-1.5">
+                <h3 class="font-extrabold text-sm text-slate-900 uppercase tracking-wider border-b-2 border-slate-800 pb-1.5">
                     Equipment Movement &amp; Pull-Out Item Breakdown
                 </h3>
 
@@ -644,7 +657,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                             <td class="py-3 px-3 font-mono font-bold text-[#EB3E0B]">
                                 <?php echo !empty($data['item_code']) ? sanitize($data['item_code']) : 'PULLOUT-ITEM'; ?>
                             </td>
-                            <td class="py-3 px-3 text-slate-800 font-bold text-xs sm:text-sm">
+                            <td class="py-3 px-3 text-slate-800 font-bold text-sm">
                                 <?php echo !empty($data['item_name']) ? sanitize($data['item_name']) : 'Hardware / Software Equipment Unit'; ?>
                                 <?php if (!empty($data['category'])): ?>
                                     <span class="block text-[10px] font-normal text-slate-500">Category: <?php echo sanitize($data['category']); ?></span>
@@ -671,18 +684,18 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         <!-- 4. DIAGNOSTIC LOG BODY -->
         <?php elseif ($doc_type === 'log'): ?>
             <div class="space-y-3">
-                <h3 class="font-extrabold text-xs sm:text-sm text-slate-900 uppercase tracking-wider border-b-2 border-slate-800 pb-1.5">
+                <h3 class="font-extrabold text-sm text-slate-900 uppercase tracking-wider border-b-2 border-slate-800 pb-1.5">
                     Hardware Diagnostic Trail &amp; Step Results
                 </h3>
 
                 <div class="grid grid-cols-2 gap-3 text-xs">
                     <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-0.5">
                         <span class="text-slate-400 font-bold uppercase text-[9px] block">Hardware Device Tested</span>
-                        <span class="text-slate-900 font-extrabold text-xs sm:text-sm"><?php echo sanitize($data['hardware_selected']); ?></span>
+                        <span class="text-slate-900 font-extrabold text-sm"><?php echo sanitize($data['hardware_selected']); ?></span>
                     </div>
                     <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-0.5">
                         <span class="text-slate-400 font-bold uppercase text-[9px] block">Reported Issue / Symptom</span>
-                        <span class="text-slate-900 font-extrabold text-xs sm:text-sm"><?php echo !empty($data['issue_selected']) ? sanitize($data['issue_selected']) : 'Hardware Diagnostic Routine'; ?></span>
+                        <span class="text-slate-900 font-extrabold text-sm"><?php echo !empty($data['issue_selected']) ? sanitize($data['issue_selected']) : 'Hardware Diagnostic Routine'; ?></span>
                     </div>
                 </div>
 
@@ -704,7 +717,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         <!-- 5. CLIENT ASSET CERTIFICATE BODY -->
         <?php elseif ($doc_type === 'asset'): ?>
             <div class="space-y-3">
-                <h3 class="font-extrabold text-xs sm:text-sm text-slate-900 uppercase tracking-wider border-b-2 border-slate-800 pb-1.5">
+                <h3 class="font-extrabold text-sm text-slate-900 uppercase tracking-wider border-b-2 border-slate-800 pb-1.5">
                     Registered Asset &amp; Warranty Certificate
                 </h3>
 
@@ -903,7 +916,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                 <?php endif; ?>
 
                 <!-- Summary Breakdown & Financial Grand Total Box -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 items-start">
+                <div class="grid grid-cols-2 gap-4 pt-2 items-start">
                     <!-- Left: Payment Instructions & Policy -->
                     <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[10px] text-slate-600 space-y-1">
                         <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Payment &amp; Remittance Guidelines:</span>
@@ -930,7 +943,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                                 <span class="text-xs font-black uppercase tracking-wider text-white block">TOTAL OUTSTANDING BALANCE</span>
                                 <span class="text-[9px] text-slate-400 font-mono">Account #<?php echo sanitize($client_acct); ?></span>
                             </div>
-                            <span class="font-mono text-base sm:text-xl font-black <?php echo ($outstanding_bal > 0) ? 'text-[#FA5915]' : 'text-emerald-400'; ?>">
+                            <span class="font-mono text-xl font-black <?php echo ($outstanding_bal > 0) ? 'text-[#FA5915]' : 'text-emerald-400'; ?>">
                                 &#8369;<?php echo number_format($outstanding_bal, 2); ?>
                             </span>
                         </div>
@@ -941,7 +954,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
 
         <!-- Signatures & Conforme Block -->
         <?php if ($doc_type === 'soa'): ?>
-            <div class="pt-6 border-t-2 border-slate-900 grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs">
+            <div class="pt-6 border-t-2 border-slate-900 grid grid-cols-3 gap-6 text-xs">
                 <!-- Prepared by -->
                 <div class="space-y-3">
                     <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Prepared By:</span>
@@ -1017,6 +1030,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         </div>
 
     </div>
+    </div> <!-- /.print-wrapper -->
 
     <script>
     function downloadAsPDF() {
@@ -1025,7 +1039,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
             margin:       [7.62, 12.7, 7.62, 12.7],
             filename:     '<?php echo sanitize($doc_ref); ?>_<?php echo sanitize($client_acct); ?>.pdf',
             image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true },
+            html2canvas:  { scale: 2, useCORS: true, windowWidth: 850 },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
         html2pdf().set(opt).from(element).save();
