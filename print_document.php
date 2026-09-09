@@ -336,24 +336,26 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                 <div class="inline-block bg-slate-900 text-white rounded-lg px-3 py-1 font-mono text-xs sm:text-sm font-bold tracking-wider shadow-xs">
                     <?php echo sanitize($doc_ref); ?>
                 </div>
-                <div class="text-[11px] text-slate-600 font-mono">Date: <strong class="text-slate-900"><?php echo format_date_only($doc_date); ?></strong></div>
-                <div>
-                    <?php if ($is_paid): ?>
-                        <span class="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-emerald-300">
-                            <svg class="w-3 h-3 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
-                            PAID <?php echo !empty($ornum_val) ? '&bull; OR #' . sanitize($ornum_val) : ''; ?>
-                        </span>
-                    <?php elseif ($is_unpaid): ?>
-                        <span class="inline-flex items-center gap-1 bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-md border border-amber-300">
-                            <svg class="w-3 h-3 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><polyline points="12 6 12 12 16 14" stroke-width="2"/></svg>
-                            PAYMENT PENDING
-                        </span>
-                    <?php else: ?>
-                        <span class="inline-flex items-center bg-slate-100 text-slate-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-300">
-                            <?php echo strtoupper(sanitize($doc_status)); ?>
-                        </span>
-                    <?php endif; ?>
-                </div>
+                <?php if ($doc_type !== 'soa'): ?>
+                    <div class="text-[11px] text-slate-600 font-mono">Date: <strong class="text-slate-900"><?php echo format_date_only($doc_date); ?></strong></div>
+                    <div>
+                        <?php if ($is_paid): ?>
+                            <span class="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-emerald-300">
+                                <svg class="w-3 h-3 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                                PAID <?php echo !empty($ornum_val) ? '&bull; OR #' . sanitize($ornum_val) : ''; ?>
+                            </span>
+                        <?php elseif ($is_unpaid): ?>
+                            <span class="inline-flex items-center gap-1 bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-md border border-amber-300">
+                                <svg class="w-3 h-3 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke-width="2"/><polyline points="12 6 12 12 16 14" stroke-width="2"/></svg>
+                                PAYMENT PENDING
+                            </span>
+                        <?php else: ?>
+                            <span class="inline-flex items-center bg-slate-100 text-slate-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-300">
+                                <?php echo strtoupper(sanitize($doc_status)); ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -417,25 +419,26 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
             <div class="space-y-1.5 pl-2">
                 <span class="font-extrabold uppercase tracking-wider text-[10px] text-[#EB3E0B] flex items-center gap-1 border-b border-slate-200 pb-1">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    Service Order Specifications
+                    <?php echo ($doc_type === 'soa') ? 'Statement Particulars' : 'Service Order Specifications'; ?>
                 </span>
 
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <span class="text-slate-400 block text-[9px] font-bold uppercase">Order Reference</span>
+                        <span class="text-slate-400 block text-[9px] font-bold uppercase"><?php echo ($doc_type === 'soa') ? 'Statement No.' : 'Order Reference'; ?></span>
                         <span class="font-mono font-bold text-[#EB3E0B] text-xs"><?php echo sanitize($doc_ref); ?></span>
                     </div>
                     <div>
-                        <span class="text-slate-400 block text-[9px] font-bold uppercase">Issue / Record Date</span>
+                        <span class="text-slate-400 block text-[9px] font-bold uppercase"><?php echo ($doc_type === 'soa') ? 'Statement Date' : 'Issue / Record Date'; ?></span>
                         <span class="font-mono font-semibold text-slate-900 text-xs"><?php echo format_date_only($doc_date); ?></span>
                     </div>
                 </div>
 
                 <div class="pt-0.5">
-                    <span class="text-slate-400 block text-[9px] font-bold uppercase">Attending Technician / Representative</span>
+                    <span class="text-slate-400 block text-[9px] font-bold uppercase"><?php echo ($doc_type === 'soa') ? 'Prepared / Issued By' : 'Attending Technician / Representative'; ?></span>
                     <span class="font-bold text-slate-900 text-xs block"><?php echo sanitize($tech_name); ?></span>
                 </div>
 
+                <?php if ($doc_type !== 'soa'): ?>
                 <div class="grid grid-cols-2 gap-2 pt-0.5">
                     <div>
                         <span class="text-slate-400 block text-[9px] font-bold uppercase">Payment Status</span>
@@ -450,6 +453,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                         </span>
                     </div>
                 </div>
+                <?php endif; ?>
 
                 <div class="pt-0.5">
                     <span class="text-slate-400 block text-[9px] font-bold uppercase">Client Maintenance Warranty</span>
@@ -661,42 +665,6 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         <!-- 5. STATEMENT OF ACCOUNT (SOA) BODY -->
         <?php if ($doc_type === 'soa'): ?>
             <div class="space-y-4">
-                <!-- Top SOA Financial Metric Badges -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Monthly Retainer</span>
-                        <p class="text-sm font-extrabold text-slate-900 font-mono mt-0.5">
-                            &#8369;<?php echo number_format(floatval($client['monthlyretainersfee']), 2); ?>
-                        </p>
-                        <span class="text-[9px] text-slate-400">Recurring maintenance fee</span>
-                    </div>
-
-                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Pending Software Services</span>
-                        <p class="text-sm font-extrabold text-slate-900 font-mono mt-0.5">
-                            &#8369;<?php echo number_format($soa_total_services, 2); ?>
-                        </p>
-                        <span class="text-[9px] text-amber-700 font-bold"><?php echo count($soa_services); ?> item(s) pending</span>
-                    </div>
-
-                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Pending Hardware Charges</span>
-                        <p class="text-sm font-extrabold text-slate-900 font-mono mt-0.5">
-                            &#8369;<?php echo number_format($soa_total_hardware, 2); ?>
-                        </p>
-                        <span class="text-[9px] text-amber-700 font-bold"><?php echo (count($soa_advtaxes) + count($soa_hworders)); ?> item(s) pending</span>
-                    </div>
-
-                    <div class="p-3 rounded-xl <?php echo ($outstanding_bal > 0) ? 'bg-rose-50 border border-rose-200' : 'bg-slate-50 border border-slate-200'; ?>">
-                        <span class="block <?php echo ($outstanding_bal > 0) ? 'text-rose-700' : 'text-slate-500'; ?> font-bold uppercase text-[9px] tracking-wider">Net Outstanding Balance</span>
-                        <p class="text-sm font-black <?php echo ($outstanding_bal > 0) ? 'text-rose-700' : 'text-slate-900'; ?> font-mono mt-0.5">
-                            &#8369;<?php echo number_format($outstanding_bal, 2); ?>
-                        </p>
-                        <span class="text-[9px] <?php echo ($outstanding_bal > 0) ? 'text-rose-600 font-bold' : 'text-slate-400'; ?>">
-                            <?php echo ($outstanding_bal > 0) ? 'Due for settlement' : 'Account fully settled'; ?>
-                        </span>
-                    </div>
-                </div>
 
                 <?php 
                 $has_any_pending = (!empty($soa_services) || !empty($soa_advtaxes) || !empty($soa_hworders) || !empty($soa_workorders));
@@ -841,8 +809,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                     <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[10px] text-slate-600 space-y-1">
                         <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Payment &amp; Remittance Guidelines:</span>
                         <p class="leading-relaxed">
-                            Please settle any outstanding amount via bank transfer, check, or authorized field collection. 
-                            Always demand an <strong>Official Receipt (O.R.)</strong> upon remittance.
+                            Please settle any outstanding amount via bank transfer, check, or authorized field collection.
                         </p>
                         <p class="text-slate-500 pt-0.5">
                             Hotline: <strong class="text-slate-700">09614694238</strong> &bull; Email: <strong class="text-slate-700">support@rnzsoftware.com</strong>
