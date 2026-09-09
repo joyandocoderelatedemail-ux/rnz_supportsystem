@@ -144,7 +144,15 @@ $page_title = 'Account Details';
                         </div>
                         <div>
                             <span class="block text-[#7C2112] font-medium mb-0.5">Outstanding Balance</span>
-                            <span class="font-extrabold text-[#430D07] text-lg">₱<?php echo number_format(floatval($client['outstandingbalance']), 2); ?></span>
+                            <div class="flex items-center justify-between flex-wrap gap-2">
+                                <span class="font-extrabold text-[#430D07] text-lg">₱<?php echo number_format(floatval($client['outstandingbalance']), 2); ?></span>
+                                <a href="print_document.php?type=soa&autoprint=1" target="_blank" class="inline-flex items-center space-x-1 text-xs font-bold text-[#EB3E0B] hover:text-[#C32C0B] bg-[#FFE8D5] hover:bg-[#FECDAA] px-3 py-1 rounded-full border border-[#FECDAA] transition-colors shadow-sm">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                    </svg>
+                                    <span>View / Print SOA</span>
+                                </a>
+                            </div>
                         </div>
                         <div class="pt-4 border-t border-[#FFE8D5]">
                             <a href="logout.php" class="inline-flex items-center space-x-2 text-rose-600 hover:text-rose-700 font-bold text-xs">

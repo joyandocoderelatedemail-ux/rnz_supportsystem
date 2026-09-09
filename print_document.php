@@ -16,7 +16,7 @@ $doc_type = isset($_GET['type']) ? trim($_GET['type']) : '';
 $doc_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $autoprint = isset($_GET['autoprint']) && $_GET['autoprint'] == '1';
 
-if (empty($doc_type) || $doc_id <= 0) {
+if (empty($doc_type) || ($doc_type !== 'soa' && $doc_id <= 0)) {
     die("Invalid document type or ID.");
 }
 /**
@@ -149,6 +149,59 @@ if ($doc_type === 'workorder') {
     $doc_status = !empty($data['resolution_status']) ? ucfirst($data['resolution_status']) : 'Completed';
     $tech_name = $admin_name;
 
+} elseif ($doc_type === 'soa') {
+    // 1. Software / Programs (Pending / Unpaid only - paid items excluded from printed SOA)
+    $stmt_ss = $pdo->prepare("SELECT * FROM bucket_specialservices WHERE accountnum = :acct AND LOWER(TRIM(status)) != 'paid' ORDER BY xdate DESC, id DESC");
+    $stmt_ss->execute(array(':acct' => $accountnum));
+    $soa_services = $stmt_ss->fetchAll();
+
+    // 2. Hardware / Peripherals (Advances & Shop Orders - Pending / Unpaid only)
+    $stmt_at = $pdo->prepare("SELECT * FROM bucket_advancetaxes WHERE accountnum = :acct AND LOWER(TRIM(status)) != 'paid' ORDER BY xdate DESC, id DESC");
+    $stmt_at->execute(array(':acct' => $accountnum));
+    $soa_advtaxes = $stmt_at->fetchAll();
+
+    $stmt_ho = $pdo->prepare("SELECT * FROM client_hardware_orders WHERE accountnum = :acct AND LOWER(TRIM(status)) <> 'cancelled' AND LOWER(TRIM(status)) <> 'completed' AND LOWER(TRIM(status)) <> 'paid' ORDER BY created_at DESC, id DESC");
+    $stmt_ho->execute(array(':acct' => $accountnum));
+    $soa_hworders = $stmt_ho->fetchAll();
+
+    // 3. Work Orders (Pending / Unpaid only)
+    $stmt_wo = $pdo->prepare("SELECT * FROM bucket_workorder WHERE accountnum = :acct AND LOWER(TRIM(status)) != 'paid' ORDER BY xdate DESC, id DESC");
+    $stmt_wo->execute(array(':acct' => $accountnum));
+    $soa_workorders = $stmt_wo->fetchAll();
+
+    // 4. Receipts: Paid receipts excluded from printed statement per policy
+    $soa_receipts = array();
+
+    // Totals
+    $soa_total_services = 0;
+    foreach ($soa_services as $s_item) {
+        $soa_total_services += floatval($s_item['amount']);
+    }
+    $soa_total_hardware = 0;
+    foreach ($soa_advtaxes as $a_item) {
+        $soa_total_hardware += floatval($a_item['amount']);
+    }
+    foreach ($soa_hworders as $h_item) {
+        $soa_total_hardware += floatval($h_item['total_amount']);
+    }
+    $soa_total_workorders = 0;
+    foreach ($soa_workorders as $w_item) {
+        $soa_total_workorders += floatval($w_item['amount']);
+    }
+    $soa_total_receipts = 0;
+    foreach ($soa_receipts as $r_item) {
+        $soa_total_receipts += floatval($r_item['amount']);
+    }
+
+    $doc_title = 'STATEMENT OF ACCOUNT';
+    $doc_subtitle = 'Official Billing Statement & Account Balance Summary';
+    $doc_ref = 'SOA-' . $accountnum . '-' . date('Ymd');
+    $doc_date = date('Y-m-d');
+    $outstanding_bal = floatval($client['outstandingbalance']);
+    $doc_status = ($outstanding_bal <= 0) ? 'Settled' : 'Unpaid';
+    $tech_name = $admin_name;
+    $data = $client;
+
 } else {
     die("Unsupported document type.");
 }
@@ -166,9 +219,10 @@ $client_contact = (!empty($client['contactnum']) && strtoupper(trim($client['con
 $client_email = (!empty($client['emailaddress']) && strtoupper(trim($client['emailaddress'])) !== 'NA') ? $client['emailaddress'] : '—';
 $client_warranty_status = !empty($client['warranty_status']) ? $client['warranty_status'] : 'Inactive';
 
-$is_paid = (strtolower(trim($doc_status)) === 'paid');
-$is_unpaid = (strtolower(trim($doc_status)) === 'unpaid' || strtolower(trim($doc_status)) === 'pending');
-$ornum_val = !empty($data['ornum']) ? trim($data['ornum']) : '';
+$outstanding_bal = isset($client['outstandingbalance']) ? floatval($client['outstandingbalance']) : 0;
+$is_paid = ($doc_type === 'soa') ? ($outstanding_bal <= 0) : (strtolower(trim($doc_status)) === 'paid');
+$is_unpaid = ($doc_type === 'soa') ? ($outstanding_bal > 0) : (strtolower(trim($doc_status)) === 'unpaid' || strtolower(trim($doc_status)) === 'pending');
+$ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -604,41 +658,290 @@ $ornum_val = !empty($data['ornum']) ? trim($data['ornum']) : '';
             </div>
         <?php endif; ?>
 
-        <!-- Signatures & Conforme Block (Side by Side) -->
-        <div class="pt-6 border-t-2 border-slate-900 grid grid-cols-2 gap-8 text-xs">
-            
-            <!-- Servicing Technician -->
+        <!-- 5. STATEMENT OF ACCOUNT (SOA) BODY -->
+        <?php if ($doc_type === 'soa'): ?>
             <div class="space-y-4">
-                <div>
-                    <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Prepared &amp; Serviced By:</span>
-                    <p class="text-[9px] text-slate-400">Certified accurate by attending technical representative.</p>
-                </div>
-                <div class="space-y-1">
-                    <div class="border-b-2 border-slate-800 h-8 w-full flex items-end justify-center pb-0.5">
-                        <span class="font-extrabold text-slate-900 text-xs uppercase tracking-wide"><?php echo sanitize($tech_name); ?></span>
+                <!-- Top SOA Financial Metric Badges -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Monthly Retainer</span>
+                        <p class="text-sm font-extrabold text-slate-900 font-mono mt-0.5">
+                            &#8369;<?php echo number_format(floatval($client['monthlyretainersfee']), 2); ?>
+                        </p>
+                        <span class="text-[9px] text-slate-400">Recurring maintenance fee</span>
                     </div>
-                    <div class="flex justify-between text-slate-500 text-[9px] font-bold uppercase">
-                        <span>Authorized Representative / Admin</span>
-                        <span>Date: <?php echo format_date_only($doc_date); ?></span>
-                    </div>
-                </div>
-            </div>
 
-            <!-- Client Conforme -->
-            <div class="space-y-4">
-                <div>
-                    <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Client Conforme &amp; Acceptance:</span>
-                    <p class="text-[9px] text-slate-400">I acknowledge that the work and services indicated have been performed satisfactorily.</p>
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Pending Software Services</span>
+                        <p class="text-sm font-extrabold text-slate-900 font-mono mt-0.5">
+                            &#8369;<?php echo number_format($soa_total_services, 2); ?>
+                        </p>
+                        <span class="text-[9px] text-amber-700 font-bold"><?php echo count($soa_services); ?> item(s) pending</span>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Pending Hardware Charges</span>
+                        <p class="text-sm font-extrabold text-slate-900 font-mono mt-0.5">
+                            &#8369;<?php echo number_format($soa_total_hardware, 2); ?>
+                        </p>
+                        <span class="text-[9px] text-amber-700 font-bold"><?php echo (count($soa_advtaxes) + count($soa_hworders)); ?> item(s) pending</span>
+                    </div>
+
+                    <div class="p-3 rounded-xl <?php echo ($outstanding_bal > 0) ? 'bg-rose-50 border border-rose-200' : 'bg-slate-50 border border-slate-200'; ?>">
+                        <span class="block <?php echo ($outstanding_bal > 0) ? 'text-rose-700' : 'text-slate-500'; ?> font-bold uppercase text-[9px] tracking-wider">Net Outstanding Balance</span>
+                        <p class="text-sm font-black <?php echo ($outstanding_bal > 0) ? 'text-rose-700' : 'text-slate-900'; ?> font-mono mt-0.5">
+                            &#8369;<?php echo number_format($outstanding_bal, 2); ?>
+                        </p>
+                        <span class="text-[9px] <?php echo ($outstanding_bal > 0) ? 'text-rose-600 font-bold' : 'text-slate-400'; ?>">
+                            <?php echo ($outstanding_bal > 0) ? 'Due for settlement' : 'Account fully settled'; ?>
+                        </span>
+                    </div>
                 </div>
-                <div class="space-y-1">
-                    <div class="border-b-2 border-slate-800 h-8 w-full"></div>
-                    <div class="flex justify-between text-slate-500 text-[9px] font-bold uppercase">
-                        <span>Authorized Client Signature / Name</span>
-                        <span>Date</span>
+
+                <?php 
+                $has_any_pending = (!empty($soa_services) || !empty($soa_advtaxes) || !empty($soa_hworders) || !empty($soa_workorders));
+                ?>
+
+                <?php if (!$has_any_pending): ?>
+                    <div class="p-8 text-center border border-emerald-200 bg-emerald-50 rounded-2xl text-emerald-800 space-y-1">
+                        <svg class="w-8 h-8 text-emerald-600 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <p class="font-extrabold text-sm uppercase tracking-wider text-emerald-900">No Pending or Unpaid Charges</p>
+                        <p class="text-xs text-emerald-700">All itemized special services, equipment advances, and maintenance work orders for your account are fully settled.</p>
+                    </div>
+                <?php endif; ?>
+
+                <!-- SECTION 1: Software Updates, System Programs & Special Services -->
+                <?php if (!empty($soa_services)): ?>
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between border-b border-slate-300 pb-1">
+                        <h4 class="font-bold text-xs text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+                            <span>1. Software Updates &amp; System Programs (Special Services)</span>
+                        </h4>
+                        <span class="text-[10px] text-slate-500 font-mono">Subtotal: &#8369;<?php echo number_format($soa_total_services, 2); ?></span>
+                    </div>
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100 border-y border-slate-200 text-slate-600 font-bold uppercase text-[9px]">
+                                <th class="py-1.5 px-2.5 w-24">Date</th>
+                                <th class="py-1.5 px-2.5">Service Particulars / Description</th>
+                                <th class="py-1.5 px-2.5 text-center w-24">Status</th>
+                                <th class="py-1.5 px-2.5 text-right w-28">Amount Due</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <?php foreach ($soa_services as $ss): ?>
+                                <tr>
+                                    <td class="py-2 px-2.5 font-mono text-[10px] text-slate-600"><?php echo format_date_only($ss['xdate']); ?></td>
+                                    <td class="py-2 px-2.5 font-bold text-slate-800 text-[11px]"><?php echo sanitize($ss['specialservices']); ?></td>
+                                    <td class="py-2 px-2.5 text-center">
+                                        <span class="inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-900 border border-amber-300">
+                                            <?php echo sanitize($ss['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td class="py-2 px-2.5 text-right font-mono font-bold text-slate-900 text-[11px]">&#8369;<?php echo number_format(floatval($ss['amount']), 2); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+
+                <!-- SECTION 2: Hardware Peripherals, POS Equipment & Supplies -->
+                <?php if (!empty($soa_advtaxes) || !empty($soa_hworders)): ?>
+                <div class="space-y-2 pt-1">
+                    <div class="flex items-center justify-between border-b border-slate-300 pb-1">
+                        <h4 class="font-bold text-xs text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-amber-600"></span>
+                            <span>2. Hardware Peripherals &amp; Equipment Advances</span>
+                        </h4>
+                        <span class="text-[10px] text-slate-500 font-mono">Subtotal: &#8369;<?php echo number_format($soa_total_hardware, 2); ?></span>
+                    </div>
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100 border-y border-slate-200 text-slate-600 font-bold uppercase text-[9px]">
+                                <th class="py-1.5 px-2.5 w-24">Date</th>
+                                <th class="py-1.5 px-2.5">Item / Equipment Particulars</th>
+                                <th class="py-1.5 px-2.5 text-center w-24">Status</th>
+                                <th class="py-1.5 px-2.5 text-right w-28">Amount Due</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <?php foreach ($soa_advtaxes as $at): ?>
+                                <tr>
+                                    <td class="py-2 px-2.5 font-mono text-[10px] text-slate-600"><?php echo format_date_only($at['xdate']); ?></td>
+                                    <td class="py-2 px-2.5 font-bold text-slate-800 text-[11px]"><?php echo sanitize($at['nameofadvancetaxes']); ?></td>
+                                    <td class="py-2 px-2.5 text-center">
+                                        <span class="inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-900 border border-amber-300">
+                                            <?php echo sanitize($at['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td class="py-2 px-2.5 text-right font-mono font-bold text-slate-900 text-[11px]">&#8369;<?php echo number_format(floatval($at['amount']), 2); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            <?php foreach ($soa_hworders as $ho): ?>
+                                <tr>
+                                    <td class="py-2 px-2.5 font-mono text-[10px] text-slate-600"><?php echo format_date_only($ho['created_at']); ?></td>
+                                    <td class="py-2 px-2.5 font-bold text-slate-800 text-[11px]">
+                                        <?php echo sanitize($ho['item_name']); ?> (Qty: <?php echo intval($ho['quantity']); ?>)
+                                    </td>
+                                    <td class="py-2 px-2.5 text-center">
+                                        <span class="inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-900 border border-amber-300">
+                                            <?php echo sanitize($ho['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td class="py-2 px-2.5 text-right font-mono font-bold text-slate-900 text-[11px]">&#8369;<?php echo number_format(floatval($ho['total_amount']), 2); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+
+                <!-- SECTION 3: Technical Service & Maintenance Work Orders -->
+                <?php if (!empty($soa_workorders)): ?>
+                <div class="space-y-2 pt-1">
+                    <div class="flex items-center justify-between border-b border-slate-300 pb-1">
+                        <h4 class="font-bold text-xs text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-600"></span>
+                            <span>3. Technical Service &amp; Maintenance Work Orders</span>
+                        </h4>
+                        <span class="text-[10px] text-slate-500 font-mono">Subtotal: &#8369;<?php echo number_format($soa_total_workorders, 2); ?></span>
+                    </div>
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-100 border-y border-slate-200 text-slate-600 font-bold uppercase text-[9px]">
+                                <th class="py-1.5 px-2.5 w-24">Date</th>
+                                <th class="py-1.5 px-2.5">Scope / Nature of Work</th>
+                                <th class="py-1.5 px-2.5 text-center w-24">Status</th>
+                                <th class="py-1.5 px-2.5 text-right w-28">Amount Due</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <?php foreach ($soa_workorders as $wo): ?>
+                                <tr>
+                                    <td class="py-2 px-2.5 font-mono text-[10px] text-slate-600"><?php echo format_date_only($wo['xdate']); ?></td>
+                                    <td class="py-2 px-2.5 font-bold text-slate-800 text-[11px]"><?php echo sanitize($wo['natureofwork']); ?></td>
+                                    <td class="py-2 px-2.5 text-center">
+                                        <span class="inline-block px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-100 text-amber-900 border border-amber-300">
+                                            <?php echo sanitize($wo['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td class="py-2 px-2.5 text-right font-mono font-bold text-slate-900 text-[11px]">&#8369;<?php echo number_format(floatval($wo['amount']), 2); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <?php endif; ?>
+
+                <!-- Summary Breakdown & Financial Grand Total Box -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 items-start">
+                    <!-- Left: Payment Instructions & Policy -->
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[10px] text-slate-600 space-y-1">
+                        <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Payment &amp; Remittance Guidelines:</span>
+                        <p class="leading-relaxed">
+                            Please settle any outstanding amount via bank transfer, check, or authorized field collection. 
+                            Always demand an <strong>Official Receipt (O.R.)</strong> upon remittance.
+                        </p>
+                        <p class="text-slate-500 pt-0.5">
+                            Hotline: <strong class="text-slate-700">09614694238</strong> &bull; Email: <strong class="text-slate-700">support@rnzsoftware.com</strong>
+                        </p>
+                    </div>
+
+                    <!-- Right: Grand Total Box -->
+                    <div class="p-3.5 rounded-xl bg-slate-900 text-white space-y-2">
+                        <div class="flex justify-between items-center text-[11px] text-slate-300 pb-1 border-b border-slate-800">
+                            <span>Pending Itemized Charges Due:</span>
+                            <span class="font-mono font-semibold">&#8369;<?php echo number_format($soa_total_services + $soa_total_hardware + $soa_total_workorders, 2); ?></span>
+                        </div>
+                        <div class="flex justify-between items-center text-[11px] text-slate-300 pb-1 border-b border-slate-800">
+                            <span>Monthly Retainer:</span>
+                            <span class="font-mono font-semibold">&#8369;<?php echo number_format(floatval($client['monthlyretainersfee']), 2); ?></span>
+                        </div>
+                        <div class="flex justify-between items-center pt-0.5">
+                            <div>
+                                <span class="text-xs font-black uppercase tracking-wider text-white block">TOTAL OUTSTANDING BALANCE</span>
+                                <span class="text-[9px] text-slate-400 font-mono">Account #<?php echo sanitize($accountnum); ?></span>
+                            </div>
+                            <span class="font-mono text-base sm:text-xl font-black <?php echo ($outstanding_bal > 0) ? 'text-[#FA5915]' : 'text-emerald-400'; ?>">
+                                &#8369;<?php echo number_format($outstanding_bal, 2); ?>
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        <?php endif; ?>
+
+        <!-- Signatures & Conforme Block -->
+        <?php if ($doc_type === 'soa'): ?>
+            <div class="pt-6 border-t-2 border-slate-900 grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs">
+                <!-- Prepared by -->
+                <div class="space-y-3">
+                    <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Prepared By:</span>
+                    <div class="space-y-1">
+                        <div class="border-b-2 border-slate-800 h-8 w-full flex items-end justify-center pb-0.5">
+                            <span class="font-extrabold text-slate-900 text-xs uppercase tracking-wide"><?php echo sanitize($tech_name); ?></span>
+                        </div>
+                        <div class="text-center text-slate-500 text-[9px] font-bold uppercase">Billing &amp; Support Specialist</div>
+                    </div>
+                </div>
+
+                <!-- Verified / Approved by -->
+                <div class="space-y-3">
+                    <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Approved By:</span>
+                    <div class="space-y-1">
+                        <div class="border-b-2 border-slate-800 h-8 w-full flex items-end justify-center pb-0.5">
+                            <span class="font-extrabold text-slate-900 text-xs uppercase tracking-wide">Rabbi Zamora</span>
+                        </div>
+                        <div class="text-center text-slate-500 text-[9px] font-bold uppercase">Management / Lead Developer</div>
+                    </div>
+                </div>
+
+                <!-- Received / Conforme by -->
+                <div class="space-y-3">
+                    <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Received &amp; Acknowledged:</span>
+                    <div class="space-y-1">
+                        <div class="border-b-2 border-slate-800 h-8 w-full"></div>
+                        <div class="text-center text-slate-500 text-[9px] font-bold uppercase">Client Authorized Signature / Date</div>
+                    </div>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="pt-6 border-t-2 border-slate-900 grid grid-cols-2 gap-8 text-xs">
+                <!-- Servicing Technician -->
+                <div class="space-y-4">
+                    <div>
+                        <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Prepared &amp; Serviced By:</span>
+                        <p class="text-[9px] text-slate-400">Certified accurate by attending technical representative.</p>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="border-b-2 border-slate-800 h-8 w-full flex items-end justify-center pb-0.5">
+                            <span class="font-extrabold text-slate-900 text-xs uppercase tracking-wide"><?php echo sanitize($tech_name); ?></span>
+                        </div>
+                        <div class="flex justify-between text-slate-500 text-[9px] font-bold uppercase">
+                            <span>Authorized Representative / Admin</span>
+                            <span>Date: <?php echo format_date_only($doc_date); ?></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Client Conforme -->
+                <div class="space-y-4">
+                    <div>
+                        <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Client Conforme &amp; Acceptance:</span>
+                        <p class="text-[9px] text-slate-400">I acknowledge that the work and services indicated have been performed satisfactorily.</p>
+                    </div>
+                    <div class="space-y-1">
+                        <div class="border-b-2 border-slate-800 h-8 w-full"></div>
+                        <div class="flex justify-between text-slate-500 text-[9px] font-bold uppercase">
+                            <span>Authorized Client Signature / Name</span>
+                            <span>Date</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
 
         <!-- Footer Notice -->
         <div class="text-center text-[9px] text-slate-400 border-t border-slate-200 pt-3 flex items-center justify-between">

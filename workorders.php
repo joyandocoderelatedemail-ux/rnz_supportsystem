@@ -85,14 +85,23 @@ $page_title = 'Work Orders';
                     <p class="text-xs text-[#7C2112]">Service work orders, billing statements, and official receipts</p>
                 </div>
 
-                <form action="workorders.php" method="GET" class="w-full sm:w-72">
-                    <div class="relative">
-                        <input type="text" name="q" value="<?php echo sanitize($search_q); ?>" placeholder="Search work orders or OR #..." class="w-full bg-[#FFF5ED] text-[#430D07] text-xs pl-9 pr-4 py-2.5 rounded-full border border-[#FECDAA] focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
-                        <svg class="w-4 h-4 text-[#9A2512] absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                <div class="flex items-center flex-wrap gap-3 w-full sm:w-auto">
+                    <a href="print_document.php?type=soa&autoprint=1" target="_blank" class="bg-[#EB3E0B] hover:bg-[#C32C0B] active:scale-95 text-white font-bold text-xs px-4 py-2.5 rounded-full shadow-sm shadow-[#EB3E0B]/20 flex items-center space-x-1.5 transition-all">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
                         </svg>
-                    </div>
-                </form>
+                        <span>Print Statement of Account (SOA)</span>
+                    </a>
+
+                    <form action="workorders.php" method="GET" class="w-full sm:w-64">
+                        <div class="relative">
+                            <input type="text" name="q" value="<?php echo sanitize($search_q); ?>" placeholder="Search work orders or OR #..." class="w-full bg-[#FFF5ED] text-[#430D07] text-xs pl-9 pr-4 py-2.5 rounded-full border border-[#FECDAA] focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all">
+                            <svg class="w-4 h-4 text-[#9A2512] absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <!-- Work Orders Table Card -->

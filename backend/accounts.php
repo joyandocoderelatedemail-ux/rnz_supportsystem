@@ -544,6 +544,261 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $update_error = "Error deleting work order: " . $e->getMessage();
                 }
             }
+        } elseif ($action === 'add_special_service') {
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $specialservices = isset($_POST['specialservices']) ? trim($_POST['specialservices']) : '';
+            $amount = isset($_POST['amount']) ? trim($_POST['amount']) : '0';
+            $status = isset($_POST['status']) ? trim($_POST['status']) : 'pending';
+            $ornum = isset($_POST['ornum']) ? trim($_POST['ornum']) : '';
+            $xdate = isset($_POST['xdate']) && !empty($_POST['xdate']) ? trim($_POST['xdate']) : date('Y-m-d');
+
+            if (!empty($accountnum) && !empty($specialservices)) {
+                try {
+                    $stmt_c = $pdo->prepare("SELECT tradename, clientname, address FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+                    $stmt_c->execute(array(':acct' => $accountnum));
+                    $cli = $stmt_c->fetch();
+                    $cname = $cli ? (!empty($cli['tradename']) ? $cli['tradename'] : $cli['clientname']) : 'Client';
+                    $addr = $cli ? $cli['address'] : '';
+
+                    $stmt_ins = $pdo->prepare("INSERT INTO bucket_specialservices (accountnum, xdate, clientname, address, specialservices, amount, status, ornum) VALUES (:acct, :xdate, :cname, :addr, :serv, :amt, :st, :ornum)");
+                    $stmt_ins->execute(array(
+                        ':acct' => $accountnum,
+                        ':xdate' => $xdate,
+                        ':cname' => $cname,
+                        ':addr' => $addr,
+                        ':serv' => $specialservices,
+                        ':amt' => $amount,
+                        ':st' => $status,
+                        ':ornum' => $ornum
+                    ));
+                    $update_msg = "Special Service charge \"" . sanitize($specialservices) . "\" added to Account #$accountnum.";
+                } catch (PDOException $e) {
+                    $update_error = "Error adding service charge: " . $e->getMessage();
+                }
+            }
+        } elseif ($action === 'add_advance_tax') {
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $nameofadvancetaxes = isset($_POST['nameofadvancetaxes']) ? trim($_POST['nameofadvancetaxes']) : '';
+            $amount = isset($_POST['amount']) ? trim($_POST['amount']) : '0';
+            $status = isset($_POST['status']) ? trim($_POST['status']) : 'pending';
+            $ornum = isset($_POST['ornum']) ? trim($_POST['ornum']) : '';
+            $xdate = isset($_POST['xdate']) && !empty($_POST['xdate']) ? trim($_POST['xdate']) : date('Y-m-d');
+
+            if (!empty($accountnum) && !empty($nameofadvancetaxes)) {
+                try {
+                    $stmt_c = $pdo->prepare("SELECT tradename, clientname, address FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+                    $stmt_c->execute(array(':acct' => $accountnum));
+                    $cli = $stmt_c->fetch();
+                    $cname = $cli ? (!empty($cli['tradename']) ? $cli['tradename'] : $cli['clientname']) : 'Client';
+                    $addr = $cli ? $cli['address'] : '';
+
+                    $stmt_ins = $pdo->prepare("INSERT INTO bucket_advancetaxes (accountnum, xdate, clientname, address, nameofadvancetaxes, amount, status, ornum) VALUES (:acct, :xdate, :cname, :addr, :name, :amt, :st, :ornum)");
+                    $stmt_ins->execute(array(
+                        ':acct' => $accountnum,
+                        ':xdate' => $xdate,
+                        ':cname' => $cname,
+                        ':addr' => $addr,
+                        ':name' => $nameofadvancetaxes,
+                        ':amt' => $amount,
+                        ':st' => $status,
+                        ':ornum' => $ornum
+                    ));
+                    $update_msg = "Hardware item \"" . sanitize($nameofadvancetaxes) . "\" added to Account #$accountnum.";
+                } catch (PDOException $e) {
+                    $update_error = "Error adding hardware charge: " . $e->getMessage();
+                }
+            }
+        } elseif ($action === 'record_soa_payment' || $action === 'mark_service_paid' || $action === 'mark_advtax_paid') {
+            $target_type = isset($_POST['target_type']) ? trim($_POST['target_type']) : '';
+            if (empty($target_type)) {
+                if ($action === 'mark_service_paid') {
+                    $target_type = 'special_service';
+                } elseif ($action === 'mark_advtax_paid') {
+                    $target_type = 'advance_tax';
+                }
+            }
+            $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $payment_mode = isset($_POST['payment_mode']) ? trim($_POST['payment_mode']) : 'full';
+            $payment_amount = isset($_POST['payment_amount']) ? floatval($_POST['payment_amount']) : 0.0;
+            $ornum = isset($_POST['ornum']) ? trim($_POST['ornum']) : '';
+            $payment_date = (isset($_POST['payment_date']) && !empty($_POST['payment_date'])) ? trim($_POST['payment_date']) : date('Y-m-d');
+            $payment_notes = isset($_POST['payment_notes']) ? trim($_POST['payment_notes']) : '';
+
+            if (empty($accountnum)) {
+                $update_error = "Account number is required to record payment.";
+            } else {
+                try {
+                    $stmt_cl = $pdo->prepare("SELECT * FROM bucket_client WHERE accountnum = :acct LIMIT 1");
+                    $stmt_cl->execute(array(':acct' => $accountnum));
+                    $cl_row = $stmt_cl->fetch(PDO::FETCH_ASSOC);
+
+                    if (!$cl_row) {
+                        $update_error = "Client account #$accountnum not found.";
+                    } else {
+                        $c_name = !empty($cl_row['clientname']) ? $cl_row['clientname'] : (!empty($cl_row['tradename']) ? $cl_row['tradename'] : 'Valued Client');
+                        $c_addr = !empty($cl_row['address']) ? $cl_row['address'] : '';
+
+                        if (empty($ornum)) {
+                            $max_or_row = $pdo->query("SELECT MAX(CAST(ornum AS UNSIGNED)) as max_or FROM bucket_officialreceipt")->fetch(PDO::FETCH_ASSOC);
+                            $next_or_int = intval(isset($max_or_row['max_or']) ? $max_or_row['max_or'] : 0) + 1;
+                            $ornum = str_pad($next_or_int, 5, '0', STR_PAD_LEFT);
+                        }
+
+                        $pdo->beginTransaction();
+
+                        $target_item_desc = '';
+                        $item_orig_amount = 0.0;
+                        $is_partial = false;
+                        $remaining_amount = 0.0;
+
+                        if ($target_type === 'special_service' && $item_id > 0) {
+                            $stmt_itm = $pdo->prepare("SELECT * FROM bucket_specialservices WHERE id = :id FOR UPDATE");
+                            $stmt_itm->execute(array(':id' => $item_id));
+                            $itm = $stmt_itm->fetch(PDO::FETCH_ASSOC);
+                            if ($itm) {
+                                $target_item_desc = $itm['specialservices'];
+                                $item_orig_amount = floatval($itm['amount']);
+                                if ($payment_mode === 'full' || $payment_amount <= 0 || $payment_amount >= $item_orig_amount) {
+                                    $payment_amount = $item_orig_amount;
+                                    $stmt_u = $pdo->prepare("UPDATE bucket_specialservices SET status = 'paid', ornum = :ornum WHERE id = :id");
+                                    $stmt_u->execute(array(':ornum' => $ornum, ':id' => $item_id));
+                                } else {
+                                    $is_partial = true;
+                                    $remaining_amount = max(0.0, $item_orig_amount - $payment_amount);
+                                    $stmt_u = $pdo->prepare("UPDATE bucket_specialservices SET amount = :rem, status = 'pending' WHERE id = :id");
+                                    $stmt_u->execute(array(':rem' => $remaining_amount, ':id' => $item_id));
+                                    $stmt_in = $pdo->prepare("INSERT INTO bucket_specialservices (accountnum, xdate, clientname, address, specialservices, amount, status, ornum) VALUES (:acct, :xdate, :cname, :addr, :desc, :amt, 'paid', :ornum)");
+                                    $stmt_in->execute(array(
+                                        ':acct' => $accountnum,
+                                        ':xdate' => $payment_date,
+                                        ':cname' => $c_name,
+                                        ':addr' => $c_addr,
+                                        ':desc' => $target_item_desc . ' (Partial - OR#' . $ornum . ')',
+                                        ':amt' => $payment_amount,
+                                        ':ornum' => $ornum
+                                    ));
+                                }
+                            }
+                        } elseif ($target_type === 'advance_tax' && $item_id > 0) {
+                            $stmt_itm = $pdo->prepare("SELECT * FROM bucket_advancetaxes WHERE id = :id FOR UPDATE");
+                            $stmt_itm->execute(array(':id' => $item_id));
+                            $itm = $stmt_itm->fetch(PDO::FETCH_ASSOC);
+                            if ($itm) {
+                                $target_item_desc = $itm['nameofadvancetaxes'];
+                                $item_orig_amount = floatval($itm['amount']);
+                                if ($payment_mode === 'full' || $payment_amount <= 0 || $payment_amount >= $item_orig_amount) {
+                                    $payment_amount = $item_orig_amount;
+                                    $stmt_u = $pdo->prepare("UPDATE bucket_advancetaxes SET status = 'paid', ornum = :ornum WHERE id = :id");
+                                    $stmt_u->execute(array(':ornum' => $ornum, ':id' => $item_id));
+                                } else {
+                                    $is_partial = true;
+                                    $remaining_amount = max(0.0, $item_orig_amount - $payment_amount);
+                                    $stmt_u = $pdo->prepare("UPDATE bucket_advancetaxes SET amount = :rem, status = 'pending' WHERE id = :id");
+                                    $stmt_u->execute(array(':rem' => $remaining_amount, ':id' => $item_id));
+                                    $stmt_in = $pdo->prepare("INSERT INTO bucket_advancetaxes (accountnum, xdate, clientname, address, nameofadvancetaxes, amount, status, ornum) VALUES (:acct, :xdate, :cname, :addr, :desc, :amt, 'paid', :ornum)");
+                                    $stmt_in->execute(array(
+                                        ':acct' => $accountnum,
+                                        ':xdate' => $payment_date,
+                                        ':cname' => $c_name,
+                                        ':addr' => $c_addr,
+                                        ':desc' => $target_item_desc . ' (Partial - OR#' . $ornum . ')',
+                                        ':amt' => $payment_amount,
+                                        ':ornum' => $ornum
+                                    ));
+                                }
+                            }
+                        } elseif ($target_type === 'workorder' && $item_id > 0) {
+                            $stmt_itm = $pdo->prepare("SELECT * FROM bucket_workorder WHERE id = :id FOR UPDATE");
+                            $stmt_itm->execute(array(':id' => $item_id));
+                            $itm = $stmt_itm->fetch(PDO::FETCH_ASSOC);
+                            if ($itm) {
+                                $target_item_desc = 'Work Order #' . $itm['id'] . ': ' . $itm['natureofwork'];
+                                $item_orig_amount = floatval($itm['amount']);
+                                if ($payment_mode === 'full' || $payment_amount <= 0 || $payment_amount >= $item_orig_amount) {
+                                    $payment_amount = $item_orig_amount;
+                                    $stmt_u = $pdo->prepare("UPDATE bucket_workorder SET status = 'paid', ornum = :ornum WHERE id = :id");
+                                    $stmt_u->execute(array(':ornum' => $ornum, ':id' => $item_id));
+                                } else {
+                                    $is_partial = true;
+                                    $remaining_amount = max(0.0, $item_orig_amount - $payment_amount);
+                                    $stmt_u = $pdo->prepare("UPDATE bucket_workorder SET amount = :rem, status = 'pending' WHERE id = :id");
+                                    $stmt_u->execute(array(':rem' => $remaining_amount, ':id' => $item_id));
+                                    $stmt_in = $pdo->prepare("INSERT INTO bucket_workorder (accountnum, xdate, clientname, address, natureofwork, amount, status, ornum) VALUES (:acct, :xdate, :cname, :addr, :desc, :amt, 'paid', :ornum)");
+                                    $stmt_in->execute(array(
+                                        ':acct' => $accountnum,
+                                        ':xdate' => $payment_date,
+                                        ':cname' => $c_name,
+                                        ':addr' => $c_addr,
+                                        ':desc' => $itm['natureofwork'] . ' (Partial - OR#' . $ornum . ')',
+                                        ':amt' => $payment_amount,
+                                        ':ornum' => $ornum
+                                    ));
+                                }
+                            }
+                        } else {
+                            $target_item_desc = "General Account Balance";
+                            $client_curr_bal = floatval($cl_row['outstandingbalance']);
+                            if ($payment_amount <= 0 || $payment_mode === 'full') {
+                                $payment_amount = $client_curr_bal;
+                            }
+                            if ($payment_amount < $client_curr_bal) {
+                                $is_partial = true;
+                                $remaining_amount = max(0.0, $client_curr_bal - $payment_amount);
+                            }
+                        }
+
+                        // Insert into bucket_officialreceipt
+                        $stmt_or = $pdo->prepare("INSERT INTO bucket_officialreceipt (accountnum, xdate, clientname, address, ornum, amount, status) VALUES (:acct, :xdate, :cname, :addr, :ornum, :amt, 'paid')");
+                        $stmt_or->execute(array(
+                            ':acct' => $accountnum,
+                            ':xdate' => $payment_date,
+                            ':cname' => $c_name,
+                            ':addr' => $c_addr,
+                            ':ornum' => $ornum,
+                            ':amt' => $payment_amount
+                        ));
+
+                        // Deduct from bucket_client.outstandingbalance
+                        $stmt_cl_up = $pdo->prepare("UPDATE bucket_client SET outstandingbalance = GREATEST(0, outstandingbalance - :paid) WHERE accountnum = :acct");
+                        $stmt_cl_up->execute(array(
+                            ':paid' => $payment_amount,
+                            ':acct' => $accountnum
+                        ));
+
+                        $pdo->commit();
+
+                        $update_msg = "Payment of ₱" . number_format($payment_amount, 2) . " successfully recorded under Official Receipt (OR #" . sanitize($ornum) . "). " . ($is_partial ? "Remaining balance: ₱" . number_format($remaining_amount, 2) . " remains pending." : "Marked as fully settled.");
+                    }
+                } catch (PDOException $e) {
+                    if ($pdo->inTransaction()) {
+                        $pdo->rollBack();
+                    }
+                    $update_error = "Error recording payment: " . $e->getMessage();
+                }
+            }
+        } elseif ($action === 'delete_special_service') {
+            $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
+            if ($item_id > 0) {
+                try {
+                    $stmt_del = $pdo->prepare("DELETE FROM bucket_specialservices WHERE id = :id");
+                    $stmt_del->execute(array(':id' => $item_id));
+                    $update_msg = "Special service entry deleted.";
+                } catch (PDOException $e) {
+                    $update_error = "Error deleting service: " . $e->getMessage();
+                }
+            }
+        } elseif ($action === 'delete_advance_tax') {
+            $item_id = isset($_POST['item_id']) ? intval($_POST['item_id']) : 0;
+            if ($item_id > 0) {
+                try {
+                    $stmt_del = $pdo->prepare("DELETE FROM bucket_advancetaxes WHERE id = :id");
+                    $stmt_del->execute(array(':id' => $item_id));
+                    $update_msg = "Hardware advance entry deleted.";
+                } catch (PDOException $e) {
+                    $update_error = "Error deleting item: " . $e->getMessage();
+                }
+            }
         }
     }
 }
@@ -556,6 +811,9 @@ if (isset($_POST['action']) && in_array($_POST['action'], array('create_workorde
 }
 if (isset($_POST['action']) && in_array($_POST['action'], array('add_client_asset', 'update_client_asset', 'delete_client_asset'))) {
     $active_tab = 'assets';
+}
+if (isset($_POST['action']) && in_array($_POST['action'], array('add_special_service', 'add_advance_tax', 'mark_service_paid', 'mark_advtax_paid', 'delete_special_service', 'delete_advance_tax', 'record_soa_payment'))) {
+    $active_tab = (isset($_POST['from_tab']) && $_POST['from_tab'] === 'orders') ? 'orders' : 'soa';
 }
 
 $selected_client = null;
@@ -757,6 +1015,12 @@ $work_orders = array();
 
 $client_pullouts = array();
 $client_assets = array();
+$client_specialservices = array();
+$client_advtaxes = array();
+$client_receipts = array();
+$soa_ss_tot = 0; $soa_ss_pending = 0;
+$soa_at_tot = 0; $soa_at_pending = 0;
+$soa_or_tot = 0;
 $spend_wo = array('n' => 0, 'total' => 0, 'paid' => 0, 'unpaid' => 0, 'first_date' => null, 'last_date' => null);
 $spend_orders = array('n' => 0, 'total' => 0, 'paid' => 0);
 $spend_assets = array('n' => 0, 'total' => 0);
@@ -832,11 +1096,58 @@ if ($selected_client) {
     $stmt_assets = $pdo->prepare("SELECT * FROM client_assets WHERE accountnum = :acct ORDER BY id DESC");
     $stmt_assets->execute(array(':acct' => $client_acct));
     $client_assets = $stmt_assets->fetchAll();
+
+    // 7. Statement of Account data (Software, Hardware Advances & Official Receipts)
+    $stmt_ss = $pdo->prepare("SELECT * FROM bucket_specialservices WHERE accountnum = :acct ORDER BY xdate DESC, id DESC");
+    $stmt_ss->execute(array(':acct' => $client_acct));
+    $client_specialservices = $stmt_ss->fetchAll();
+
+    $stmt_at = $pdo->prepare("SELECT * FROM bucket_advancetaxes WHERE accountnum = :acct ORDER BY xdate DESC, id DESC");
+    $stmt_at->execute(array(':acct' => $client_acct));
+    $client_advtaxes = $stmt_at->fetchAll();
+
+    $stmt_or = $pdo->prepare("SELECT * FROM bucket_officialreceipt WHERE accountnum = :acct ORDER BY xdate DESC, id DESC");
+    $stmt_or->execute(array(':acct' => $client_acct));
+    $client_receipts = $stmt_or->fetchAll();
+
+    foreach ($client_specialservices as $ss_item) {
+        $amt = floatval($ss_item['amount']);
+        $soa_ss_tot += $amt;
+        if (strtolower(trim($ss_item['status'])) !== 'paid') {
+            $soa_ss_pending += $amt;
+        }
+    }
+    foreach ($client_advtaxes as $at_item) {
+        $amt = floatval($at_item['amount']);
+        $soa_at_tot += $amt;
+        if (strtolower(trim($at_item['status'])) !== 'paid') {
+            $soa_at_pending += $amt;
+        }
+    }
+    foreach ($client_receipts as $or_item) {
+        $soa_or_tot += floatval($or_item['amount']);
+    }
+
+    $soa_wo_tot = 0.0;
+    $soa_wo_pending = 0.0;
+    if (!empty($work_orders)) {
+        foreach ($work_orders as $wo_item) {
+            $amt = floatval($wo_item['amount']);
+            $soa_wo_tot += $amt;
+            if (strtolower(trim($wo_item['status'])) !== 'paid') {
+                $soa_wo_pending += $amt;
+            }
+        }
+    }
 }
 
 // Fetch ALL client accounts for instant autocomplete dropdown
 $stmt_all_accts = $pdo->query("SELECT accountnum, tradename, clientname FROM bucket_client ORDER BY tradename ASC");
 $all_accounts_list = $stmt_all_accts->fetchAll();
+
+// Determine next sequential Official Receipt (OR) number
+$max_or_row = $pdo->query("SELECT MAX(CAST(ornum AS UNSIGNED)) as max_or FROM bucket_officialreceipt")->fetch(PDO::FETCH_ASSOC);
+$next_ornum = str_pad(intval(isset($max_or_row['max_or']) ? $max_or_row['max_or'] : 0) + 1, 5, '0', STR_PAD_LEFT);
 
 $my_tier = get_logged_tech_access_tier();
 
@@ -1486,6 +1797,15 @@ $page_title = 'Manage Accounts';
                                     </form>
                                 <?php endif; ?>
 
+                                <!-- Statement of Account Button -->
+                                <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=soa" 
+                                   class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm shadow-blue-500/25 transition-all active:scale-95 flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                    <span>Statement of Account</span>
+                                </a>
+
                                 <!-- Edit Account Profile Button -->
                                 <button onclick="openEditAccountModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1688,6 +2008,14 @@ $page_title = 'Manage Accounts';
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                             </svg>
                             <span>Software &amp; Hardware (<?php echo count($client_assets); ?>)</span>
+                        </a>
+
+                        <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=soa" 
+                           class="px-5 py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 shrink-0 <?php echo ($active_tab === 'soa') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <span>Statement of Account (SOA)</span>
                         </a>
                     </div>
 
@@ -1916,6 +2244,14 @@ $page_title = 'Manage Accounts';
                                                                 </svg>
                                                                 <span class="text-[11px] font-bold">Print</span>
                                                             </a>
+                                                            <?php if (strtolower(trim($wo['status'])) !== 'paid'): ?>
+                                                                <button type="button" 
+                                                                        onclick="openUniversalPaymentModal('workorder', <?php echo $wo['id']; ?>, 'Work Order #WO-<?php echo $wo['id']; ?>: <?php echo htmlspecialchars(addslashes($wo['natureofwork']), ENT_QUOTES, 'UTF-8'); ?>', '<?php echo floatval($wo['amount']); ?>', 'orders')" 
+                                                                        class="px-2 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] inline-flex items-center space-x-1 transition-colors" title="Record Full or Partial Payment">
+                                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                                                                    <span>Pay / Partial</span>
+                                                                </button>
+                                                            <?php endif; ?>
                                                             <?php if ($my_tier >= 2): ?>
                                                                 <button data-wo="<?php echo htmlspecialchars(json_encode($wo), ENT_QUOTES, 'UTF-8'); ?>"
                                                                         onclick="openEditWorkOrderModal(this)" 
@@ -2190,6 +2526,344 @@ $page_title = 'Manage Accounts';
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+                    <?php elseif ($active_tab === 'soa'): ?>
+                        <div class="space-y-6">
+                            <!-- Top Header & Primary Actions -->
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-slate-900 to-slate-800 p-6 rounded-2xl text-white shadow-sm">
+                                <div>
+                                    <div class="inline-flex items-center space-x-1.5 bg-indigo-500/20 text-indigo-300 px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mb-2 border border-indigo-500/30">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                        <span>Statement of Account &amp; Financial Ledger</span>
+                                    </div>
+                                    <h3 class="text-xl font-black text-white tracking-tight">Statement of Account (SOA)</h3>
+                                    <p class="text-xs text-slate-300 mt-1">Official itemized billing, hardware advances, service work orders, and official receipt payment records for Account #<strong class="text-white font-mono"><?php echo sanitize($client_acct); ?></strong>.</p>
+                                </div>
+
+                                <div class="flex items-center flex-wrap gap-2.5 shrink-0">
+                                    <a href="print_document.php?type=soa&acct=<?php echo urlencode($client_acct); ?>&autoprint=1" target="_blank" 
+                                       class="bg-[#EB3E0B] hover:bg-[#C32C0B] active:scale-95 text-white font-bold text-xs px-5 py-3 rounded-xl shadow-md shadow-[#EB3E0B]/30 flex items-center space-x-2 transition-all">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+                                        </svg>
+                                        <span>Print Official SOA</span>
+                                    </a>
+                                    <a href="print_document.php?type=soa&acct=<?php echo urlencode($client_acct); ?>" target="_blank" 
+                                       class="bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white font-bold text-xs px-4 py-3 rounded-xl border border-slate-600 flex items-center space-x-1.5 transition-all">
+                                        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                        </svg>
+                                        <span>PDF View</span>
+                                    </a>
+                                    <button type="button" onclick="openUniversalPaymentModal('account_balance', 0, 'General Client Account Balance', '<?php echo floatval($selected_client['outstandingbalance']); ?>', 'soa')" class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs px-4 py-3 rounded-xl shadow-md transition-all flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                                        <span>+ Record Payment</span>
+                                    </button>
+                                    <?php if ($my_tier >= 2): ?>
+                                        <button type="button" onclick="openAddServiceModal()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-3 rounded-xl transition-all flex items-center space-x-1.5">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                            <span>+ Software Service</span>
+                                        </button>
+                                        <button type="button" onclick="openAddAdvTaxModal()" class="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-3 rounded-xl transition-all flex items-center space-x-1.5">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                            <span>+ Hardware Item</span>
+                                        </button>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <!-- Financial Ledger Metric Cards -->
+                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200">
+                                    <span class="block text-slate-400 font-bold uppercase text-[10px] tracking-wider">Monthly Retainer</span>
+                                    <p class="text-xl font-black text-slate-900 font-mono mt-1">
+                                        &#8369;<?php echo number_format(floatval($selected_client['monthlyretainersfee']), 2); ?>
+                                    </p>
+                                    <p class="text-[11px] text-slate-500 mt-1">Recurring maintenance</p>
+                                </div>
+
+                                <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200">
+                                    <span class="block text-slate-400 font-bold uppercase text-[10px] tracking-wider">Special Services Billed</span>
+                                    <p class="text-xl font-black text-slate-900 font-mono mt-1">
+                                        &#8369;<?php echo number_format($soa_ss_tot, 2); ?>
+                                    </p>
+                                    <p class="text-[11px] text-amber-700 font-medium mt-1">
+                                        Pending: <strong class="font-mono">&#8369;<?php echo number_format($soa_ss_pending, 2); ?></strong>
+                                    </p>
+                                </div>
+
+                                <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200">
+                                    <span class="block text-slate-400 font-bold uppercase text-[10px] tracking-wider">Hardware Advances Billed</span>
+                                    <p class="text-xl font-black text-slate-900 font-mono mt-1">
+                                        &#8369;<?php echo number_format($soa_at_tot, 2); ?>
+                                    </p>
+                                    <p class="text-[11px] text-amber-700 font-medium mt-1">
+                                        Pending: <strong class="font-mono">&#8369;<?php echo number_format($soa_at_pending, 2); ?></strong>
+                                    </p>
+                                </div>
+
+                                <div class="p-5 rounded-2xl <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'bg-rose-50 border border-rose-200' : 'bg-emerald-50 border border-emerald-200'; ?>">
+                                    <span class="block <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'text-rose-700' : 'text-emerald-700'; ?> font-bold uppercase text-[10px] tracking-wider">Outstanding Balance</span>
+                                    <p class="text-xl font-black <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'text-rose-700' : 'text-emerald-800'; ?> font-mono mt-1">
+                                        &#8369;<?php echo number_format($selected_client['outstandingbalance'], 2); ?>
+                                    </p>
+                                    <p class="text-[11px] <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'text-rose-600 font-bold' : 'text-emerald-600'; ?> mt-1">
+                                        <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'Current ledger balance' : 'Zero balance / Settled'; ?>
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- 1. SPECIAL SERVICES TABLE (Software / System Programs) -->
+                            <div class="space-y-3 pt-2">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                                        <h4 class="text-sm font-extrabold text-slate-900 uppercase tracking-wide">1. Software &amp; Special Services (bucket_specialservices)</h4>
+                                        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold font-mono"><?php echo count($client_specialservices); ?></span>
+                                    </div>
+                                    <span class="text-xs text-slate-500 font-mono font-bold">Total: &#8369;<?php echo number_format($soa_ss_tot, 2); ?></span>
+                                </div>
+                                <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                                    <table class="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                <th class="py-3 px-4">Date</th>
+                                                <th class="py-3 px-4">Service Description</th>
+                                                <th class="py-3 px-4 text-center">Receipt / OR #</th>
+                                                <th class="py-3 px-4 text-center">Status</th>
+                                                <th class="py-3 px-4 text-right">Amount</th>
+                                                <th class="py-3 px-4 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-100">
+                                            <?php if (empty($client_specialservices)): ?>
+                                                <tr>
+                                                    <td colspan="6" class="py-8 text-center text-slate-400 italic">No special services recorded for this account.</td>
+                                                </tr>
+                                            <?php else: ?>
+                                                <?php foreach ($client_specialservices as $ss): ?>
+                                                    <tr class="hover:bg-slate-50/80 transition-colors">
+                                                        <td class="py-3 px-4 font-mono text-slate-600"><?php echo format_date_only($ss['xdate']); ?></td>
+                                                        <td class="py-3 px-4 font-bold text-slate-900"><?php echo sanitize($ss['specialservices']); ?></td>
+                                                        <td class="py-3 px-4 text-center font-mono">
+                                                            <?php echo !empty($ss['ornum']) ? '<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold border border-slate-200">OR #' . sanitize($ss['ornum']) . '</span>' : '<span class="text-slate-400 italic">Pending</span>'; ?>
+                                                        </td>
+                                                        <td class="py-3 px-4 text-center">
+                                                            <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase <?php echo (strtolower(trim($ss['status'])) === 'paid') ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300'; ?>">
+                                                                <?php echo sanitize($ss['status']); ?>
+                                                            </span>
+                                                        </td>
+                                                        <td class="py-3 px-4 text-right font-mono font-extrabold text-slate-900">&#8369;<?php echo number_format(floatval($ss['amount']), 2); ?></td>
+                                                        <td class="py-3 px-4 text-right">
+                                                            <div class="flex items-center justify-end space-x-1.5">
+                                                                <?php if (strtolower(trim($ss['status'])) !== 'paid'): ?>
+                                                                    <button type="button" onclick="openUniversalPaymentModal('special_service', <?php echo $ss['id']; ?>, '<?php echo htmlspecialchars(addslashes($ss['specialservices']), ENT_QUOTES, 'UTF-8'); ?>', '<?php echo floatval($ss['amount']); ?>', 'soa')" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center space-x-1">
+                                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                                                                        <span>Pay / Partial</span>
+                                                                    </button>
+                                                                <?php endif; ?>
+                                                                <?php if ($my_tier >= 2): ?>
+                                                                    <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=soa" method="POST" onsubmit="return confirm('Delete this special service entry?');" class="inline">
+                                                                        <input type="hidden" name="action" value="delete_special_service">
+                                                                        <input type="hidden" name="item_id" value="<?php echo $ss['id']; ?>">
+                                                                        <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                                                                        <button type="submit" class="p-1 rounded-lg text-rose-500 hover:bg-rose-50" title="Delete">
+                                                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                                                        </button>
+                                                                    </form>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- 2. HARDWARE ADVANCE TAXES TABLE (Equipment & Supplies) -->
+                            <div class="space-y-3 pt-2">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-amber-600"></span>
+                                        <h4 class="text-sm font-extrabold text-slate-900 uppercase tracking-wide">2. Hardware Peripherals &amp; Equipment Advances (bucket_advancetaxes)</h4>
+                                        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold font-mono"><?php echo count($client_advtaxes); ?></span>
+                                    </div>
+                                    <span class="text-xs text-slate-500 font-mono font-bold">Total: &#8369;<?php echo number_format($soa_at_tot, 2); ?></span>
+                                </div>
+                                <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                                    <table class="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                <th class="py-3 px-4">Date</th>
+                                                <th class="py-3 px-4">Hardware Item Description</th>
+                                                <th class="py-3 px-4 text-center">Receipt / OR #</th>
+                                                <th class="py-3 px-4 text-center">Status</th>
+                                                <th class="py-3 px-4 text-right">Amount</th>
+                                                <th class="py-3 px-4 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-100">
+                                            <?php if (empty($client_advtaxes)): ?>
+                                                <tr>
+                                                    <td colspan="6" class="py-8 text-center text-slate-400 italic">No hardware advances recorded for this account.</td>
+                                                </tr>
+                                            <?php else: ?>
+                                                <?php foreach ($client_advtaxes as $at): ?>
+                                                    <tr class="hover:bg-slate-50/80 transition-colors">
+                                                        <td class="py-3 px-4 font-mono text-slate-600"><?php echo format_date_only($at['xdate']); ?></td>
+                                                        <td class="py-3 px-4 font-bold text-slate-900"><?php echo sanitize($at['nameofadvancetaxes']); ?></td>
+                                                        <td class="py-3 px-4 text-center font-mono">
+                                                            <?php echo !empty($at['ornum']) ? '<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold border border-slate-200">OR #' . sanitize($at['ornum']) . '</span>' : '<span class="text-slate-400 italic">Pending</span>'; ?>
+                                                        </td>
+                                                        <td class="py-3 px-4 text-center">
+                                                            <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase <?php echo (strtolower(trim($at['status'])) === 'paid') ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300'; ?>">
+                                                                <?php echo sanitize($at['status']); ?>
+                                                            </span>
+                                                        </td>
+                                                        <td class="py-3 px-4 text-right font-mono font-extrabold text-slate-900">&#8369;<?php echo number_format(floatval($at['amount']), 2); ?></td>
+                                                        <td class="py-3 px-4 text-right">
+                                                            <div class="flex items-center justify-end space-x-1.5">
+                                                                <?php if (strtolower(trim($at['status'])) !== 'paid'): ?>
+                                                                    <button type="button" onclick="openUniversalPaymentModal('advance_tax', <?php echo $at['id']; ?>, '<?php echo htmlspecialchars(addslashes($at['nameofadvancetaxes']), ENT_QUOTES, 'UTF-8'); ?>', '<?php echo floatval($at['amount']); ?>', 'soa')" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center space-x-1">
+                                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                                                                        <span>Pay / Partial</span>
+                                                                    </button>
+                                                                <?php endif; ?>
+                                                                <?php if ($my_tier >= 2): ?>
+                                                                    <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=soa" method="POST" onsubmit="return confirm('Delete this hardware advance entry?');" class="inline">
+                                                                        <input type="hidden" name="action" value="delete_advance_tax">
+                                                                        <input type="hidden" name="item_id" value="<?php echo $at['id']; ?>">
+                                                                        <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                                                                        <button type="submit" class="p-1 rounded-lg text-rose-500 hover:bg-rose-50" title="Delete">
+                                                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                                                        </button>
+                                                                    </form>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- 3. SERVICE WORK ORDERS TABLE (bucket_workorder) -->
+                            <div class="space-y-3 pt-2">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
+                                        <h4 class="text-sm font-extrabold text-slate-900 uppercase tracking-wide">3. Service Work Orders (bucket_workorder)</h4>
+                                        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold font-mono"><?php echo count($work_orders); ?></span>
+                                    </div>
+                                    <div class="flex items-center space-x-3 text-xs font-mono font-bold">
+                                        <span class="text-amber-700">Pending: &#8369;<?php echo number_format($soa_wo_pending, 2); ?></span>
+                                        <span class="text-slate-400">&bull;</span>
+                                        <span class="text-slate-600">Total: &#8369;<?php echo number_format($soa_wo_tot, 2); ?></span>
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                                    <table class="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                <th class="py-3 px-4">WO # &amp; Date</th>
+                                                <th class="py-3 px-4">Nature of Work</th>
+                                                <th class="py-3 px-4 text-center">Receipt / OR #</th>
+                                                <th class="py-3 px-4 text-center">Status</th>
+                                                <th class="py-3 px-4 text-right">Amount</th>
+                                                <th class="py-3 px-4 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-100">
+                                            <?php if (empty($work_orders)): ?>
+                                                <tr>
+                                                    <td colspan="6" class="py-8 text-center text-slate-400 italic">No work orders recorded for this account.</td>
+                                                </tr>
+                                            <?php else: ?>
+                                                <?php foreach ($work_orders as $wo_item): ?>
+                                                    <tr class="hover:bg-slate-50/80 transition-colors">
+                                                        <td class="py-3 px-4 font-mono text-slate-600">
+                                                            <strong class="text-slate-900">#WO-<?php echo $wo_item['id']; ?></strong>
+                                                            <div class="text-[10px] text-slate-400"><?php echo format_date_only($wo_item['xdate']); ?></div>
+                                                        </td>
+                                                        <td class="py-3 px-4 font-bold text-slate-900"><?php echo sanitize($wo_item['natureofwork']); ?></td>
+                                                        <td class="py-3 px-4 text-center font-mono">
+                                                            <?php echo !empty($wo_item['ornum']) ? '<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold border border-slate-200">OR #' . sanitize($wo_item['ornum']) . '</span>' : '<span class="text-slate-400 italic">Pending</span>'; ?>
+                                                        </td>
+                                                        <td class="py-3 px-4 text-center">
+                                                            <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase <?php echo (strtolower(trim($wo_item['status'])) === 'paid') ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300'; ?>">
+                                                                <?php echo sanitize($wo_item['status']); ?>
+                                                            </span>
+                                                        </td>
+                                                        <td class="py-3 px-4 text-right font-mono font-extrabold text-slate-900">&#8369;<?php echo number_format(floatval($wo_item['amount']), 2); ?></td>
+                                                        <td class="py-3 px-4 text-right">
+                                                            <div class="flex items-center justify-end space-x-1.5">
+                                                                <?php if (strtolower(trim($wo_item['status'])) !== 'paid'): ?>
+                                                                    <button type="button" onclick="openUniversalPaymentModal('workorder', <?php echo $wo_item['id']; ?>, 'Work Order #WO-<?php echo $wo_item['id']; ?>: <?php echo htmlspecialchars(addslashes($wo_item['natureofwork']), ENT_QUOTES, 'UTF-8'); ?>', '<?php echo floatval($wo_item['amount']); ?>', 'soa')" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] flex items-center space-x-1">
+                                                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                                                                        <span>Pay / Partial</span>
+                                                                    </button>
+                                                                <?php endif; ?>
+                                                                <a href="print_document.php?type=workorder&id=<?php echo $wo_item['id']; ?>&autoprint=1" target="_blank" class="p-1 rounded-lg text-slate-500 hover:bg-slate-100" title="Print Work Order">
+                                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                                                                </a>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- 4. OFFICIAL RECEIPTS TABLE -->
+                            <div class="space-y-3 pt-2">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center space-x-2">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                                        <h4 class="text-sm font-extrabold text-slate-900 uppercase tracking-wide">4. Official Receipts On File (bucket_officialreceipt)</h4>
+                                        <span class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold font-mono"><?php echo count($client_receipts); ?></span>
+                                    </div>
+                                    <span class="text-xs text-slate-500 font-mono font-bold">Total Paid: &#8369;<?php echo number_format($soa_or_tot, 2); ?></span>
+                                </div>
+                                <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                                    <table class="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                                                <th class="py-3 px-4">Date</th>
+                                                <th class="py-3 px-4">Official Receipt #</th>
+                                                <th class="py-3 px-4 text-center">Status</th>
+                                                <th class="py-3 px-4 text-right">Amount Paid</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-100">
+                                            <?php if (empty($client_receipts)): ?>
+                                                <tr>
+                                                    <td colspan="4" class="py-8 text-center text-slate-400 italic">No official receipts on record for this account.</td>
+                                                </tr>
+                                            <?php else: ?>
+                                                <?php foreach ($client_receipts as $rcpt): ?>
+                                                    <tr class="hover:bg-slate-50/80 transition-colors">
+                                                        <td class="py-3 px-4 font-mono text-slate-600"><?php echo format_date_only($rcpt['xdate']); ?></td>
+                                                        <td class="py-3 px-4 font-mono font-bold text-slate-900">OR #<?php echo sanitize($rcpt['ornum']); ?></td>
+                                                        <td class="py-3 px-4 text-center">
+                                                            <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                                                <?php echo sanitize($rcpt['status']); ?>
+                                                            </span>
+                                                        </td>
+                                                        <td class="py-3 px-4 text-right font-mono font-extrabold text-emerald-700">&#8369;<?php echo number_format(floatval($rcpt['amount']), 2); ?></td>
+                                                    </tr>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
                         </div>
                     <?php endif; ?>
 
@@ -3249,6 +3923,339 @@ $page_title = 'Manage Accounts';
                     </div>
                 </div>
 
+                <!-- ADD SPECIAL SERVICE MODAL -->
+                <div id="addServiceModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto space-y-6">
+                        <button onclick="closeAddServiceModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                            <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <span class="text-xs font-mono font-bold text-blue-600">bucket_specialservices</span>
+                                <h3 class="text-lg font-extrabold text-slate-900">Add Software &amp; Special Service Charge</h3>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=soa" method="POST" class="space-y-4 text-xs">
+                            <input type="hidden" name="action" value="add_special_service">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Service Description / Particulars <span class="text-blue-600">*</span></label>
+                                <textarea name="specialservices" id="add_ss_name" rows="2" required placeholder="e.g., Annual POS Software License Renewal, System Customization..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-blue-500 focus:outline-none transition-all leading-relaxed"></textarea>
+                                
+                                <div class="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                                    <span class="text-slate-400 font-bold self-center mr-1">Quick Presets:</span>
+                                    <button type="button" onclick="document.getElementById('add_ss_name').value='Annual POS License Subscription';" class="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 font-bold px-2 py-0.5 rounded-md transition-colors">+ Annual License</button>
+                                    <button type="button" onclick="document.getElementById('add_ss_name').value='Additional POS Terminal Client License';" class="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 font-bold px-2 py-0.5 rounded-md transition-colors">+ Terminal License</button>
+                                    <button type="button" onclick="document.getElementById('add_ss_name').value='Database Migration &amp; Cloud Backup Setup';" class="bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 font-bold px-2 py-0.5 rounded-md transition-colors">+ Cloud Backup Setup</button>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Billing Date <span class="text-blue-600">*</span></label>
+                                    <input type="date" name="xdate" value="<?php echo date('Y-m-d'); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-blue-500 focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Amount (₱) <span class="text-blue-600">*</span></label>
+                                    <input type="number" step="0.01" min="0" name="amount" value="0.00" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-blue-500 focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Payment Status</label>
+                                    <select name="status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-blue-500 focus:outline-none transition-all font-bold">
+                                        <option value="pending" selected>Pending</option>
+                                        <option value="paid">Paid</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Official Receipt # (If Paid)</label>
+                                <input type="text" name="ornum" placeholder="e.g. 02145" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-blue-500 focus:outline-none transition-all font-mono">
+                            </div>
+
+                            <?php if ($my_tier === 1): ?>
+                                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot add charges.</span>
+                                </div>
+                            <?php elseif ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeAddServiceModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <?php if ($my_tier === 1): ?>
+                                    <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
+                                        🔒 View Only
+                                    </button>
+                                <?php else: ?>
+                                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                                        Save Service Charge
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- ADD HARDWARE ADVANCE MODAL -->
+                <div id="addAdvTaxModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto space-y-6">
+                        <button onclick="closeAddAdvTaxModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                            <div class="w-12 h-12 rounded-2xl bg-amber-600 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <span class="text-xs font-mono font-bold text-amber-600">bucket_advancetaxes</span>
+                                <h3 class="text-lg font-extrabold text-slate-900">Add Hardware &amp; Peripheral Item Advance</h3>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=soa" method="POST" class="space-y-4 text-xs">
+                            <input type="hidden" name="action" value="add_advance_tax">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Hardware Item Description <span class="text-amber-600">*</span></label>
+                                <textarea name="nameofadvancetaxes" id="add_at_name" rows="2" required placeholder="e.g., Thermal Receipt Printer 80mm USB/LAN, 2D Barcode Scanner..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-amber-500 focus:outline-none transition-all leading-relaxed"></textarea>
+                                
+                                <div class="mt-1.5 flex flex-wrap gap-1.5 text-[10px]">
+                                    <span class="text-slate-400 font-bold self-center mr-1">Quick Presets:</span>
+                                    <button type="button" onclick="document.getElementById('add_at_name').value='80mm Thermal Receipt Printer (USB/LAN)';" class="bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-700 font-bold px-2 py-0.5 rounded-md transition-colors">+ Thermal Printer</button>
+                                    <button type="button" onclick="document.getElementById('add_at_name').value='Heavy Duty Cash Drawer (RJ11)';" class="bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-700 font-bold px-2 py-0.5 rounded-md transition-colors">+ Cash Drawer</button>
+                                    <button type="button" onclick="document.getElementById('add_at_name').value='Omnidirectional 1D/2D Barcode Scanner';" class="bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-700 font-bold px-2 py-0.5 rounded-md transition-colors">+ Barcode Scanner</button>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Billing Date <span class="text-amber-600">*</span></label>
+                                    <input type="date" name="xdate" value="<?php echo date('Y-m-d'); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-amber-500 focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Amount (₱) <span class="text-amber-600">*</span></label>
+                                    <input type="number" step="0.01" min="0" name="amount" value="0.00" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-amber-500 focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Payment Status</label>
+                                    <select name="status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-amber-500 focus:outline-none transition-all font-bold">
+                                        <option value="pending" selected>Pending</option>
+                                        <option value="paid">Paid</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Official Receipt # (If Paid)</label>
+                                <input type="text" name="ornum" placeholder="e.g. 02145" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-amber-500 focus:outline-none transition-all font-mono">
+                            </div>
+
+                            <?php if ($my_tier === 1): ?>
+                                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot add hardware charges.</span>
+                                </div>
+                            <?php elseif ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeAddAdvTaxModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <?php if ($my_tier === 1): ?>
+                                    <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
+                                        🔒 View Only
+                                    </button>
+                                <?php else: ?>
+                                    <button type="submit" class="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                                        Save Hardware Item
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- UNIVERSAL SETTLEMENT & PARTIAL PAYMENT MODAL -->
+                <div id="universalPaymentModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[95vh] overflow-y-auto space-y-5">
+                        <button type="button" onclick="closeUniversalPaymentModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                            <div class="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shadow-sm shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="inline-flex items-center space-x-1 text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                    <span id="pay_modal_badge">Charge Item</span>
+                                </div>
+                                <h3 class="text-base font-extrabold text-slate-900 mt-0.5">Record Payment / Partial Payment</h3>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=soa" method="POST" class="space-y-4 text-xs">
+                            <input type="hidden" name="action" value="record_soa_payment">
+                            <input type="hidden" name="target_type" id="pay_modal_target_type" value="">
+                            <input type="hidden" name="item_id" id="pay_modal_item_id" value="0">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                            <input type="hidden" name="payment_mode" id="pay_modal_mode" value="full">
+                            <input type="hidden" name="from_tab" id="pay_modal_from_tab" value="soa">
+
+                            <!-- Item Description Card -->
+                            <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[10px] uppercase font-bold text-slate-400">Target Item / Description</span>
+                                    <span class="text-[10px] font-mono text-slate-400">Account #<?php echo sanitize($client_acct); ?></span>
+                                </div>
+                                <p id="pay_modal_desc" class="text-xs font-extrabold text-slate-900 leading-snug">-</p>
+                                <div class="pt-2 flex items-center justify-between border-t border-slate-200">
+                                    <span class="text-[11px] text-slate-600 font-bold">Total Amount Due:</span>
+                                    <span id="pay_modal_total_display" class="text-sm font-mono font-black text-slate-900">₱0.00</span>
+                                </div>
+                            </div>
+
+                            <!-- Payment Type Selector (Full vs Partial) -->
+                            <div class="space-y-1.5">
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider text-[11px]">Payment Mode</label>
+                                <div class="flex items-center space-x-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                                    <button type="button" id="pay_btn_mode_full" onclick="setPaymentMode('full')" class="flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-emerald-600 text-white shadow-sm border border-emerald-600 transition-all flex items-center justify-center space-x-1.5">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                        <span>Full Payment (100%)</span>
+                                    </button>
+                                    <button type="button" id="pay_btn_mode_partial" onclick="setPaymentMode('partial')" class="flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 border border-transparent transition-all flex items-center justify-center space-x-1.5">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+                                        <span>Partial Payment</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Partial Percentage Quick Presets -->
+                            <div id="pay_partial_options" class="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2 hidden">
+                                <span class="block text-[10px] font-bold uppercase tracking-wider text-amber-900">Quick Partial Presets</span>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <button type="button" onclick="setPartialPercentage(0.25)" class="py-1.5 px-2 rounded-xl bg-white hover:bg-amber-100 border border-amber-300 font-bold text-amber-900 text-xs text-center transition-all shadow-sm">
+                                        25% Down
+                                    </button>
+                                    <button type="button" onclick="setPartialPercentage(0.50)" class="py-1.5 px-2 rounded-xl bg-white hover:bg-amber-100 border border-amber-300 font-bold text-amber-900 text-xs text-center transition-all shadow-sm">
+                                        50% Half
+                                    </button>
+                                    <button type="button" onclick="setPartialPercentage(0.75)" class="py-1.5 px-2 rounded-xl bg-white hover:bg-amber-100 border border-amber-300 font-bold text-amber-900 text-xs text-center transition-all shadow-sm">
+                                        75% Most
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Payment Amount Input -->
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Amount to Pay (₱) *</label>
+                                <div class="relative">
+                                    <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center font-mono font-bold text-slate-500 text-sm">₱</span>
+                                    <input type="number" step="0.01" min="0.01" name="payment_amount" id="pay_modal_amount" required oninput="updatePaymentCalculations()" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-sm font-mono font-bold rounded-xl pl-8 pr-3 py-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                                </div>
+                            </div>
+
+                            <!-- Real-Time Calculation & Notice Box -->
+                            <div class="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                                <div class="grid grid-cols-2 gap-3 text-xs">
+                                    <div>
+                                        <span class="text-[10px] text-slate-400 font-bold uppercase block">Being Paid</span>
+                                        <span id="pay_calc_paid" class="text-sm font-mono font-black text-emerald-700">₱0.00</span>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="text-[10px] text-slate-400 font-bold uppercase block">Remaining Balance</span>
+                                        <span id="pay_calc_remaining" class="text-sm font-mono font-black text-rose-700">₱0.00</span>
+                                    </div>
+                                </div>
+                                <div id="pay_calc_notice" class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold flex items-center space-x-1.5">
+                                    <svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    <span>Full Settlement: This charge will be marked as Paid and omitted from the printed SOA.</span>
+                                </div>
+                            </div>
+
+                            <!-- Official Receipt & Date Fields -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Official Receipt (O.R.) # *</label>
+                                    <input type="text" name="ornum" id="pay_modal_ornum" value="<?php echo sanitize($next_ornum); ?>" required placeholder="e.g. <?php echo sanitize($next_ornum); ?>" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all font-mono font-bold">
+                                    <p class="text-[10px] text-slate-400 mt-1">Suggested next OR sequence.</p>
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Payment Date *</label>
+                                    <input type="date" name="payment_date" value="<?php echo date('Y-m-d'); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all font-mono">
+                                </div>
+                            </div>
+
+                            <!-- Payment Notes / Method -->
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Payment Notes / Reference <span class="text-slate-400 font-normal">(Optional)</span></label>
+                                <input type="text" name="payment_notes" placeholder="e.g. Cash, GCash Ref #4192, Bank Transfer, Check #1029" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-emerald-500 focus:outline-none transition-all">
+                            </div>
+
+                            <?php if ($my_tier === 2): ?>
+                                <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+                                    <label class="text-[11px] font-bold text-amber-900 flex items-center space-x-1">
+                                        <span>Security Access Code</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="4-digit security code" class="w-full bg-white text-slate-800 text-xs px-3 py-2 rounded-lg border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="pt-2 flex items-center justify-end space-x-2 border-t border-slate-100">
+                                <button type="button" onclick="closeUniversalPaymentModal()" class="px-4 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md shadow-emerald-600/20 transition-all flex items-center space-x-1.5">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                                    <span>Confirm &amp; Record Payment</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
                 <script>
                 function openEditAccountModal() {
                     var modal = document.getElementById('editAccountModal');
@@ -3355,6 +4362,148 @@ $page_title = 'Manage Accounts';
                 function closeEditWorkOrderModal() {
                     var modal = document.getElementById('editWorkOrderModal');
                     if (modal) modal.classList.add('hidden');
+                }
+
+                function openAddServiceModal() {
+                    var modal = document.getElementById('addServiceModal');
+                    if (modal) modal.classList.remove('hidden');
+                }
+
+                function closeAddServiceModal() {
+                    var modal = document.getElementById('addServiceModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+
+                function openAddAdvTaxModal() {
+                    var modal = document.getElementById('addAdvTaxModal');
+                    if (modal) modal.classList.remove('hidden');
+                }
+
+                function closeAddAdvTaxModal() {
+                    var modal = document.getElementById('addAdvTaxModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+
+                var _payCurrentTotal = 0;
+
+                function openUniversalPaymentModal(targetType, itemId, desc, amount, fromTab) {
+                    _payCurrentTotal = parseFloat(amount) || 0;
+                    
+                    var modal = document.getElementById('universalPaymentModal');
+                    var targetInput = document.getElementById('pay_modal_target_type');
+                    var idInput = document.getElementById('pay_modal_item_id');
+                    var fromTabInput = document.getElementById('pay_modal_from_tab');
+                    var badge = document.getElementById('pay_modal_badge');
+                    var descEl = document.getElementById('pay_modal_desc');
+                    var totalEl = document.getElementById('pay_modal_total_display');
+                    var amtInput = document.getElementById('pay_modal_amount');
+                    
+                    if (targetInput) targetInput.value = targetType || '';
+                    if (idInput) idInput.value = itemId || 0;
+                    if (fromTabInput) fromTabInput.value = fromTab || 'soa';
+                    
+                    var typeLabels = {
+                        'special_service': 'Software / Special Service',
+                        'advance_tax': 'Hardware Advance',
+                        'workorder': 'Service Work Order',
+                        'account_balance': 'Account Outstanding Balance'
+                    };
+                    if (badge) badge.innerText = typeLabels[targetType] || 'Charge Item';
+                    if (descEl) descEl.innerText = desc || 'Account Settlement';
+                    if (totalEl) totalEl.innerText = '₱' + _payCurrentTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    
+                    setPaymentMode('full');
+                    
+                    if (modal) modal.classList.remove('hidden');
+                }
+
+                function closeUniversalPaymentModal() {
+                    var modal = document.getElementById('universalPaymentModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+
+                function setPaymentMode(mode) {
+                    var modeInput = document.getElementById('pay_modal_mode');
+                    if (modeInput) modeInput.value = mode;
+                    
+                    var btnFull = document.getElementById('pay_btn_mode_full');
+                    var btnPart = document.getElementById('pay_btn_mode_partial');
+                    var partialOptions = document.getElementById('pay_partial_options');
+                    var amtInput = document.getElementById('pay_modal_amount');
+                    
+                    if (mode === 'full') {
+                        if (btnFull) {
+                            btnFull.className = "flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-emerald-600 text-white shadow-sm border border-emerald-600 transition-all flex items-center justify-center space-x-1.5";
+                        }
+                        if (btnPart) {
+                            btnPart.className = "flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 border border-transparent transition-all flex items-center justify-center space-x-1.5";
+                        }
+                        if (partialOptions) partialOptions.classList.add('hidden');
+                        if (amtInput) {
+                            amtInput.value = _payCurrentTotal > 0 ? _payCurrentTotal.toFixed(2) : '0.00';
+                            amtInput.readOnly = true;
+                        }
+                    } else {
+                        if (btnFull) {
+                            btnFull.className = "flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 border border-transparent transition-all flex items-center justify-center space-x-1.5";
+                        }
+                        if (btnPart) {
+                            btnPart.className = "flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-emerald-600 text-white shadow-sm border border-emerald-600 transition-all flex items-center justify-center space-x-1.5";
+                        }
+                        if (partialOptions) partialOptions.classList.remove('hidden');
+                        if (amtInput) {
+                            amtInput.readOnly = false;
+                            if (parseFloat(amtInput.value) >= _payCurrentTotal && _payCurrentTotal > 0) {
+                                amtInput.value = (_payCurrentTotal * 0.5).toFixed(2);
+                            }
+                            amtInput.focus();
+                        }
+                    }
+                    updatePaymentCalculations();
+                }
+
+                function setPartialPercentage(pct) {
+                    var amtInput = document.getElementById('pay_modal_amount');
+                    if (amtInput && _payCurrentTotal > 0) {
+                        amtInput.value = (_payCurrentTotal * pct).toFixed(2);
+                        updatePaymentCalculations();
+                    }
+                }
+
+                function updatePaymentCalculations() {
+                    var amtInput = document.getElementById('pay_modal_amount');
+                    var paidDisplay = document.getElementById('pay_calc_paid');
+                    var remDisplay = document.getElementById('pay_calc_remaining');
+                    var statusNotice = document.getElementById('pay_calc_notice');
+                    
+                    var paid = parseFloat(amtInput ? amtInput.value : 0) || 0;
+                    var rem = Math.max(0, _payCurrentTotal - paid);
+                    
+                    if (paidDisplay) paidDisplay.innerText = '₱' + paid.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    if (remDisplay) remDisplay.innerText = '₱' + rem.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    
+                    if (statusNotice) {
+                        if (paid >= _payCurrentTotal && _payCurrentTotal > 0) {
+                            statusNotice.className = "p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold flex items-center space-x-1.5";
+                            statusNotice.innerHTML = '<svg class="w-4 h-4 text-emerald-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg><span>Full Settlement: This charge will be marked as Paid and omitted from the printed SOA.</span>';
+                        } else {
+                            statusNotice.className = "p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold flex items-center space-x-1.5";
+                            statusNotice.innerHTML = '<svg class="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg><span>Partial Payment: ₱' + rem.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' will remain Pending on the SOA. An Official Receipt will be generated for ₱' + paid.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '.</span>';
+                        }
+                    }
+                }
+
+                function openMarkServicePaidModal(id, desc, amount) {
+                    openUniversalPaymentModal('special_service', id, desc, amount, 'soa');
+                }
+                function closeMarkServicePaidModal() {
+                    closeUniversalPaymentModal();
+                }
+                function openMarkAdvTaxPaidModal(id, desc, amount) {
+                    openUniversalPaymentModal('advance_tax', id, desc, amount, 'soa');
+                }
+                function closeMarkAdvTaxPaidModal() {
+                    closeUniversalPaymentModal();
                 }
                 </script>
 
