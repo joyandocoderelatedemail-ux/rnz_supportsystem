@@ -571,6 +571,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         ':st' => $status,
                         ':ornum' => $ornum
                     ));
+                    if (strtolower($status) !== 'paid' && floatval($amount) > 0) {
+                        $stmt_up = $pdo->prepare("UPDATE bucket_client SET outstandingbalance = outstandingbalance + :amt WHERE accountnum = :acct");
+                        $stmt_up->execute(array(':amt' => floatval($amount), ':acct' => $accountnum));
+                    }
                     $update_msg = "Special Service charge \"" . sanitize($specialservices) . "\" added to Account #$accountnum.";
                 } catch (PDOException $e) {
                     $update_error = "Error adding service charge: " . $e->getMessage();
@@ -603,6 +607,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         ':st' => $status,
                         ':ornum' => $ornum
                     ));
+                    if (strtolower($status) !== 'paid' && floatval($amount) > 0) {
+                        $stmt_up = $pdo->prepare("UPDATE bucket_client SET outstandingbalance = outstandingbalance + :amt WHERE accountnum = :acct");
+                        $stmt_up->execute(array(':amt' => floatval($amount), ':acct' => $accountnum));
+                    }
                     $update_msg = "Hardware item \"" . sanitize($nameofadvancetaxes) . "\" added to Account #$accountnum.";
                 } catch (PDOException $e) {
                     $update_error = "Error adding hardware charge: " . $e->getMessage();
@@ -1017,10 +1025,11 @@ $client_pullouts = array();
 $client_assets = array();
 $client_specialservices = array();
 $client_advtaxes = array();
-$client_receipts = array();
 $soa_ss_tot = 0; $soa_ss_pending = 0;
 $soa_at_tot = 0; $soa_at_pending = 0;
+$soa_wo_tot = 0; $soa_wo_pending = 0;
 $soa_or_tot = 0;
+$effective_balance = 0;
 $spend_wo = array('n' => 0, 'total' => 0, 'paid' => 0, 'unpaid' => 0, 'first_date' => null, 'last_date' => null);
 $spend_orders = array('n' => 0, 'total' => 0, 'paid' => 0);
 $spend_assets = array('n' => 0, 'total' => 0);
@@ -1139,6 +1148,10 @@ if ($selected_client) {
             }
         }
     }
+
+    $soa_all_pending = $soa_ss_pending + $soa_at_pending + $soa_wo_pending;
+    $client_db_bal = isset($selected_client['outstandingbalance']) ? floatval($selected_client['outstandingbalance']) : 0.0;
+    $effective_balance = ($client_db_bal > $soa_all_pending) ? $client_db_bal : $soa_all_pending;
 }
 
 // Fetch ALL client accounts for instant autocomplete dropdown
@@ -1840,7 +1853,7 @@ $page_title = 'Manage Accounts';
 
                         <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
                             <span class="block text-slate-400 font-bold uppercase text-[10px]">Outstanding Balance</span>
-                            <p class="font-mono font-bold text-[#EB3E0B]">₱<?php echo number_format($selected_client['outstandingbalance'], 2); ?></p>
+                            <p class="font-mono font-bold text-[#EB3E0B]">₱<?php echo number_format($effective_balance, 2); ?></p>
                         </div>
                     </div>
 
@@ -2555,7 +2568,7 @@ $page_title = 'Manage Accounts';
                                         </svg>
                                         <span>PDF View</span>
                                     </a>
-                                    <button type="button" onclick="openUniversalPaymentModal('account_balance', 0, 'General Client Account Balance', '<?php echo floatval($selected_client['outstandingbalance']); ?>', 'soa')" class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs px-4 py-3 rounded-xl shadow-md transition-all flex items-center space-x-1.5">
+                                    <button type="button" onclick="openUniversalPaymentModal('account_balance', 0, 'General Client Account Balance', '<?php echo $effective_balance; ?>', 'soa')" class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs px-4 py-3 rounded-xl shadow-md transition-all flex items-center space-x-1.5">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
                                         <span>+ Record Payment</span>
                                     </button>
@@ -2602,13 +2615,13 @@ $page_title = 'Manage Accounts';
                                     </p>
                                 </div>
 
-                                <div class="p-5 rounded-2xl <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'bg-rose-50 border border-rose-200' : 'bg-emerald-50 border border-emerald-200'; ?>">
-                                    <span class="block <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'text-rose-700' : 'text-emerald-700'; ?> font-bold uppercase text-[10px] tracking-wider">Outstanding Balance</span>
-                                    <p class="text-xl font-black <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'text-rose-700' : 'text-emerald-800'; ?> font-mono mt-1">
-                                        &#8369;<?php echo number_format($selected_client['outstandingbalance'], 2); ?>
+                                <div class="p-5 rounded-2xl <?php echo ($effective_balance > 0) ? 'bg-rose-50 border border-rose-200' : 'bg-emerald-50 border border-emerald-200'; ?>">
+                                    <span class="block <?php echo ($effective_balance > 0) ? 'text-rose-700' : 'text-emerald-700'; ?> font-bold uppercase text-[10px] tracking-wider">Outstanding Balance</span>
+                                    <p class="text-xl font-black <?php echo ($effective_balance > 0) ? 'text-rose-700' : 'text-emerald-800'; ?> font-mono mt-1">
+                                        &#8369;<?php echo number_format($effective_balance, 2); ?>
                                     </p>
-                                    <p class="text-[11px] <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'text-rose-600 font-bold' : 'text-emerald-600'; ?> mt-1">
-                                        <?php echo (floatval($selected_client['outstandingbalance']) > 0) ? 'Current ledger balance' : 'Zero balance / Settled'; ?>
+                                    <p class="text-[11px] <?php echo ($effective_balance > 0) ? 'text-rose-600 font-bold' : 'text-emerald-600'; ?> mt-1">
+                                        <?php echo ($effective_balance > 0) ? 'Total balance due' : 'Zero balance / Settled'; ?>
                                     </p>
                                 </div>
                             </div>

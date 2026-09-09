@@ -219,16 +219,25 @@ $client_contact = (!empty($client['contactnum']) && strtoupper(trim($client['con
 $client_email = (!empty($client['emailaddress']) && strtoupper(trim($client['emailaddress'])) !== 'NA') ? $client['emailaddress'] : '—';
 $client_warranty_status = !empty($client['warranty_status']) ? $client['warranty_status'] : 'Inactive';
 
-$outstanding_bal = isset($client['outstandingbalance']) ? floatval($client['outstandingbalance']) : 0;
-$is_paid = ($doc_type === 'soa') ? ($outstanding_bal <= 0) : (strtolower(trim($doc_status)) === 'paid');
-$is_unpaid = ($doc_type === 'soa') ? ($outstanding_bal > 0) : (strtolower(trim($doc_status)) === 'unpaid' || strtolower(trim($doc_status)) === 'pending');
+if ($doc_type === 'soa') {
+    $soa_pending_total = $soa_total_services + $soa_total_hardware + $soa_total_workorders;
+    $client_ledger_bal = isset($client['outstandingbalance']) ? floatval($client['outstandingbalance']) : 0.0;
+    $outstanding_bal = ($client_ledger_bal > $soa_pending_total) ? $client_ledger_bal : $soa_pending_total;
+    $doc_status = ($outstanding_bal <= 0) ? 'Settled' : 'Unpaid';
+    $is_paid = ($outstanding_bal <= 0);
+    $is_unpaid = ($outstanding_bal > 0);
+} else {
+    $outstanding_bal = isset($client['outstandingbalance']) ? floatval($client['outstandingbalance']) : 0.0;
+    $is_paid = (strtolower(trim($doc_status)) === 'paid');
+    $is_unpaid = (strtolower(trim($doc_status)) === 'unpaid' || strtolower(trim($doc_status)) === 'pending');
+}
 $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=850, user-scalable=yes">
+    <meta name="viewport" content="width=820, user-scalable=yes">
     <title><?php echo sanitize($doc_ref . ' - ' . $doc_title); ?></title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -245,6 +254,24 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         }
         .font-mono {
             font-family: 'JetBrains Mono', monospace;
+        }
+        .avoid-break, tr, table {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+        }
+        /* Styles applied during html2pdf export to ensure clean 1:1 A4 canvas */
+        .exporting-pdf {
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            width: 794px !important;
+            min-width: 794px !important;
+            max-width: 794px !important;
+            background-color: #ffffff !important;
+        }
+        .exporting-pdf * {
+            box-shadow: none !important;
         }
         @media print {
             .no-print {
@@ -287,7 +314,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
     <div class="print-wrapper w-full overflow-x-auto flex flex-col items-center py-4 px-2">
 
         <!-- Top Action Bar (Hidden in Print & PDF) -->
-        <div class="no-print w-[820px] min-w-[820px] mb-4 flex flex-row items-center justify-between gap-3 bg-slate-900 text-white p-4 rounded-2xl shadow-xl border border-slate-800">
+        <div class="no-print w-[794px] min-w-[794px] max-w-[794px] mb-4 flex flex-row items-center justify-between gap-3 bg-slate-900 text-white p-4 rounded-2xl shadow-xl border border-slate-800">
             <div class="flex items-center space-x-3">
                 <img src="rnzlogo.png" alt="RNZ Logo" class="w-9 h-9 rounded-full bg-black p-1 object-contain shrink-0">
                 <div>
@@ -301,7 +328,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
             </div>
 
             <div class="flex items-center space-x-2 shrink-0">
-                <button type="button" onclick="downloadAsPDF()" class="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1.5 transition-all">
+                <button id="btnDownloadPDF" type="button" onclick="downloadAsPDF()" class="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm flex items-center space-x-1.5 transition-all">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                     </svg>
@@ -320,7 +347,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         </div>
 
         <!-- Printable Paper Sheet Container (0.3in Top/Bottom, 0.5in Sides) -->
-        <div id="printDocumentCard" class="print-page bg-white rounded-2xl py-[0.3in] px-[0.5in] border border-slate-200 shadow-xl w-[820px] min-w-[820px] text-slate-800 space-y-5 my-0 mx-auto">
+        <div id="printDocumentCard" class="print-page bg-white rounded-2xl py-[0.3in] px-[0.5in] border border-slate-200 shadow-xl w-[794px] min-w-[794px] max-w-[794px] text-slate-800 space-y-5 my-0 mx-auto">
             
             <!-- Header: Company Info + Document Identification -->
             <div class="flex flex-row items-start justify-between border-b-2 border-slate-900 pb-4 gap-4">
@@ -935,15 +962,49 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
 
     <script>
     function downloadAsPDF() {
-        var element = document.getElementById('printDocumentCard');
+        var card = document.getElementById('printDocumentCard');
+        if (!card) return;
+
+        var btn = document.getElementById('btnDownloadPDF');
+        var originalBtnHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<svg class="w-4 h-4 animate-spin inline-block mr-1" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>Preparing PDF...</span>';
+        }
+
+        card.classList.add('exporting-pdf');
+
         var opt = {
-            margin:       [7.62, 12.7, 7.62, 12.7],
+            margin:       0,
             filename:     '<?php echo sanitize($doc_ref); ?>_<?php echo sanitize($client_acct); ?>.pdf',
             image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true, windowWidth: 850 },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            html2canvas:  {
+                scale: 2,
+                useCORS: true,
+                scrollX: 0,
+                scrollY: 0,
+                windowWidth: 794,
+                backgroundColor: '#ffffff'
+            },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
         };
-        html2pdf().set(opt).from(element).save();
+
+        var cleanup = function() {
+            card.classList.remove('exporting-pdf');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalBtnHtml;
+            }
+        };
+
+        html2pdf().set(opt).from(card).save().then(cleanup).catch(function(err) {
+            console.error('PDF export error:', err);
+            cleanup();
+        });
+
+        // Fallback cleanup
+        setTimeout(cleanup, 4000);
     }
 
     <?php if ($autoprint): ?>
