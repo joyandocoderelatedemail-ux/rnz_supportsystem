@@ -86,8 +86,8 @@ if ($doc_type === 'workorder') {
         die("Work Order #WO-$doc_id not found.");
     }
 
-    $doc_title = 'WORK ORDER & BILLING INVOICE';
-    $doc_subtitle = 'Official Technical Service, Maintenance & Billing Statement';
+    $doc_title = 'STATEMENT OF ACCOUNT';
+    $doc_subtitle = '';
     $doc_ref = 'WO-' . str_pad($data['id'], 6, '0', STR_PAD_LEFT);
     $doc_date = !empty($data['xdate']) ? $data['xdate'] : date('Y-m-d');
     $client_acct = $data['accountnum'];
@@ -445,7 +445,9 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                 <h2 class="text-sm font-extrabold text-[#430D07] tracking-wider uppercase">
                     <?php echo sanitize($doc_title); ?>
                 </h2>
-                <p class="text-[10px] text-[#9A2512] font-semibold"><?php echo sanitize($doc_subtitle); ?></p>
+                <?php if (!empty($doc_subtitle)): ?>
+                    <p class="text-[10px] text-[#9A2512] font-semibold"><?php echo sanitize($doc_subtitle); ?></p>
+                <?php endif; ?>
             </div>
             <span class="text-[10px] font-mono font-bold text-[#EB3E0B] uppercase">Ref: <?php echo sanitize($doc_ref); ?></span>
         </div>
