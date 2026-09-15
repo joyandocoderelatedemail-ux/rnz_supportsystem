@@ -26,6 +26,8 @@ IMAGES/caferesto.sql
 # User uploads
 uploads/ticket_attachments/*
 !uploads/ticket_attachments/.gitkeep
+uploads/packages/*
+!uploads/packages/.gitkeep
 
 # AI summariser API key - never commit the real one
 backend/includes/ai_config.php

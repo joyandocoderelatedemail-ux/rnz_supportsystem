@@ -691,13 +691,285 @@ function buildTicketChatBubble(reply) {
             '<span class="chat-edited-tag text-[#B07A6A] normal-case tracking-normal font-medium' + (reply.edited ? '' : ' hidden') + '"' +
                 (reply.edited_at ? ' title="Edited ' + escapeChatHtml(reply.edited_at) + '"' : '') + '> (edited)</span>' +
         '</span>' +
-        '<div class="' + bubbleClass + '">' + body + '</div>';
+        '<div class="chat-bubble ' + bubbleClass + '">' + body + '</div>' +
+        buildTicketChatActions(reply, isMine, parseInt(reply.id, 10) || 0);
 
     return wrap;
 }
 
-// Support can correct a message after sending it - refresh anything already
-// on screen so the client is never left reading the old wording.
+// The row under each real message: the hearts already on it, a button to add
+// or take back your own, and - on your own messages - edit and unsend. The
+// seeded issue bubble (id 0) and unsent messages have no row.
+function buildTicketChatActions(reply, isMine, replyId) {
+    if (!replyId) return '';
+    if (reply.unsent) return '';
+
+    return '<div class="chat-actions flex items-center flex-wrap gap-1 mt-1 px-1 ' + (isMine ? 'justify-end' : '') + '">' +
+        '<div class="chat-reactions flex items-center flex-wrap gap-1" data-reactions-for="' + replyId + '"></div>' +
+        '<button type="button" onclick="sendTicketChatReaction(' + replyId + ')" title="Love this message" ' +
+            'class="inline-flex items-center justify-center w-6 h-6 rounded-full border border-dashed border-[#FECDAA] text-[#B4785F] hover:text-[#9A2512] hover:bg-white transition-colors">' +
+            '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>' +
+        '</button>' +
+        // Your own messages can be corrected or taken back while the ticket is open
+        (reply.can_edit
+            ? '<button type="button" onclick="startTicketChatEdit(' + replyId + ')" title="Edit this message" ' +
+                'class="inline-flex items-center justify-center w-6 h-6 rounded-full border border-[#FECDAA] bg-white text-[#B4785F] hover:text-[#EB3E0B] transition-colors">' +
+                '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>' +
+              '</button>' +
+              '<button type="button" onclick="unsendTicketChatMessage(' + replyId + ')" title="Unsend this message" ' +
+                'class="inline-flex items-center justify-center w-6 h-6 rounded-full border border-[#FECDAA] bg-white text-[#B4785F] hover:text-rose-600 hover:border-rose-200 transition-colors">' +
+                '<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>' +
+              '</button>'
+            : '') +
+    '</div>';
+}
+
+// -------------------------------------------------------------------------
+// Reactions: the pill carries the count, and the line under it names the
+// people who reacted - hover text alone would be invisible on a phone.
+// -------------------------------------------------------------------------
+function renderTicketChatReactions(replyId, list) {
+    var box = chatThread.querySelector('.chat-reactions[data-reactions-for="' + parseInt(replyId, 10) + '"]');
+    if (!box) return;
+
+    if (!list || !list.length) {
+        box.innerHTML = '';
+        setTicketChatReactionWho(replyId, '');
+        return;
+    }
+
+    var html = '';
+    var who = [];
+    for (var i = 0; i < list.length; i++) {
+        var rx = list[i];
+        var cls = rx.mine
+            ? 'bg-[#FFE8D5] border-[#FECDAA] text-[#9A2512]'
+            : 'bg-white border-[#FFE8D5] text-[#7C2112] hover:border-[#FECDAA]';
+        html += '<button type="button" onclick="sendTicketChatReaction(' + parseInt(replyId, 10) + ')" ' +
+            'title="' + escapeChatHtml(rx.who || rx.label) + '" ' +
+            'class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border text-[10px] font-bold transition-colors ' + cls + '">' +
+            '<span>' + rx.emoji + '</span><span>' + rx.count + '</span></button>';
+        if (rx.who) who.push(rx.who);
+    }
+    box.innerHTML = html;
+    setTicketChatReactionWho(replyId, who.join(', '));
+}
+
+// The "Loved by ..." line lives beside the pills so it survives a re-render
+function setTicketChatReactionWho(replyId, whoText) {
+    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+    if (!msg) return;
+    var row = msg.querySelector('.chat-actions');
+    if (!row) return;
+
+    var line = msg.querySelector('.chat-reaction-who');
+    if (!whoText) {
+        if (line && line.parentNode) line.parentNode.removeChild(line);
+        return;
+    }
+    if (!line) {
+        line = document.createElement('span');
+        line.className = 'chat-reaction-who block w-full text-[9px] font-semibold text-[#B4785F] px-1 ' +
+            (msg.classList.contains('items-end') ? 'text-right' : '');
+        row.appendChild(line);
+    }
+    line.textContent = 'Loved by ' + whoText;
+}
+
+// Applies the whole-thread map the poll returns, so a heart added by support
+// shows up on messages already on screen.
+function applyTicketChatReactionMap(map) {
+    var boxes = chatThread.querySelectorAll('.chat-reactions[data-reactions-for]');
+    for (var i = 0; i < boxes.length; i++) {
+        var rid = boxes[i].getAttribute('data-reactions-for');
+        renderTicketChatReactions(rid, (map && map[rid]) ? map[rid] : []);
+    }
+}
+
+function sendTicketChatReaction(replyId) {
+    if (!chatTicketId || !replyId) return;
+
+    var body = new FormData();
+    body.append('action', 'toggle_reaction');
+    body.append('id', chatTicketId);
+    body.append('reply_id', replyId);
+    body.append('reaction', 'heart');
+
+    fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: body })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data && data.success) {
+                renderTicketChatReactions(replyId, data.reactions || []);
+            } else {
+                showTicketChatError((data && data.error) ? data.error : 'Could not save your reaction.');
+            }
+        })
+        .catch(function(err) {
+            showTicketChatError('Network error - your reaction was not saved.');
+            console.error('Support chat reaction error:', err);
+        });
+}
+
+// -------------------------------------------------------------------------
+// Editing a message already in the thread - the bubble becomes a small
+// editor in place, so the conversation keeps its position.
+// -------------------------------------------------------------------------
+function startTicketChatEdit(replyId) {
+    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+    if (!msg || msg.querySelector('.chat-edit-box')) return;
+
+    var textEl = msg.querySelector('.chat-text');
+    if (!textEl) {
+        showTicketChatError('This message has no text to edit - you can unsend it instead.');
+        return;
+    }
+
+    var bubble = msg.querySelector('.chat-bubble');
+    var box = document.createElement('div');
+    box.className = 'chat-edit-box mt-1.5 space-y-1.5';
+    box.innerHTML =
+        '<textarea class="chat-edit-input w-full resize-none bg-white border border-[#FECDAA] text-[#430D07] text-[11.5px] rounded-xl px-2.5 py-2 max-h-40 focus:outline-none focus:border-[#FA5915]" rows="3"></textarea>' +
+        '<p class="chat-edit-error hidden text-[10px] font-bold text-rose-600"></p>' +
+        '<div class="flex items-center justify-end gap-1.5">' +
+            '<button type="button" onclick="cancelTicketChatEdit(' + parseInt(replyId, 10) + ')" class="px-2.5 py-1 rounded-lg bg-[#FFF5ED] hover:bg-[#FFE8D5] text-[#7C2112] text-[10px] font-bold transition-colors">Cancel</button>' +
+            '<button type="button" onclick="saveTicketChatEdit(' + parseInt(replyId, 10) + ')" class="px-2.5 py-1 rounded-lg bg-[#EB3E0B] hover:bg-[#C32C0B] text-white text-[10px] font-bold transition-colors">Save</button>' +
+        '</div>';
+
+    textEl.classList.add('hidden');
+    bubble.appendChild(box);
+
+    var input = box.querySelector('.chat-edit-input');
+    input.value = textEl.textContent;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+
+    // Enter saves, Shift + Enter adds a line, Escape backs out
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelTicketChatEdit(replyId);
+        } else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
+            e.preventDefault();
+            saveTicketChatEdit(replyId);
+        }
+    });
+}
+
+function cancelTicketChatEdit(replyId) {
+    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+    if (!msg) return;
+    var box = msg.querySelector('.chat-edit-box');
+    if (box && box.parentNode) box.parentNode.removeChild(box);
+    var textEl = msg.querySelector('.chat-text');
+    if (textEl) textEl.classList.remove('hidden');
+}
+
+function saveTicketChatEdit(replyId) {
+    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+    if (!msg) return;
+    var box = msg.querySelector('.chat-edit-box');
+    if (!box) return;
+
+    var input = box.querySelector('.chat-edit-input');
+    var errEl = box.querySelector('.chat-edit-error');
+    var newText = input.value.trim();
+
+    if (newText === '') {
+        errEl.textContent = 'The message cannot be left empty.';
+        errEl.classList.remove('hidden');
+        return;
+    }
+
+    var body = new FormData();
+    body.append('action', 'edit_reply');
+    body.append('id', chatTicketId);
+    body.append('reply_id', replyId);
+    body.append('reply_message', newText);
+
+    fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: body })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (!data || !data.success) {
+                errEl.textContent = (data && data.error) ? data.error : 'The message could not be saved.';
+                errEl.classList.remove('hidden');
+                return;
+            }
+            applyTicketChatEdit(replyId, data.message, data.edited_at);
+            cancelTicketChatEdit(replyId);
+        })
+        .catch(function(err) {
+            errEl.textContent = 'Network error - the message was not saved.';
+            errEl.classList.remove('hidden');
+            console.error('Support chat edit error:', err);
+        });
+}
+
+// -------------------------------------------------------------------------
+// Unsending: the bubble stays in place as a plain notice, and the text and
+// any files are gone for support too.
+// -------------------------------------------------------------------------
+function unsendTicketChatMessage(replyId) {
+    if (!chatTicketId || !replyId) return;
+    if (!confirm('Unsend this message?\n\nThe text and any files are removed for the support team as well. This cannot be undone.')) {
+        return;
+    }
+
+    var body = new FormData();
+    body.append('action', 'unsend_reply');
+    body.append('id', chatTicketId);
+    body.append('reply_id', replyId);
+
+    fetch('api_ticket_replies.php?id=' + chatTicketId, { method: 'POST', body: body })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (!data || !data.success) {
+                showTicketChatError((data && data.error) ? data.error : 'The message could not be unsent.');
+                return;
+            }
+            applyTicketChatUnsent(replyId);
+        })
+        .catch(function(err) {
+            showTicketChatError('Network error - the message was not unsent.');
+            console.error('Support chat unsend error:', err);
+        });
+}
+
+// Writes new text into a bubble already on screen and flags it as edited
+function applyTicketChatEdit(replyId, message, editedAt) {
+    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+    if (!msg) return;
+
+    var textEl = msg.querySelector('.chat-text');
+    if (textEl) textEl.textContent = message;
+
+    var tag = msg.querySelector('.chat-edited-tag');
+    if (tag) {
+        tag.classList.remove('hidden');
+        if (editedAt) tag.setAttribute('title', 'Edited ' + editedAt);
+    }
+}
+
+// Turns a bubble already on screen into the unsent notice
+function applyTicketChatUnsent(replyId) {
+    var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(replyId, 10) + '"]');
+    if (!msg) return;
+
+    cancelTicketChatEdit(replyId);
+
+    var bubble = msg.querySelector('.chat-bubble');
+    if (bubble) {
+        bubble.innerHTML = '<p class="chat-unsent text-[11.5px] italic text-[#B07A6A]">This message was unsent.</p>';
+    }
+
+    // Hearts, edit and unsend no longer apply to a message that is gone
+    var row = msg.querySelector('.chat-actions');
+    if (row && row.parentNode) row.parentNode.removeChild(row);
+    var tag = msg.querySelector('.chat-edited-tag');
+    if (tag) tag.classList.add('hidden');
+}
+
+// Either side can correct or take a message back - refresh anything already
+// on screen so nobody is left reading the old wording.
 function applyTicketChatEditMap(map) {
     if (!map) return;
     for (var id in map) {
@@ -705,27 +977,25 @@ function applyTicketChatEditMap(map) {
         var msg = chatThread.querySelector('.chat-msg[data-reply-id="' + parseInt(id, 10) + '"]');
         if (!msg) continue;
 
-        // Support took the message back - replace it with the plain notice
+        // The message was taken back - replace it with the plain notice
         if (map[id].unsent) {
             if (!msg.querySelector('.chat-unsent')) {
-                var bubble = msg.querySelector('div');
-                if (bubble) {
-                    bubble.innerHTML = '<p class="chat-unsent text-[11.5px] italic text-[#B07A6A]">This message was unsent.</p>';
-                }
-                var utag = msg.querySelector('.chat-edited-tag');
-                if (utag) utag.classList.add('hidden');
+                applyTicketChatUnsent(id);
             }
             continue;
         }
 
+        if (msg.querySelector('.chat-edit-box')) continue;   // never overwrite an open editor
+
         var textEl = msg.querySelector('.chat-text');
         if (textEl && textEl.textContent !== map[id].message) {
-            textEl.textContent = map[id].message;
-        }
-        var tag = msg.querySelector('.chat-edited-tag');
-        if (tag) {
-            tag.classList.remove('hidden');
-            if (map[id].edited_at) tag.setAttribute('title', 'Edited ' + map[id].edited_at);
+            applyTicketChatEdit(id, map[id].message, map[id].edited_at);
+        } else {
+            var tag = msg.querySelector('.chat-edited-tag');
+            if (tag) {
+                tag.classList.remove('hidden');
+                if (map[id].edited_at) tag.setAttribute('title', 'Edited ' + map[id].edited_at);
+            }
         }
     }
 }
@@ -791,6 +1061,7 @@ function loadTicketChatThread(isFirstLoad) {
             }
 
             applyTicketChatEditMap(data.edits);
+            applyTicketChatReactionMap(data.reactions);
 
             document.getElementById('ticketChatTyping').classList.toggle('hidden', !data.support_typing);
 

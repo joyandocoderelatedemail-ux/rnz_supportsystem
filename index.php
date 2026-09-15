@@ -3,6 +3,7 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/db_init.php';
 require_once __DIR__ . '/includes/support_availability.php';
+require_once __DIR__ . '/includes/packages_data.php';
 
 if (!is_logged_in()) {
     // Serve RNZ Landing Website to public visitors
@@ -90,6 +91,11 @@ $next_duty_phrase = next_duty_day_phrase();
 
 $has_active_warranty = (is_array($client) && isset($client['warranty_status']) && $client['warranty_status'] === 'Active');
 
+// Package slideshow shown under the welcome card. Admins curate it in
+// backend/packages.php; an empty list simply hides the whole section.
+init_package_tables($pdo);
+$dashboard_packages = get_active_packages($pdo);
+
 $active_page = 'dashboard';
 $page_title = 'Dashboard';
 ?>
@@ -126,9 +132,26 @@ $page_title = 'Dashboard';
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+        /* Packages marquee (dashboard) */
+        .rnz-packages, .rnz-packages * { font-family: 'Poppins', 'Plus Jakarta Sans', sans-serif; }
+
+        .rnz-marquee-inner { animation: rnzMarqueeScroll linear infinite; }
+        .rnz-marquee:hover .rnz-marquee-inner,
+        .rnz-marquee:focus-within .rnz-marquee-inner { animation-play-state: paused; }
+
+        @keyframes rnzMarqueeScroll {
+            0%   { transform: translateX(0%); }
+            100% { transform: translateX(-50%); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .rnz-marquee-inner { animation: none; }
+            .rnz-marquee { overflow-x: auto; }
+        }
     </style>
 </head>
 <body class="bg-[#FFF5ED] text-slate-800 antialiased min-h-screen">
@@ -180,6 +203,51 @@ $page_title = 'Dashboard';
                     </a>
                 </div>
             </div>
+
+            <!-- PACKAGES WE OFFER - SLIDESHOW (managed in backend/packages.php) -->
+            <?php if (!empty($dashboard_packages)):
+                $pkg_metrics = package_marquee_metrics(count($dashboard_packages));
+            ?>
+            <section class="rnz-packages bg-white rounded-3xl border border-[#FECDAA] shadow-sm py-6 overflow-hidden">
+                <div class="px-6 text-center">
+                    <h2 class="text-lg sm:text-xl font-semibold text-slate-900">Packages We Offer</h2>
+                    <p class="text-xs text-slate-500 mt-1.5 max-w-md mx-auto leading-relaxed">
+                        Complete POS hardware and software bundles from RNZ.
+                    </p>
+                </div>
+
+                <div class="rnz-marquee overflow-hidden w-full relative max-w-6xl mx-auto mt-6">
+                    <div class="absolute left-0 top-0 h-full w-12 z-10 pointer-events-none bg-gradient-to-r from-white to-transparent"></div>
+
+                    <div class="rnz-marquee-inner flex w-max" style="animation-duration: <?php echo $pkg_metrics['duration_ms']; ?>ms;">
+                        <?php // Two identical groups, each repeated until it is wider than the
+                              // strip, so translateX(-50%) loops without ever showing a gap.
+                              for ($pkg_group = 0; $pkg_group < 2; $pkg_group++): ?>
+                            <div class="flex shrink-0"<?php echo $pkg_group ? ' aria-hidden="true"' : ''; ?>>
+                                <?php for ($pkg_rep = 0; $pkg_rep < $pkg_metrics['reps']; $pkg_rep++): ?>
+                                    <?php foreach ($dashboard_packages as $pkg): ?>
+                                        <div class="w-36 mx-3 shrink-0 group">
+                                            <div class="h-40 w-full overflow-hidden rounded-xl bg-slate-100">
+                                                <img src="<?php echo sanitize(package_image_url($pkg['image_path'])); ?>"
+                                                     alt="<?php echo sanitize($pkg['title']); ?>"
+                                                     decoding="async"
+                                                     class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
+                                            </div>
+                                            <p class="text-xs text-slate-800 font-medium mt-2 leading-snug line-clamp-2"><?php echo sanitize($pkg['title']); ?></p>
+                                            <?php if (trim($pkg['tag']) !== ''): ?>
+                                                <p class="text-[10px] text-[#EB3E0B] font-medium mt-0.5"><?php echo sanitize($pkg['tag']); ?></p>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endfor; ?>
+                            </div>
+                        <?php endfor; ?>
+                    </div>
+
+                    <div class="absolute right-0 top-0 h-full w-12 md:w-24 z-10 pointer-events-none bg-gradient-to-l from-white to-transparent"></div>
+                </div>
+            </section>
+            <?php endif; ?>
 
             <!-- WARRANTY NOTIFICATION CARD -->
             <?php if ($has_active_warranty): 

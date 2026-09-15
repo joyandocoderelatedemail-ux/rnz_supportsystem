@@ -43,7 +43,7 @@ if ($pdo_sb) {
 <!-- ========================================================================= -->
 <div class="relative w-16 hidden md:block shrink-0 z-40 min-h-screen">
     <aside class="fixed top-0 left-0 bottom-0 w-16 hover:w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between text-slate-200 transition-[width,box-shadow] duration-200 ease-out group overflow-hidden shadow-xl hover:shadow-2xl z-40 will-change-[width]">
-        <div class="p-3.5 space-y-6">
+        <div class="p-3.5 space-y-6 flex-1 min-h-0 overflow-y-auto">
             <!-- Brand Logo -->
             <div class="flex items-center space-x-3 px-1">
                 <div class="w-9 h-9 rounded-2xl bg-[#EB3E0B] flex items-center justify-center text-white font-bold text-lg shadow-sm shadow-[#EB3E0B]/30 shrink-0">
@@ -153,6 +153,16 @@ if ($pdo_sb) {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                         </svg>
                         <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Analytics</span>
+                    </a>
+                <?php endif; ?>
+
+                <!-- Client Dashboard Package Slideshow -->
+                <?php if (user_has_page_access('packages')): ?>
+                    <a href="packages.php" title="Dashboard Packages" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'packages') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                        <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'packages') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Dashboard Packages</span>
                     </a>
                 <?php endif; ?>
 
@@ -314,6 +324,16 @@ if ($pdo_sb) {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                     </svg>
                     <span>Analytics</span>
+                </a>
+            <?php endif; ?>
+
+            <!-- Client Dashboard Package Slideshow -->
+            <?php if (user_has_page_access('packages')): ?>
+                <a href="packages.php" onclick="closeAdminMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'packages') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                    <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'packages') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                    <span>Dashboard Packages</span>
                 </a>
             <?php endif; ?>
 

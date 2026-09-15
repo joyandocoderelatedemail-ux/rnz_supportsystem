@@ -41,6 +41,166 @@ if (!$ticket) {
     exit;
 }
 
+/**
+ * May this client rewrite or take back this message? Their own messages only,
+ * nothing already unsent, and only while the conversation is still open - the
+ * composer locks on a Resolved or Closed ticket and so does this.
+ *
+ * @param array $reply         row from client_ticket_replies
+ * @param array $ticket_row    row from client_support_tickets
+ * @return bool
+ */
+function can_client_edit_reply($reply, $ticket_row) {
+    if (!$reply || $reply['sender_type'] !== 'client') {
+        return false;
+    }
+    if (!empty($reply['unsent_at'])) {
+        return false;   // nothing left to change once a message is unsent
+    }
+    $status = isset($ticket_row['status']) ? $ticket_row['status'] : '';
+    if (in_array($status, array('Resolved', 'Closed'))) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * One message of this ticket, or null.
+ *
+ * @param PDO $pdo
+ * @param int $reply_id
+ * @param int $ticket_id
+ * @return array|null
+ */
+function get_ticket_reply_row($pdo, $reply_id, $ticket_id) {
+    $stmt_one = $pdo->prepare("SELECT id, ticket_id, sender_type, sender_name, message, attachment_path, unsent_at
+        FROM client_ticket_replies WHERE id = :rid AND ticket_id = :tid LIMIT 1");
+    $stmt_one->execute(array(':rid' => intval($reply_id), ':tid' => intval($ticket_id)));
+    $row = $stmt_one->fetch();
+    return $row ? $row : null;
+}
+
+// -----------------------------------------------------------
+// 0. POST: Edit one of this client's own messages
+// -----------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'edit_reply') {
+    $reply_id = isset($_POST['reply_id']) ? intval($_POST['reply_id']) : 0;
+    $new_message = isset($_POST['reply_message']) ? trim($_POST['reply_message']) : '';
+
+    if ($reply_id <= 0) {
+        echo json_encode(array('success' => false, 'error' => 'No message selected.'));
+        exit;
+    }
+    if ($new_message === '') {
+        echo json_encode(array('success' => false, 'error' => 'The message cannot be left empty.'));
+        exit;
+    }
+
+    try {
+        $reply_row = get_ticket_reply_row($pdo, $reply_id, $ticket_id);
+        if (!$reply_row) {
+            echo json_encode(array('success' => false, 'error' => 'That message is no longer in this ticket.'));
+            exit;
+        }
+        if (!can_client_edit_reply($reply_row, $ticket)) {
+            echo json_encode(array('success' => false, 'error' => 'You can only edit your own messages while the ticket is open.'));
+            exit;
+        }
+
+        $edited_at = date('Y-m-d H:i:s');
+        $stmt_edit = $pdo->prepare("UPDATE client_ticket_replies SET message = :msg, edited_at = :eat WHERE id = :rid");
+        $stmt_edit->execute(array(':msg' => $new_message, ':eat' => $edited_at, ':rid' => $reply_id));
+
+        echo json_encode(array(
+            'success' => true,
+            'id' => $reply_id,
+            'message' => $new_message,
+            'edited' => true,
+            'edited_at' => format_date($edited_at)
+        ));
+        exit;
+    } catch (PDOException $e) {
+        echo json_encode(array('success' => false, 'error' => $e->getMessage()));
+        exit;
+    }
+}
+
+// -----------------------------------------------------------
+// 0b. POST: Unsend one of this client's own messages
+// The row stays so the thread keeps its shape, but the text and any files
+// are cleared and the uploads are removed from disk.
+// -----------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'unsend_reply') {
+    $reply_id = isset($_POST['reply_id']) ? intval($_POST['reply_id']) : 0;
+
+    if ($reply_id <= 0) {
+        echo json_encode(array('success' => false, 'error' => 'No message selected.'));
+        exit;
+    }
+
+    try {
+        $reply_row = get_ticket_reply_row($pdo, $reply_id, $ticket_id);
+        if (!$reply_row) {
+            echo json_encode(array('success' => false, 'error' => 'That message is no longer in this ticket.'));
+            exit;
+        }
+        if (!can_client_edit_reply($reply_row, $ticket)) {
+            echo json_encode(array('success' => false, 'error' => 'You can only unsend your own messages while the ticket is open.'));
+            exit;
+        }
+
+        // Attachments go with the message - an unsent file should not stay
+        // reachable by anyone who still has the link.
+        foreach (parse_ticket_attachments($reply_row['attachment_path']) as $att) {
+            $att_file = __DIR__ . '/' . ltrim($att, '/\\');
+            if (file_exists($att_file) && is_file($att_file)) {
+                @unlink($att_file);
+            }
+        }
+
+        $unsent_at = date('Y-m-d H:i:s');
+        $stmt_unsend = $pdo->prepare("UPDATE client_ticket_replies
+            SET message = '', attachment_path = NULL, unsent_at = :uat
+            WHERE id = :rid");
+        $stmt_unsend->execute(array(':uat' => $unsent_at, ':rid' => $reply_id));
+
+        echo json_encode(array(
+            'success' => true,
+            'id' => $reply_id,
+            'unsent' => true,
+            'unsent_at' => format_date($unsent_at)
+        ));
+        exit;
+    } catch (PDOException $e) {
+        echo json_encode(array('success' => false, 'error' => $e->getMessage()));
+        exit;
+    }
+}
+
+// -----------------------------------------------------------
+// 0c. POST: React / un-react to one message
+// -----------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'toggle_reaction') {
+    $reply_id = isset($_POST['reply_id']) ? intval($_POST['reply_id']) : 0;
+    $reaction = isset($_POST['reaction']) ? trim($_POST['reaction']) : '';
+
+    $result = toggle_ticket_reaction($pdo, $ticket_id, $reply_id, $reaction, 'client', $tradename);
+    if (!$result['success']) {
+        echo json_encode(array('success' => false, 'error' => $result['error']));
+        exit;
+    }
+
+    $all_reactions = get_ticket_reply_reactions($pdo, $ticket_id, 'client', $tradename);
+    echo json_encode(array(
+        'success' => true,
+        'reply_id' => $reply_id,
+        'reaction' => $reaction,
+        'active' => $result['active'],
+        'reactions' => isset($all_reactions[$reply_id]) ? $all_reactions[$reply_id] : array()
+    ));
+    exit;
+}
+
 // -----------------------------------------------------------
 // 1. POST: Send Reply via AJAX
 // -----------------------------------------------------------
@@ -91,7 +251,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 'attachment_path' => $photo_attachments ? $photo_attachments : null,
                 'attachments' => $parsed_attachments,
                 'formatted_date' => format_date($now),
-                'diagnostic_log' => (strpos($reply_message, '=== HARDWARE DIAGNOSTIC LOG ===') !== false) ? format_diagnostic_log_text($reply_message) : null
+                'diagnostic_log' => (strpos($reply_message, '=== HARDWARE DIAGNOSTIC LOG ===') !== false) ? format_diagnostic_log_text($reply_message) : null,
+                // The sender draws this bubble straight from the response and the
+                // poller never fetches it again, so its own controls are decided
+                // here too - otherwise they only appear after a refresh.
+                'can_edit' => can_client_edit_reply(array(
+                    'sender_type' => 'client',
+                    'sender_name' => $tradename,
+                    'unsent_at' => null
+                ), $ticket),
+                'reactions' => array()
             )
         ));
         exit;
@@ -148,11 +317,17 @@ try {
             'attachments' => parse_ticket_attachments($r['attachment_path']),
             'formatted_date' => format_date($r['created_at']),
             'diagnostic_log' => $diag_log,
+            'can_edit' => can_client_edit_reply($r, $ticket),
             'edited' => !empty($r['edited_at']),
             'edited_at' => !empty($r['edited_at']) ? format_date($r['edited_at']) : null,
             'unsent' => !empty($r['unsent_at'])
         );
     }
+
+    // Reactions ride along for the whole thread on every poll, so a heart added
+    // by support - or from the client's other device - reaches messages that
+    // are already drawn.
+    $reactions_map = get_ticket_reply_reactions($pdo, $ticket_id, 'client', $tradename);
 
     // Support can correct or unsend a message after sending it, so every changed
     // message in the thread rides along and the open chat updates in place.
@@ -171,6 +346,7 @@ try {
     echo json_encode(array(
         'success' => true,
         'edits' => !empty($edits_map) ? $edits_map : new stdClass(),
+        'reactions' => $reactions_map ? $reactions_map : new stdClass(),
         'ticket_status' => $ticket['status'],
         'status_badge_class' => get_status_badge_class($ticket['status']),
         'assigned_tech' => $ticket['assigned_tech'],
