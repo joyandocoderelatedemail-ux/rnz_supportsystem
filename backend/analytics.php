@@ -613,12 +613,30 @@ $page_title = 'Executive Analytics & BI';
                             Quick Range Presets:
                         </label>
                         <div class="flex flex-wrap items-center gap-1.5">
-                            <a href="analytics.php?range=last_2_months" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'last_2_months') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                Last 2 Months
-                            </a>
-                            <a href="analytics.php?range=last_3_months" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo ($range === 'last_3_months') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
-                                Last 3 Months
-                            </a>
+                            <?php
+                            // Key => label, in the order the chips are shown. Each key is
+                            // handled by the date range block at the top of this file, so
+                            // adding a preset means adding a branch there and a line here.
+                            $range_presets = array(
+                                'all'           => 'All Time',
+                                'today'         => 'Today',
+                                'yesterday'     => 'Yesterday',
+                                'last_7_days'   => 'Last 7 Days',
+                                'last_30_days'  => 'Last 30 Days',
+                                'last_2_months' => 'Last 2 Months',
+                                'last_3_months' => 'Last 3 Months',
+                                'this_month'    => 'This Month',
+                                'last_month'    => 'Last Month',
+                                'this_year'     => 'This Year',
+                                'last_year'     => 'Last Year'
+                            );
+                            foreach ($range_presets as $preset_key => $preset_label):
+                                $preset_active = ($range === $preset_key);
+                            ?>
+                                <a href="analytics.php?range=<?php echo $preset_key; ?>" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all <?php echo $preset_active ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/30' : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'; ?>">
+                                    <?php echo $preset_label; ?>
+                                </a>
+                            <?php endforeach; ?>
                         </div>
                     </div>
 
