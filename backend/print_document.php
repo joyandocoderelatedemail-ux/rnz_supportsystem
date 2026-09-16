@@ -1084,7 +1084,15 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                 useCORS: true,
                 scrollX: 0,
                 scrollY: 0,
-                windowWidth: 794,
+                // Must match the live viewport. html2pdf copies the card into a
+                // container that is centred inside a full-width overlay, and html2canvas
+                // reads the crop position from that container as it sits in THIS window.
+                // Rendering the clone at a different width re-centres the container, so
+                // the crop lands (innerWidth - 794) / 2 px too far right and that much of
+                // the page gets sliced off the left edge. The card is a hard 794px with no
+                // responsive classes, so phone and desktop already lay out identically
+                // without pinning a fake window width here.
+                windowWidth: window.innerWidth,
                 backgroundColor: '#ffffff'
             },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
