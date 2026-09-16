@@ -28,7 +28,9 @@ if (!$pdo) {
 // ----------------------------------------------------
 // 1. Comprehensive Date Range Filter Calculation
 // ----------------------------------------------------
-$range = isset($_GET['range']) ? trim($_GET['range']) : '';
+// Landing on the page with no explicit range defaults to the current year
+// instead of all time; 'All Time' is still available as its own preset chip.
+$range = isset($_GET['range']) && trim($_GET['range']) !== '' ? trim($_GET['range']) : 'this_year';
 $custom_start = isset($_GET['start_date']) ? trim($_GET['start_date']) : '';
 $custom_end = isset($_GET['end_date']) ? trim($_GET['end_date']) : '';
 
