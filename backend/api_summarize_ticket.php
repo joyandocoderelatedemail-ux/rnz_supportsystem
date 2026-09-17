@@ -8,7 +8,18 @@ require_once __DIR__ . '/includes/auth.php';
 $ai_config = __DIR__ . '/includes/ai_config.php';
 if (file_exists($ai_config)) {
     require_once $ai_config;
+} elseif (file_exists(__DIR__ . '/includes/ai_config.sample.php')) {
+    // No per-server config: fall back to the template so an ATRIA_API_KEY set
+    // in the environment still works without a file being copied.
+    require_once __DIR__ . '/includes/ai_config.sample.php';
 }
+
+// Installs configured before the move off OpenRouter still define the old
+// names; map them across so updating the code does not take the button out.
+if (!defined('AI_API_KEY') && defined('OPENROUTER_API_KEY')) { define('AI_API_KEY', OPENROUTER_API_KEY); }
+if (!defined('AI_MODEL') && defined('OPENROUTER_MODEL'))     { define('AI_MODEL', OPENROUTER_MODEL); }
+if (!defined('AI_URL') && defined('OPENROUTER_URL'))         { define('AI_URL', OPENROUTER_URL); }
+if (!defined('AI_TIMEOUT') && defined('OPENROUTER_TIMEOUT')) { define('AI_TIMEOUT', OPENROUTER_TIMEOUT); }
 
 header('Content-Type: application/json');
 header('Cache-Control: no-cache, no-store, must-revalidate');
@@ -18,17 +29,17 @@ header('Cache-Control: no-cache, no-store, must-revalidate');
 // HTML fatal error, which the browser reports as a network failure.
 // Room for all three attempts plus the backoff between them, otherwise PHP
 // kills the script mid-retry and the browser sees an HTML error page.
-@set_time_limit(defined('OPENROUTER_TIMEOUT') ? (OPENROUTER_TIMEOUT * 3 + 20) : 200);
+@set_time_limit(defined('AI_TIMEOUT') ? (AI_TIMEOUT * 3 + 20) : 200);
 
 if (!is_tech_logged_in()) {
     echo json_encode(array('success' => false, 'error' => 'Unauthorized'));
     exit;
 }
 
-if (!defined('OPENROUTER_API_KEY') || OPENROUTER_API_KEY === '') {
+if (!defined('AI_API_KEY') || AI_API_KEY === '') {
     echo json_encode(array(
         'success' => false,
-        'error' => 'AI summariser is not configured yet. Add your OpenRouter key to backend/includes/ai_config.php.'
+        'error' => 'AI summariser is not configured on this server. Copy backend/includes/ai_config.sample.php to ai_config.php and set the key, or set ATRIA_API_KEY in the environment. (ai_config.php is gitignored, so a deploy never carries it.)'
     ));
     exit;
 }
@@ -168,24 +179,26 @@ $system_prompt =
     "Use \"Done\" only when the thread shows the problem was actually resolved.";
 
 $payload = array(
-    'model' => OPENROUTER_MODEL,
+    'model' => AI_MODEL,
     'messages' => array(
         array('role' => 'system', 'content' => $system_prompt),
         array('role' => 'user', 'content' => $transcript)
     ),
     'temperature' => 0.2,
-    'max_tokens' => 600,
-    // Reasoning off, not merely hidden. "exclude" still makes the model think
-    // before answering - measured at 22s and ~470 wasted tokens per summary
-    // against 5s with it disabled, for the same quality of note.
-    'reasoning' => array('enabled' => false)
+    // Generous because the model's internal reasoning is billed against this
+    // budget too - at 600 a long thread spent it all thinking and answered
+    // with an empty string. Real summaries land around 1000 tokens.
+    'max_tokens' => 2000
+    // No reasoning toggle here: that was an OpenRouter knob. Atria reasons
+    // internally and returns it separately from the answer, and sending the
+    // old flag changed nothing measurable, so it is gone rather than cargoed.
 );
 
 /**
- * One call to OpenRouter.
+ * One call to the chat completions endpoint.
  *
- * OpenRouter answers HTTP 200 even when the model behind it failed - the body
- * carries an "error" object instead of "choices", sometimes after a run of
+ * These services answer HTTP 200 even when the model behind them failed - the
+ * body carries an "error" object instead of "choices", sometimes after a run of
  * keep-alive whitespace. So the body has to be inspected, not just the status.
  *
  * @param array  $payload
@@ -193,20 +206,24 @@ $payload = array(
  * @param bool   $retryable   Set to true when trying again is worth it
  * @return array|null Decoded response on success
  */
-function openrouter_call($payload, &$error_out, &$retryable) {
+function ai_chat_call($payload, &$error_out, &$retryable) {
     $error_out = '';
     $retryable = false;
 
-    $ch = curl_init(OPENROUTER_URL);
+    $ch = curl_init(AI_URL);
     curl_setopt_array($ch, array(
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_TIMEOUT => OPENROUTER_TIMEOUT,
+        CURLOPT_TIMEOUT => AI_TIMEOUT,
         CURLOPT_HTTPHEADER => array(
-            'Authorization: Bearer ' . OPENROUTER_API_KEY,
+            'Authorization: Bearer ' . AI_API_KEY,
             'Content-Type: application/json',
-            'X-Title: RNZ Support System'
+            'X-Title: RNZ Support System',
+            // Suppress libcurl's automatic "Expect: 100-continue" on bodies over
+            // 1KB: this endpoint replies 100 and then stalls, which hung every
+            // real transcript until the timeout while short test bodies passed.
+            'Expect:'
         )
     ));
     $raw = curl_exec($ch);
@@ -257,15 +274,15 @@ function openrouter_call($payload, &$error_out, &$retryable) {
     return $decoded;
 }
 
-// The free NVIDIA endpoint is regularly "temporarily overloaded", and it
-// recovers within seconds, so a couple of retries turn most failures into a
-// slightly slower success instead of an error in the technician's face.
+// A busy model endpoint recovers within seconds, so a couple of retries turn
+// most failures into a slightly slower success instead of an error in the
+// technician's face.
 $decoded = null;
 $last_error = '';
 $attempts = 3;
 
 for ($attempt = 1; $attempt <= $attempts; $attempt++) {
-    $decoded = openrouter_call($payload, $last_error, $retryable);
+    $decoded = ai_chat_call($payload, $last_error, $retryable);
     if ($decoded !== null) {
         break;
     }
@@ -278,7 +295,7 @@ for ($attempt = 1; $attempt <= $attempts; $attempt++) {
 if ($decoded === null) {
     echo json_encode(array(
         'success' => false,
-        'error' => $last_error . ' (tried ' . $attempts . ' times - the free model is busy, try again in a moment.)'
+        'error' => $last_error . ' (tried ' . $attempts . ' times - the model is busy, try again in a moment.)'
     ));
     exit;
 }
@@ -305,8 +322,19 @@ if (!is_array($note)) {
 
 $allowed_statuses = array('Done', 'Working', 'Pending Issue');
 $status = isset($note['status']) ? trim($note['status']) : '';
+
+// Models reach for their own vocabulary - "Resolved", "Completed", "Open" -
+// so the obvious synonyms are mapped rather than thrown away.
 if (!in_array($status, $allowed_statuses, true)) {
-    $status = 'Working'; // Never let a bad value silently resolve a ticket
+    $status_synonyms = array(
+        'resolved' => 'Done', 'complete' => 'Done', 'completed' => 'Done',
+        'fixed' => 'Done', 'closed' => 'Done', 'finished' => 'Done',
+        'in progress' => 'Working', 'ongoing' => 'Working', 'working on it' => 'Working',
+        'pending' => 'Pending Issue', 'open' => 'Pending Issue', 'unresolved' => 'Pending Issue',
+        'blocked' => 'Pending Issue', 'escalated' => 'Pending Issue'
+    );
+    $status_key = strtolower($status);
+    $status = isset($status_synonyms[$status_key]) ? $status_synonyms[$status_key] : 'Working';
 }
 
 echo json_encode(array(

@@ -1,19 +1,28 @@
 <?php
 // AI Summariser credentials (PHP 5.6 Compatible)
 //
-// THIS FILE IS GITIGNORED ON PURPOSE - it holds a live API key.
-// Copy ai_config.sample.php to ai_config.php and paste your key below.
-// Get one at https://openrouter.ai/keys
+// THIS IS THE TEMPLATE, and the only one of the pair that git tracks.
+// Copy it to ai_config.php on every server and put the real key there:
+//
+//     cp backend/includes/ai_config.sample.php backend/includes/ai_config.php
+//
+// ai_config.php is gitignored on purpose because it holds a live API key. That
+// also means a git deploy never carries it - a server without its own copy
+// falls back to this template, the key is blank, and the Summarize with AI
+// button reports that the summariser is not configured.
 
-// Your OpenRouter key, the "sk-or-v1-..." string
-define('OPENROUTER_API_KEY', '');
+// Preferred: set ATRIA_API_KEY in the server environment (cPanel environment
+// variables, an Apache SetEnv, or the shell) so the key never touches a file.
+// Otherwise paste it as the fallback below, in ai_config.php only.
+$ai_env_key = getenv('ATRIA_API_KEY');
+define('AI_API_KEY', $ai_env_key ? $ai_env_key : '');
 
-// The model to summarise with. Free tier, 1M context.
-define('OPENROUTER_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b:free');
+// The model that drafts the note.
+define('AI_MODEL', 'Atria-Dawn-Preview');
 
-// OpenAI compatible endpoint
-define('OPENROUTER_URL', 'https://openrouter.ai/api/v1/chat/completions');
+// OpenAI compatible chat completions endpoint.
+define('AI_URL', 'https://api.atria-asi.ai/v1/chat/completions');
 
-// Seconds to wait before giving up. A reasoning model on the free tier can be
-// slow, so this is generous - the button shows a spinner meanwhile.
-define('OPENROUTER_TIMEOUT', 60);
+// Seconds to wait before giving up on one attempt. The model reasons before it
+// answers, so a summary usually lands in 3-10s; this leaves plenty of room.
+define('AI_TIMEOUT', 60);
