@@ -190,6 +190,20 @@ function init_inventory_tables() {
         KEY `item_id` (`item_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
 
+    $sql7 = "CREATE TABLE IF NOT EXISTS `client_expenses` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT,
+        `accountnum` VARCHAR(100) NOT NULL,
+        `description` TEXT NOT NULL,
+        `amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        `expense_date` DATE NOT NULL,
+        `recorded_by` VARCHAR(100) NULL,
+        `created_at` DATETIME NOT NULL,
+        `updated_at` DATETIME NOT NULL,
+        PRIMARY KEY (`id`),
+        KEY `accountnum` (`accountnum`),
+        KEY `expense_date` (`expense_date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
     try {
         $pdo->exec($sql1);
         $pdo->exec($sql2);
@@ -197,6 +211,7 @@ function init_inventory_tables() {
         $pdo->exec($sql4);
         $pdo->exec($sql5);
         $pdo->exec($sql6);
+        $pdo->exec($sql7);
 
         // Safe upgrade: split inventory stock into separate per-condition buckets.
         // `quantity` stays the authoritative total and is kept equal to their sum.

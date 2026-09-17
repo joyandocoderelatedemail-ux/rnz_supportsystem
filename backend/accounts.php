@@ -10,6 +10,10 @@ init_inventory_tables();
 // Client spend figures are commercially sensitive: Super Admin (Master) only
 $can_view_spend = is_super_admin();
 
+// Expenses are what servicing an account costs us - internal cost data, so the
+// whole feature (tab, buttons, modals and POST handlers) is Super Admin only.
+$can_view_expenses = is_super_admin();
+
 $pdo = get_db_connection();
 
 // Handle Account Profile Update Form Submission
@@ -24,6 +28,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $update_error = $perm_check['message'];
     } else {
         $action = $_POST['action'];
+
+        // Enforced here as well as in the UI: hiding the buttons is not access
+        // control, and a hand-made POST must not be able to reach these handlers.
+        if (!$can_view_expenses && in_array($action, array('add_client_expense', 'update_client_expense', 'delete_client_expense'))) {
+            $update_error = "Access Denied: Client expense records are restricted to Super Admin (Master) accounts.";
+            $action = '';
+        }
 
         if ($action === 'update_client_profile') {
             $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
@@ -580,6 +591,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $update_error = "Error adding service charge: " . $e->getMessage();
                 }
             }
+        } elseif ($action === 'add_client_expense') {
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $description = isset($_POST['description']) ? trim($_POST['description']) : '';
+            $amount = isset($_POST['amount']) ? floatval($_POST['amount']) : 0;
+            $expense_date = isset($_POST['expense_date']) && !empty($_POST['expense_date']) ? trim($_POST['expense_date']) : date('Y-m-d');
+
+            if (!empty($accountnum) && !empty($description)) {
+                try {
+                    $now = date('Y-m-d H:i:s');
+                    $tech_now = get_logged_tech();
+                    $recorded_by = ($tech_now && isset($tech_now['fullname'])) ? $tech_now['fullname'] : 'Support Tech';
+
+                    // An expense is our own cost of servicing the account, never a
+                    // client billing: it stays out of outstandingbalance and the SOA.
+                    $stmt_exp_ins = $pdo->prepare("INSERT INTO client_expenses 
+                        (accountnum, description, amount, expense_date, recorded_by, created_at, updated_at) 
+                        VALUES (:acct, :desc, :amt, :edate, :by, :created, :updated)");
+                    $stmt_exp_ins->execute(array(
+                        ':acct' => $accountnum,
+                        ':desc' => $description,
+                        ':amt' => $amount,
+                        ':edate' => $expense_date,
+                        ':by' => $recorded_by,
+                        ':created' => $now,
+                        ':updated' => $now
+                    ));
+                    $update_msg = "Expense \"" . sanitize($description) . "\" recorded for Account #$accountnum.";
+                } catch (PDOException $e) {
+                    $update_error = "Error adding expense: " . $e->getMessage();
+                }
+            } else {
+                $update_error = "Expense description is required.";
+            }
+        } elseif ($action === 'update_client_expense') {
+            $expense_id = isset($_POST['expense_id']) ? intval($_POST['expense_id']) : 0;
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+            $description = isset($_POST['description']) ? trim($_POST['description']) : '';
+            $amount = isset($_POST['amount']) ? floatval($_POST['amount']) : 0;
+            $expense_date = isset($_POST['expense_date']) && !empty($_POST['expense_date']) ? trim($_POST['expense_date']) : date('Y-m-d');
+
+            if ($expense_id > 0 && !empty($accountnum) && !empty($description)) {
+                try {
+                    $stmt_exp_up = $pdo->prepare("UPDATE client_expenses 
+                        SET description = :desc, 
+                            amount = :amt, 
+                            expense_date = :edate, 
+                            updated_at = :updated 
+                        WHERE id = :id AND accountnum = :acct");
+                    $stmt_exp_up->execute(array(
+                        ':desc' => $description,
+                        ':amt' => $amount,
+                        ':edate' => $expense_date,
+                        ':updated' => date('Y-m-d H:i:s'),
+                        ':id' => $expense_id,
+                        ':acct' => $accountnum
+                    ));
+                    $update_msg = "Expense record #$expense_id updated successfully.";
+                } catch (PDOException $e) {
+                    $update_error = "Error updating expense: " . $e->getMessage();
+                }
+            } else {
+                $update_error = "Expense description is required.";
+            }
+        } elseif ($action === 'delete_client_expense') {
+            $expense_id = isset($_POST['expense_id']) ? intval($_POST['expense_id']) : 0;
+            $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
+
+            if ($expense_id > 0 && !empty($accountnum)) {
+                try {
+                    $stmt_exp_del = $pdo->prepare("DELETE FROM client_expenses WHERE id = :id AND accountnum = :acct");
+                    $stmt_exp_del->execute(array(':id' => $expense_id, ':acct' => $accountnum));
+                    $update_msg = "Expense record #$expense_id deleted successfully.";
+                } catch (PDOException $e) {
+                    $update_error = "Error deleting expense: " . $e->getMessage();
+                }
+            }
         } elseif ($action === 'add_advance_tax') {
             $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
             $nameofadvancetaxes = isset($_POST['nameofadvancetaxes']) ? trim($_POST['nameofadvancetaxes']) : '';
@@ -820,6 +907,13 @@ if (isset($_POST['action']) && in_array($_POST['action'], array('create_workorde
 if (isset($_POST['action']) && in_array($_POST['action'], array('add_client_asset', 'update_client_asset', 'delete_client_asset'))) {
     $active_tab = 'assets';
 }
+if ($can_view_expenses && isset($_POST['action']) && in_array($_POST['action'], array('add_client_expense', 'update_client_expense', 'delete_client_expense'))) {
+    $active_tab = 'expenses';
+}
+// A ?tab=expenses deep link from anyone else quietly lands on the default tab.
+if ($active_tab === 'expenses' && !$can_view_expenses) {
+    $active_tab = 'logs';
+}
 if (isset($_POST['action']) && in_array($_POST['action'], array('add_special_service', 'add_advance_tax', 'mark_service_paid', 'mark_advtax_paid', 'delete_special_service', 'delete_advance_tax', 'record_soa_payment'))) {
     $active_tab = (isset($_POST['from_tab']) && $_POST['from_tab'] === 'orders') ? 'orders' : 'soa';
 }
@@ -1025,6 +1119,8 @@ $client_pullouts = array();
 $client_assets = array();
 $client_specialservices = array();
 $client_advtaxes = array();
+$client_expenses = array();
+$client_expenses_total = 0;
 $soa_ss_tot = 0; $soa_ss_pending = 0;
 $soa_at_tot = 0; $soa_at_pending = 0;
 $soa_wo_tot = 0; $soa_wo_pending = 0;
@@ -1152,6 +1248,19 @@ if ($selected_client) {
     $soa_all_pending = $soa_ss_pending + $soa_at_pending + $soa_wo_pending;
     $client_db_bal = isset($selected_client['outstandingbalance']) ? floatval($selected_client['outstandingbalance']) : 0.0;
     $effective_balance = ($client_db_bal > $soa_all_pending) ? $client_db_bal : $soa_all_pending;
+
+    // 8. Expenses for this account. Kept deliberately apart from the SOA
+    //    figures above - these are our costs, not anything the client owes.
+    //    Super Admin only, so nobody else's page even runs the query.
+    if ($can_view_expenses) {
+        $stmt_exp = $pdo->prepare("SELECT * FROM client_expenses WHERE accountnum = :acct ORDER BY expense_date DESC, id DESC");
+        $stmt_exp->execute(array(':acct' => $client_acct));
+        $client_expenses = $stmt_exp->fetchAll();
+
+        foreach ($client_expenses as $exp_item) {
+            $client_expenses_total += floatval($exp_item['amount']);
+        }
+    }
 }
 
 // Fetch ALL client accounts for instant autocomplete dropdown
@@ -1788,6 +1897,16 @@ $page_title = 'Manage Accounts';
                                     <span>Pull Out Item</span>
                                 </a>
 
+                                <!-- Record Client Expense Button (Super Admin only) -->
+                                <?php if ($can_view_expenses): ?>
+                                <button onclick="openAddExpenseModal()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/>
+                                    </svg>
+                                    <span>Add Expense</span>
+                                </button>
+                                <?php endif; ?>
+
                                 <!-- Set / Edit Warranty Button -->
                                 <button onclick="openWarrantyModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1907,7 +2026,7 @@ $page_title = 'Manage Accounts';
                         </div>
 
                         <!-- Breakdown by source -->
-                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+                        <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 pt-1">
                             <div class="rounded-xl bg-slate-800/80 border border-slate-700 p-3">
                                 <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Work Orders</span>
                                 <p class="text-sm font-extrabold text-white font-mono mt-0.5">&#8369;<?php echo number_format($spend_wo['total'], 2); ?></p>
@@ -1932,6 +2051,14 @@ $page_title = 'Manage Accounts';
                                     &#8369;<?php echo number_format(floatval($selected_client['monthlyretainersfee']), 2); ?>
                                 </p>
                                 <p class="text-[10px] text-slate-500">recurring</p>
+                            </div>
+
+                            <!-- Our cost of servicing this account, shown for contrast: it is
+                                 money out, so it is never folded into the spend total above. -->
+                            <div class="rounded-xl bg-slate-800/80 border border-slate-700 p-3">
+                                <span class="block text-slate-400 font-bold uppercase text-[9px] tracking-wider">Total Expenses</span>
+                                <p class="text-sm font-extrabold text-rose-300 font-mono mt-0.5">&#8369;<?php echo number_format($client_expenses_total, 2); ?></p>
+                                <p class="text-[10px] text-slate-500"><?php echo number_format(count($client_expenses)); ?> record(s) &middot; our cost</p>
                             </div>
                         </div>
 
@@ -2014,6 +2141,16 @@ $page_title = 'Manage Accounts';
                             </svg>
                             <span>Hardware Pull-Outs (<?php echo count($client_pullouts); ?>)</span>
                         </a>
+
+                        <?php if ($can_view_expenses): ?>
+                        <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=expenses" 
+                           class="px-5 py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 shrink-0 <?php echo ($active_tab === 'expenses') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/>
+                            </svg>
+                            <span>Expenses (<?php echo count($client_expenses); ?>)</span>
+                        </a>
+                        <?php endif; ?>
 
                         <a href="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=assets" 
                            class="px-5 py-3 rounded-2xl text-xs font-extrabold transition-all flex items-center space-x-2 shrink-0 <?php echo ($active_tab === 'assets') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'; ?>">
@@ -2368,6 +2505,113 @@ $page_title = 'Manage Accounts';
                                                             </svg>
                                                             <span class="text-[11px] font-bold">Print</span>
                                                         </a>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    <!-- TAB 5: CLIENT EXPENSES (internal costs, never billed) -->
+                    <?php elseif ($active_tab === 'expenses'): ?>
+                        <div class="space-y-4">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <h3 class="text-base font-extrabold text-slate-900">Client Expenses</h3>
+                                    <p class="text-xs text-slate-500">Internal costs of servicing Account #<?php echo sanitize($client_acct); ?>. Expenses are never billed to the client and do not appear on the Statement of Account.</p>
+                                </div>
+                                <div class="flex items-center gap-2.5 self-start sm:self-auto">
+                                    <div class="px-4 py-2 rounded-2xl bg-rose-50 border border-rose-200 text-right">
+                                        <span class="block text-[10px] font-bold uppercase tracking-wider text-rose-500">Total Expenses</span>
+                                        <span class="font-mono font-black text-rose-700 text-sm">&#8369;<?php echo number_format($client_expenses_total, 2); ?></span>
+                                    </div>
+                                    <?php if ($my_tier >= 2): ?>
+                                        <button onclick="openAddExpenseModal()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2.5 rounded-full shadow-sm flex items-center space-x-1.5 transition-all active:scale-95 shrink-0">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                            </svg>
+                                            <span>Add Expense</span>
+                                        </button>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                                            <th class="py-3 px-4">Date</th>
+                                            <th class="py-3 px-4">Description</th>
+                                            <th class="py-3 px-4 text-right">Amount</th>
+                                            <th class="py-3 px-4">Recorded By</th>
+                                            <th class="py-3 px-4 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100 font-medium">
+                                        <?php if (empty($client_expenses)): ?>
+                                            <tr>
+                                                <td colspan="5" class="py-8 text-center text-slate-400">
+                                                    No expenses recorded for this account yet.
+                                                </td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($client_expenses as $exp): ?>
+                                                <tr class="hover:bg-slate-50/80 transition-colors">
+                                                    <td class="py-3 px-4 text-slate-500 whitespace-nowrap font-mono">
+                                                        <?php echo sanitize($exp['expense_date']); ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 font-semibold text-slate-900 max-w-md">
+                                                        <?php echo sanitize($exp['description']); ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-right font-mono font-bold text-rose-700 whitespace-nowrap">
+                                                        &#8369;<?php echo number_format(floatval($exp['amount']), 2); ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-slate-600">
+                                                        <?php echo !empty($exp['recorded_by']) ? sanitize($exp['recorded_by']) : '&mdash;'; ?>
+                                                    </td>
+                                                    <td class="py-3 px-4 text-right">
+                                                        <?php if ($my_tier >= 2): ?>
+                                                            <div class="flex items-center justify-end space-x-1.5">
+                                                                <button type="button"
+                                                                        data-expense-id="<?php echo intval($exp['id']); ?>"
+                                                                        data-expense-description="<?php echo sanitize($exp['description']); ?>"
+                                                                        data-expense-amount="<?php echo floatval($exp['amount']); ?>"
+                                                                        data-expense-date="<?php echo sanitize($exp['expense_date']); ?>"
+                                                                        onclick="openEditExpenseModal(this)"
+                                                                        class="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors" title="Edit Expense">
+                                                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                                                    </svg>
+                                                                </button>
+
+                                                                <?php if ($my_tier === 2): ?>
+                                                                    <!-- Level 2 confirms deletes in a modal, the only place the access code can be entered -->
+                                                                    <button type="button"
+                                                                            data-expense-id="<?php echo intval($exp['id']); ?>"
+                                                                            data-expense-description="<?php echo sanitize($exp['description']); ?>"
+                                                                            onclick="openDeleteExpenseModal(this)"
+                                                                            class="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-colors" title="Delete Expense">
+                                                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                                        </svg>
+                                                                    </button>
+                                                                <?php else: ?>
+                                                                    <form method="POST" action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=expenses" onsubmit="return confirm('Are you sure you want to delete this expense record?');" class="inline">
+                                                                        <input type="hidden" name="action" value="delete_client_expense">
+                                                                        <input type="hidden" name="expense_id" value="<?php echo intval($exp['id']); ?>">
+                                                                        <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                                                                        <button type="submit" class="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-colors" title="Delete Expense">
+                                                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                                            </svg>
+                                                                        </button>
+                                                                    </form>
+                                                                <?php endif; ?>
+                                                            </div>
+                                                        <?php else: ?>
+                                                            <span class="text-[11px] text-slate-400 font-bold">View Only</span>
+                                                        <?php endif; ?>
                                                     </td>
                                                 </tr>
                                             <?php endforeach; ?>
@@ -4031,6 +4275,202 @@ $page_title = 'Manage Accounts';
                     </div>
                 </div>
 
+                <?php if ($can_view_expenses): ?>
+                <!-- ADD CLIENT EXPENSE MODAL -->
+                <div id="addExpenseModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto space-y-6">
+                        <button onclick="closeAddExpenseModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                            <div class="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <span class="text-xs font-mono font-bold text-rose-600">client_expenses</span>
+                                <h3 class="text-lg font-extrabold text-slate-900">Record Client Expense</h3>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=expenses" method="POST" class="space-y-4 text-xs">
+                            <input type="hidden" name="action" value="add_client_expense">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Expense Description <span class="text-rose-600">*</span></label>
+                                <textarea name="description" rows="2" required placeholder="e.g., Technician transport to site, replacement thermal head purchase..." class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-rose-500 focus:outline-none transition-all leading-relaxed"></textarea>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Amount (₱) <span class="text-rose-600">*</span></label>
+                                    <input type="number" step="0.01" min="0" name="amount" value="0.00" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-rose-500 focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Expense Date <span class="text-rose-600">*</span></label>
+                                    <input type="date" name="expense_date" value="<?php echo date('Y-m-d'); ?>" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-rose-500 focus:outline-none transition-all font-mono font-bold">
+                                </div>
+                            </div>
+
+                            <?php if ($my_tier === 1): ?>
+                                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot add expenses.</span>
+                                </div>
+                            <?php elseif ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeAddExpenseModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <?php if ($my_tier === 1): ?>
+                                    <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
+                                        🔒 View Only
+                                    </button>
+                                <?php else: ?>
+                                    <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                                        Save Expense
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- EDIT CLIENT EXPENSE MODAL -->
+                <div id="editExpenseModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto space-y-6">
+                        <button onclick="closeEditExpenseModal()" class="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+
+                        <div class="flex items-center space-x-3 border-b border-slate-100 pb-4">
+                            <div class="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-bold shadow-sm shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <span class="text-xs font-mono font-bold text-rose-600">client_expenses</span>
+                                <h3 class="text-lg font-extrabold text-slate-900">Edit Expense <span id="edit_expense_title_id" class="font-mono text-slate-400"></span></h3>
+                            </div>
+                        </div>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=expenses" method="POST" class="space-y-4 text-xs">
+                            <input type="hidden" name="action" value="update_client_expense">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                            <input type="hidden" name="expense_id" id="edit_expense_id" value="">
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Expense Description <span class="text-rose-600">*</span></label>
+                                <textarea name="description" id="edit_expense_description" rows="2" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-rose-500 focus:outline-none transition-all leading-relaxed"></textarea>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Amount (₱) <span class="text-rose-600">*</span></label>
+                                    <input type="number" step="0.01" min="0" name="amount" id="edit_expense_amount" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-rose-500 focus:outline-none transition-all font-mono font-bold">
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Expense Date <span class="text-rose-600">*</span></label>
+                                    <input type="date" name="expense_date" id="edit_expense_date" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-rose-500 focus:outline-none transition-all font-mono font-bold">
+                                </div>
+                            </div>
+
+                            <?php if ($my_tier === 1): ?>
+                                <div class="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center space-x-2">
+                                    <svg class="w-4 h-4 text-rose-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                    <span>View Only Mode: Your account has Level 1 (View Only) access and cannot edit expenses.</span>
+                                </div>
+                            <?php elseif ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="closeEditExpenseModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                    Cancel
+                                </button>
+                                <?php if ($my_tier === 1): ?>
+                                    <button type="button" disabled class="bg-slate-300 text-slate-500 font-bold text-xs px-6 py-2.5 rounded-full cursor-not-allowed">
+                                        🔒 View Only
+                                    </button>
+                                <?php else: ?>
+                                    <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                                        Update Expense
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- DELETE CLIENT EXPENSE CONFIRM MODAL -->
+                <div id="deleteExpenseModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+                    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn">
+                        <div class="flex items-center space-x-3 mb-4">
+                            <div class="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shadow-sm">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-extrabold text-slate-900">Delete Expense</h3>
+                                <p class="text-xs text-slate-500">This cannot be undone.</p>
+                            </div>
+                        </div>
+
+                        <p class="text-xs text-slate-600 mb-6">
+                            Remove <strong id="delete_expense_desc" class="text-slate-900"></strong> from this account's expense records?
+                        </p>
+
+                        <form action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=expenses" method="POST" class="space-y-4">
+                            <input type="hidden" name="action" value="delete_client_expense">
+                            <input type="hidden" name="accountnum" value="<?php echo sanitize($client_acct); ?>">
+                            <input type="hidden" name="expense_id" id="delete_expense_id" value="">
+
+                            <?php if ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="flex items-center justify-end space-x-3">
+                                <button type="button" onclick="closeDeleteExpenseModal()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                                <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">Delete Expense</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <?php endif; ?>
+
                 <!-- ADD HARDWARE ADVANCE MODAL -->
                 <div id="addAdvTaxModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
                     <div class="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 relative animate-fadeIn max-h-[90vh] overflow-y-auto space-y-6">
@@ -4384,6 +4824,49 @@ $page_title = 'Manage Accounts';
 
                 function closeAddServiceModal() {
                     var modal = document.getElementById('addServiceModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+
+                function openAddExpenseModal() {
+                    var modal = document.getElementById('addExpenseModal');
+                    if (modal) modal.classList.remove('hidden');
+                }
+
+                function closeAddExpenseModal() {
+                    var modal = document.getElementById('addExpenseModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+
+                function openEditExpenseModal(btn) {
+                    try {
+                        document.getElementById('edit_expense_id').value = btn.getAttribute('data-expense-id') || '0';
+                        document.getElementById('edit_expense_title_id').innerText = '#' + (btn.getAttribute('data-expense-id') || '0');
+                        document.getElementById('edit_expense_description').value = btn.getAttribute('data-expense-description') || '';
+                        document.getElementById('edit_expense_amount').value = btn.getAttribute('data-expense-amount') || '0.00';
+                        document.getElementById('edit_expense_date').value = btn.getAttribute('data-expense-date') || '';
+
+                        var modal = document.getElementById('editExpenseModal');
+                        if (modal) modal.classList.remove('hidden');
+                    } catch(e) {
+                        console.error('Error opening expense edit modal:', e);
+                    }
+                }
+
+                function closeEditExpenseModal() {
+                    var modal = document.getElementById('editExpenseModal');
+                    if (modal) modal.classList.add('hidden');
+                }
+
+                function openDeleteExpenseModal(btn) {
+                    document.getElementById('delete_expense_id').value = btn.getAttribute('data-expense-id') || '0';
+                    document.getElementById('delete_expense_desc').innerText = btn.getAttribute('data-expense-description') || 'this expense';
+
+                    var modal = document.getElementById('deleteExpenseModal');
+                    if (modal) modal.classList.remove('hidden');
+                }
+
+                function closeDeleteExpenseModal() {
+                    var modal = document.getElementById('deleteExpenseModal');
                     if (modal) modal.classList.add('hidden');
                 }
 

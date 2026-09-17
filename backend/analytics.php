@@ -17,6 +17,10 @@ if (!is_super_admin() && !user_has_page_access('analytics')) {
     exit;
 }
 
+// This page also admits non-Master users holding the explicit 'analytics'
+// permission, but expenses are internal cost data: Master accounts only.
+$can_view_expenses = is_super_admin();
+
 // Initialize tables if needed
 init_inventory_tables();
 
@@ -118,6 +122,8 @@ $tn_date_sql = "";
 $tn_params = array();
 $diag_date_sql = "";
 $diag_params = array();
+$exp_date_sql = "";
+$exp_params = array();
 
 if ($is_filtered && !empty($start_date) && !empty($end_date)) {
     $wo_date_sql = " WHERE xdate >= :s_date AND xdate <= :e_date ";
@@ -134,6 +140,9 @@ if ($is_filtered && !empty($start_date) && !empty($end_date)) {
 
     $diag_date_sql = " WHERE DATE(created_at) >= :s_date AND DATE(created_at) <= :e_date ";
     $diag_params = array(':s_date' => $start_date, ':e_date' => $end_date);
+
+    $exp_date_sql = " WHERE expense_date >= :s_date AND expense_date <= :e_date ";
+    $exp_params = array(':s_date' => $start_date, ':e_date' => $end_date);
 }
 
 // ----------------------------------------------------
@@ -195,6 +204,33 @@ try {
 } catch (PDOException $e) {
     error_log("Analytics Orders Query Error: " . $e->getMessage());
 }
+
+// Client Expense Metrics. Expenses are our own cost of servicing accounts, so
+// they are never mixed into any of the revenue figures above.
+$total_expenses = 0.0;
+$total_expense_count = 0;
+
+if ($can_view_expenses) {
+try {
+    $stmt_exp = $pdo->prepare("SELECT
+        COUNT(*) as exp_cnt,
+        COALESCE(SUM(amount), 0) as exp_total
+        FROM client_expenses" . $exp_date_sql);
+    $stmt_exp->execute($exp_params);
+    $row_exp = $stmt_exp->fetch(PDO::FETCH_ASSOC);
+    if ($row_exp) {
+        $total_expense_count = intval($row_exp['exp_cnt']);
+        $total_expenses = floatval($row_exp['exp_total']);
+    }
+} catch (PDOException $e) {
+    error_log("Analytics Expense Query Error: " . $e->getMessage());
+}
+}
+
+// Net position is measured against collected revenue, not billed revenue:
+// an invoice nobody has paid yet cannot offset a cost already paid out.
+$net_position = $paid_revenue - $total_expenses;
+$expense_ratio = ($total_revenue > 0) ? round(($total_expenses / $total_revenue) * 100, 1) : 0;
 
 // ----------------------------------------------------
 // 3. Support Ticket KPI Metrics
@@ -319,6 +355,41 @@ if (empty($monthly_rev_labels)) {
     $monthly_rev_labels = array(!empty($start_date) ? date('M Y', strtotime($start_date)) : date('M Y'));
     $monthly_rev_data = array(0);
     $monthly_wo_count = array(0);
+}
+
+// Monthly expenses, mapped onto the revenue chart's own labels so the two
+// series share one x-axis. A month with no expenses plots 0, never a gap.
+$monthly_exp_data = array();
+$monthly_exp_map = array();
+
+if ($can_view_expenses) {
+try {
+    $exp_chart_where = " WHERE expense_date IS NOT NULL AND expense_date != '' AND expense_date != '0000-00-00' ";
+    $exp_chart_params = array();
+    if ($is_filtered && !empty($start_date) && !empty($end_date)) {
+        $exp_chart_where .= " AND expense_date >= :c_sdate AND expense_date <= :c_edate ";
+        $exp_chart_params = array(':c_sdate' => $start_date, ':c_edate' => $end_date);
+    }
+
+    $stmt_mexp = $pdo->prepare("SELECT
+        DATE_FORMAT(expense_date, '%Y-%m') as ym,
+        DATE_FORMAT(expense_date, '%b %Y') as m_label,
+        COALESCE(SUM(amount), 0) as exp_sum
+        FROM client_expenses
+        " . $exp_chart_where . "
+        GROUP BY ym
+        ORDER BY ym DESC
+        LIMIT 12");
+    $stmt_mexp->execute($exp_chart_params);
+    $raw_mexp = $stmt_mexp ? $stmt_mexp->fetchAll(PDO::FETCH_ASSOC) : array();
+    foreach ($raw_mexp as $item) {
+        $monthly_exp_map[$item['m_label']] = floatval($item['exp_sum']);
+    }
+} catch (PDOException $e) {}
+
+foreach ($monthly_rev_labels as $mx_label) {
+    $monthly_exp_data[] = isset($monthly_exp_map[$mx_label]) ? $monthly_exp_map[$mx_label] : 0;
+}
 }
 
 // Tickets by Category Distribution
@@ -473,6 +544,48 @@ try {
     $stmt_top_cl->execute($wo_params);
     $top_clients = $stmt_top_cl ? $stmt_top_cl->fetchAll(PDO::FETCH_ASSOC) : array();
 } catch (PDOException $e) {}
+
+// Top accounts by expense spend, for the horizontal bar chart
+$top_expense_clients = array();
+if ($can_view_expenses) {
+try {
+    $exp_cl_where = ($is_filtered && !empty($start_date) && !empty($end_date)) ? " WHERE e.expense_date >= :s_date AND e.expense_date <= :e_date " : "";
+    $stmt_top_exp = $pdo->prepare("SELECT
+        e.accountnum,
+        c.tradename,
+        c.clientname,
+        COUNT(e.id) as exp_count,
+        COALESCE(SUM(e.amount), 0) as total_spent
+        FROM client_expenses e
+        LEFT JOIN bucket_client c ON c.accountnum = e.accountnum
+        " . $exp_cl_where . "
+        GROUP BY e.accountnum, c.tradename, c.clientname
+        ORDER BY total_spent DESC
+        LIMIT 8");
+    $stmt_top_exp->execute($exp_params);
+    $top_expense_clients = $stmt_top_exp ? $stmt_top_exp->fetchAll(PDO::FETCH_ASSOC) : array();
+} catch (PDOException $e) {}
+
+$top_exp_labels = array();
+$top_exp_values = array();
+foreach ($top_expense_clients as $tec) {
+    $tec_name = trim($tec['tradename']);
+    if ($tec_name === '') {
+        $tec_name = trim($tec['clientname']);
+    }
+    if ($tec_name === '') {
+        $tec_name = 'Account #' . $tec['accountnum'];
+    }
+    $top_exp_labels[] = $tec_name;
+    $top_exp_values[] = floatval($tec['total_spent']);
+}
+
+// Same empty-data guard the revenue series uses - Chart.js never sees [].
+if (empty($top_exp_labels)) {
+    $top_exp_labels = array('No expenses recorded');
+    $top_exp_values = array(0);
+}
+}
 
 // ----------------------------------------------------
 // 7. Recent Financial Work Orders
@@ -697,7 +810,7 @@ $page_title = 'Executive Analytics & BI';
             <!-- ========================================================================= -->
             <!-- 3. TOP TIER EXECUTIVE KPI STAT CARDS (6 Key Pillars) -->
             <!-- ========================================================================= -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 <?php echo $can_view_expenses ? 'xl:grid-cols-4' : 'xl:grid-cols-6'; ?> gap-4">
                 
                 <!-- Card 1: Total Billed Revenue -->
                 <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
@@ -843,6 +956,56 @@ $page_title = 'Executive Analytics & BI';
                     </div>
                 </div>
 
+                <?php if ($can_view_expenses): ?>
+                <!-- Card 7: Total Client Expenses -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Expenses</span>
+                        <div class="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
+                            &#8369;<?php echo number_format($total_expenses, 2); ?>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                            <span><?php echo $total_expense_count; ?> expense record<?php echo ($total_expense_count === 1) ? '' : 's'; ?></span>
+                            <span class="text-rose-400 font-bold"><?php echo $expense_ratio; ?>% of billed</span>
+                        </div>
+                    </div>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-rose-500 h-full rounded-full" style="width: <?php echo min(100, $expense_ratio); ?>%"></div>
+                    </div>
+                </div>
+
+                <!-- Card 8: Net Position (collected revenue less expenses) -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Net Position</span>
+                        <div class="w-8 h-8 rounded-xl <?php echo ($net_position >= 0) ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'; ?> flex items-center justify-center">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="<?php echo ($net_position >= 0) ? 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' : 'M13 17h8m0 0V9m0 8l-8-8-4 4-6-6'; ?>"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="font-mono text-xl sm:text-2xl font-black tracking-tight <?php echo ($net_position >= 0) ? 'text-emerald-400' : 'text-rose-400'; ?>">
+                            &#8369;<?php echo number_format($net_position, 2); ?>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                            <span>Collected less expenses</span>
+                            <span class="font-bold <?php echo ($net_position >= 0) ? 'text-emerald-400' : 'text-rose-400'; ?>"><?php echo ($net_position >= 0) ? 'Surplus' : 'Deficit'; ?></span>
+                        </div>
+                    </div>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div class="<?php echo ($net_position >= 0) ? 'bg-emerald-500' : 'bg-rose-500'; ?> h-full rounded-full" style="width: <?php echo ($paid_revenue > 0) ? min(100, abs(round(($net_position / $paid_revenue) * 100))) : 0; ?>%"></div>
+                    </div>
+                </div>
+                <?php endif; ?>
+
             </div>
 
             <!-- ========================================================================= -->
@@ -856,14 +1019,19 @@ $page_title = 'Executive Analytics & BI';
                         <div>
                             <h2 class="text-base font-extrabold text-white flex items-center gap-2">
                                 <span class="w-2.5 h-2.5 rounded-full bg-[#EB3E0B]"></span>
-                                <span>Monthly Revenue &amp; Work Order Billing Trend</span>
+                                <span><?php echo $can_view_expenses ? 'Monthly Revenue vs Expenses Trend' : 'Monthly Revenue &amp; Work Order Billing Trend'; ?></span>
                             </h2>
-                            <p class="text-xs text-slate-400">Track billed service fees and client maintenance totals over time</p>
+                            <p class="text-xs text-slate-400"><?php echo $can_view_expenses ? 'Billed service fees against the client expenses recorded in the same month' : 'Track billed service fees and client maintenance totals over time'; ?></p>
                         </div>
                         <div class="flex items-center space-x-3 text-xs font-mono">
                             <span class="flex items-center gap-1.5 text-slate-300">
                                 <span class="w-3 h-3 rounded-md bg-[#EB3E0B]"></span> Revenue (PHP)
                             </span>
+                            <?php if ($can_view_expenses): ?>
+                            <span class="flex items-center gap-1.5 text-slate-300">
+                                <span class="w-3 h-3 rounded-md bg-[#f43f5e]"></span> Expenses (PHP)
+                            </span>
+                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -964,6 +1132,23 @@ $page_title = 'Executive Analytics & BI';
                         <canvas id="hardwareDeviceChart"></canvas>
                     </div>
                 </div>
+
+                <?php if ($can_view_expenses): ?>
+                <!-- Chart 5: Top Expense Accounts -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 print-card">
+                    <div class="border-b border-slate-800 pb-3">
+                        <h2 class="text-base font-extrabold text-white flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                            <span>Top Expense Accounts</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">Accounts costing the most to service in this period</p>
+                    </div>
+
+                    <div class="relative h-56 flex items-center justify-center">
+                        <canvas id="topExpenseClientsChart"></canvas>
+                    </div>
+                </div>
+                <?php endif; ?>
 
                 <!-- Leaderboard: Top Field Technicians -->
                 <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 flex flex-col justify-between print-card">
@@ -1193,7 +1378,7 @@ $page_title = 'Executive Analytics & BI';
                     labels: <?php echo json_encode($monthly_rev_labels); ?>,
                     datasets: [
                         {
-                            label: 'Monthly Revenue (PHP)',
+                            label: 'Revenue',
                             data: <?php echo json_encode($monthly_rev_data); ?>,
                             borderColor: '#EB3E0B',
                             backgroundColor: 'rgba(235, 62, 11, 0.12)',
@@ -1203,7 +1388,20 @@ $page_title = 'Executive Analytics & BI';
                             pointBackgroundColor: '#EB3E0B',
                             pointRadius: 4,
                             pointHoverRadius: 7
+                        }<?php if ($can_view_expenses): ?>,
+                        {
+                            label: 'Expenses',
+                            data: <?php echo json_encode($monthly_exp_data); ?>,
+                            borderColor: '#f43f5e',
+                            backgroundColor: 'rgba(244, 63, 94, 0.12)',
+                            fill: true,
+                            tension: 0.35,
+                            borderWidth: 3,
+                            pointBackgroundColor: '#f43f5e',
+                            pointRadius: 4,
+                            pointHoverRadius: 7
                         }
+                        <?php endif; ?>
                     ]
                 },
                 options: {
@@ -1214,7 +1412,7 @@ $page_title = 'Executive Analytics & BI';
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
-                                    return ' Revenue: PHP ' + Number(context.raw).toLocaleString('en-US', { minimumFractionDigits: 2 });
+                                    return ' ' + context.dataset.label + ': PHP ' + Number(context.raw).toLocaleString('en-US', { minimumFractionDigits: 2 });
                                 }
                             }
                         }
@@ -1374,6 +1572,55 @@ $page_title = 'Executive Analytics & BI';
                 }
             });
         }
+        <?php if ($can_view_expenses): ?>
+        // 5. Top Expense Accounts Horizontal Bar Chart
+        var ctxExpCl = document.getElementById('topExpenseClientsChart');
+        if (ctxExpCl) {
+            new Chart(ctxExpCl.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: <?php echo json_encode($top_exp_labels); ?>,
+                    datasets: [{
+                        label: 'Expenses (PHP)',
+                        data: <?php echo json_encode($top_exp_values); ?>,
+                        backgroundColor: '#f43f5e',
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ' PHP ' + Number(context.raw).toLocaleString('en-US', { minimumFractionDigits: 2 });
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
+                            ticks: {
+                                color: '#94a3b8',
+                                font: { size: 10 },
+                                callback: function(value) {
+                                    return 'PHP ' + (value >= 1000 ? (value / 1000) + 'k' : value);
+                                }
+                            }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8', font: { size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+        <?php endif; ?>
     });
     </script>
 </body>
