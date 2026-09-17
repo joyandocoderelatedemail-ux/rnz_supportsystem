@@ -124,6 +124,8 @@ $diag_date_sql = "";
 $diag_params = array();
 $exp_date_sql = "";
 $exp_params = array();
+$asset_date_sql = "";
+$asset_params = array();
 
 if ($is_filtered && !empty($start_date) && !empty($end_date)) {
     $wo_date_sql = " WHERE xdate >= :s_date AND xdate <= :e_date ";
@@ -143,6 +145,9 @@ if ($is_filtered && !empty($start_date) && !empty($end_date)) {
 
     $exp_date_sql = " WHERE expense_date >= :s_date AND expense_date <= :e_date ";
     $exp_params = array(':s_date' => $start_date, ':e_date' => $end_date);
+
+    $asset_date_sql = " AND DATE(created_at) >= :s_date AND DATE(created_at) <= :e_date ";
+    $asset_params = array(':s_date' => $start_date, ':e_date' => $end_date);
 }
 
 // ----------------------------------------------------
@@ -179,6 +184,7 @@ try {
 }
 
 $paid_percentage = ($total_revenue > 0) ? round(($paid_revenue / $total_revenue) * 100, 1) : 0;
+$unpaid_percentage = ($total_revenue > 0) ? round(($unpaid_revenue / $total_revenue) * 100, 1) : 0;
 
 // Hardware Orders Metrics
 $total_hardware_orders = 0;
@@ -205,6 +211,35 @@ try {
     error_log("Analytics Orders Query Error: " . $e->getMessage());
 }
 
+// Hardware released to clients from the Software & Hardware tab in accounts.php.
+// Software rows live in the same table and are deliberately left out: only
+// hardware counts as a hardware sale.
+$hardware_assets_value = 0.0;
+$hardware_items_count = 0;
+$hardware_units_count = 0;
+
+try {
+    $stmt_hwa = $pdo->prepare("SELECT
+        COUNT(*) as hw_rows,
+        COALESCE(SUM(quantity), 0) as hw_units,
+        COALESCE(SUM(total_amount), 0) as hw_value
+        FROM client_assets
+        WHERE asset_type = 'Hardware' " . $asset_date_sql);
+    $stmt_hwa->execute($asset_params);
+    $row_hwa = $stmt_hwa->fetch(PDO::FETCH_ASSOC);
+    if ($row_hwa) {
+        $hardware_items_count = intval($row_hwa['hw_rows']);
+        $hardware_units_count = intval($row_hwa['hw_units']);
+        $hardware_assets_value = floatval($row_hwa['hw_value']);
+    }
+} catch (PDOException $e) {
+    error_log("Analytics Hardware Assets Query Error: " . $e->getMessage());
+}
+
+// One Hardware Sales figure from both channels: the hardware order desk and
+// the hardware recorded straight onto an account.
+$total_hardware_revenue = $total_hardware_revenue + $hardware_assets_value;
+
 // Client Expense Metrics. Expenses are our own cost of servicing accounts, so
 // they are never mixed into any of the revenue figures above.
 $total_expenses = 0.0;
@@ -227,9 +262,12 @@ try {
 }
 }
 
-// Net position is measured against collected revenue, not billed revenue:
-// an invoice nobody has paid yet cannot offset a cost already paid out.
-$net_position = $paid_revenue - $total_expenses;
+// Total Sales: what is left of the billed total once the hardware portion and
+// our own expenses are taken out, i.e. the service earnings. Hardware deployed
+// to a client is billed through a work order, so it sits inside $total_revenue
+// and has to come back out here to avoid counting it as service income.
+$total_sales = $total_revenue - $total_hardware_revenue - $total_expenses;
+$sales_ratio = ($total_revenue > 0) ? round(($total_sales / $total_revenue) * 100, 1) : 0;
 $expense_ratio = ($total_revenue > 0) ? round(($total_expenses / $total_revenue) * 100, 1) : 0;
 
 // ----------------------------------------------------
@@ -601,6 +639,37 @@ try {
     $recent_workorders = $stmt_rwo ? $stmt_rwo->fetchAll(PDO::FETCH_ASSOC) : array();
 } catch (PDOException $e) {}
 
+// ----------------------------------------------------
+// 7b. Recent Client Expenses (Master only, like every other expense figure)
+// ----------------------------------------------------
+$recent_expenses = array();
+if ($can_view_expenses) {
+try {
+    $stmt_rexp = $pdo->prepare("SELECT e.*, c.tradename, c.clientname as cl_owner
+        FROM client_expenses e
+        LEFT JOIN bucket_client c ON e.accountnum = c.accountnum " . $exp_date_sql . "
+        ORDER BY e.expense_date DESC, e.id DESC
+        LIMIT 10");
+    $stmt_rexp->execute($exp_params);
+    $recent_expenses = $stmt_rexp ? $stmt_rexp->fetchAll(PDO::FETCH_ASSOC) : array();
+} catch (PDOException $e) {}
+}
+
+// ----------------------------------------------------
+// 7c. Hardware Released to Clients (accounts.php > Software & Hardware)
+// ----------------------------------------------------
+$recent_hardware = array();
+try {
+    $stmt_rhw = $pdo->prepare("SELECT a.*, c.tradename, c.clientname as cl_owner 
+        FROM client_assets a 
+        LEFT JOIN bucket_client c ON a.accountnum = c.accountnum 
+        WHERE a.asset_type = 'Hardware' " . $asset_date_sql . "
+        ORDER BY a.created_at DESC, a.id DESC 
+        LIMIT 10");
+    $stmt_rhw->execute($asset_params);
+    $recent_hardware = $stmt_rhw ? $stmt_rhw->fetchAll(PDO::FETCH_ASSOC) : array();
+} catch (PDOException $e) {}
+
 $active_page = 'analytics';
 $page_title = 'Executive Analytics & BI';
 ?>
@@ -645,6 +714,59 @@ $page_title = 'Executive Analytics & BI';
             filter: invert(1);
             cursor: pointer;
         }
+        /* Total Sales is the page's bottom line, so its tile is deliberately
+           louder than the other KPI cards: wider, brighter, and gently alive. */
+        .kpi-hero {
+            animation: kpiGlowPos 3.6s ease-in-out infinite;
+        }
+        .kpi-hero.is-negative {
+            animation-name: kpiGlowNeg;
+        }
+        @keyframes kpiGlowPos {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.16), 0 12px 30px -14px rgba(16, 185, 129, 0.40); }
+            50%      { box-shadow: 0 0 0 7px rgba(16, 185, 129, 0.05), 0 18px 44px -12px rgba(16, 185, 129, 0.60); }
+        }
+        @keyframes kpiGlowNeg {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.16), 0 12px 30px -14px rgba(244, 63, 94, 0.40); }
+            50%      { box-shadow: 0 0 0 7px rgba(244, 63, 94, 0.05), 0 18px 44px -12px rgba(244, 63, 94, 0.60); }
+        }
+        /* Light sweeping across the tile every few seconds */
+        .kpi-hero__sheen {
+            position: absolute;
+            top: 0;
+            left: -60%;
+            width: 40%;
+            height: 100%;
+            background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+            transform: skewX(-18deg);
+            pointer-events: none;
+            animation: kpiSheen 6s ease-in-out infinite;
+        }
+        @keyframes kpiSheen {
+            0%   { left: -60%; }
+            55%  { left: 130%; }
+            100% { left: 130%; }
+        }
+        /* Progress bar fills from zero on load; width comes from --kpi-w */
+        .kpi-hero__bar {
+            width: var(--kpi-w, 0%);
+            animation: kpiBar 1.5s cubic-bezier(.16, 1, .3, 1) both;
+        }
+        @keyframes kpiBar {
+            from { width: 0%; }
+            to   { width: var(--kpi-w, 0%); }
+        }
+        .kpi-hero__value {
+            animation: kpiRise .75s cubic-bezier(.16, 1, .3, 1) both;
+        }
+        @keyframes kpiRise {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .kpi-hero, .kpi-hero__sheen, .kpi-hero__bar, .kpi-hero__value { animation: none !important; }
+            .kpi-hero__bar { width: var(--kpi-w, 0%); }
+        }
         @media print {
             .no-print {
                 display: none !important;
@@ -657,6 +779,13 @@ $page_title = 'Executive Analytics & BI';
                 box-shadow: none !important;
                 border: 1px solid #e2e8f0 !important;
                 break-inside: avoid;
+            }
+            .kpi-hero, .kpi-hero__value, .kpi-hero__bar {
+                animation: none !important;
+                box-shadow: none !important;
+            }
+            .kpi-hero__sheen {
+                display: none !important;
             }
         }
     </style>
@@ -810,7 +939,7 @@ $page_title = 'Executive Analytics & BI';
             <!-- ========================================================================= -->
             <!-- 3. TOP TIER EXECUTIVE KPI STAT CARDS (6 Key Pillars) -->
             <!-- ========================================================================= -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 <?php echo $can_view_expenses ? 'xl:grid-cols-4' : 'xl:grid-cols-6'; ?> gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 
                 <!-- Card 1: Total Billed Revenue -->
                 <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
@@ -836,8 +965,31 @@ $page_title = 'Executive Analytics & BI';
                     </div>
                 </div>
 
-                <!-- Card 2: Hardware Orders Volume -->
+                <!-- Card 2: Receivables (billed but not yet collected) -->
                 <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Receivables</span>
+                        <div class="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="font-mono text-xl sm:text-2xl font-black text-amber-400 tracking-tight">
+                            &#8369;<?php echo number_format($unpaid_revenue, 2); ?>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                            <span><?php echo $unpaid_workorders_count; ?> unpaid work order<?php echo ($unpaid_workorders_count === 1) ? '' : 's'; ?></span>
+                            <span class="text-amber-400 font-bold"><?php echo $unpaid_percentage; ?>% of billed</span>
+                        </div>
+                    </div>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-amber-500 h-full rounded-full" style="width: <?php echo min(100, $unpaid_percentage); ?>%"></div>
+                    </div>
+                </div>
+                <!-- Card 3: Hardware Sales (hardware orders + hardware released to accounts) -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors<?php echo $can_view_expenses ? '' : ' xl:col-span-2'; ?>">
                     <div class="flex items-center justify-between">
                         <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Hardware Sales</span>
                         <div class="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
@@ -851,113 +1003,17 @@ $page_title = 'Executive Analytics & BI';
                             &#8369;<?php echo number_format($total_hardware_revenue, 2); ?>
                         </div>
                         <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-                            <span><?php echo $total_hardware_orders; ?> client orders</span>
-                            <span class="text-indigo-400 font-bold"><?php echo $pending_hardware_orders; ?> pending</span>
+                            <span><?php echo $hardware_items_count + $total_hardware_orders; ?> hardware record<?php echo (($hardware_items_count + $total_hardware_orders) === 1) ? '' : 's'; ?></span>
+                            <span class="text-indigo-400 font-bold"><?php echo number_format($hardware_units_count); ?> unit<?php echo ($hardware_units_count === 1) ? '' : 's'; ?></span>
                         </div>
                     </div>
                     <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                        <div class="bg-indigo-500 h-full rounded-full" style="width: <?php echo ($total_hardware_orders > 0) ? round(($fulfilled_hardware_orders / $total_hardware_orders) * 100) : 0; ?>%"></div>
-                    </div>
-                </div>
-
-                <!-- Card 3: Ticket Resolution Rate -->
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
-                    <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ticket Resolution</span>
-                        <div class="w-8 h-8 rounded-xl bg-[#EB3E0B]/10 text-[#FEAA73] flex items-center justify-center">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
-                            <?php echo $resolution_rate; ?>%
-                        </div>
-                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-                            <span><?php echo $total_tickets; ?> total tickets</span>
-                            <span class="text-amber-400 font-bold"><?php echo $pending_tickets + $in_progress_tickets; ?> active</span>
-                        </div>
-                    </div>
-                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                        <div class="bg-[#EB3E0B] h-full rounded-full" style="width: <?php echo $resolution_rate; ?>%"></div>
-                    </div>
-                </div>
-
-                <!-- Card 4: Field Operations / Tech Notes -->
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
-                    <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Field Visits</span>
-                        <div class="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0V11m0 0h4m-4 0H9m4 0V7m0 0h4m-4 0H9"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
-                            <?php echo number_format($total_technotes); ?>
-                        </div>
-                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-                            <span>Service reports logged</span>
-                            <span class="text-cyan-400 font-bold"><?php echo $total_diag_logs; ?> diags</span>
-                        </div>
-                    </div>
-                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                        <div class="bg-cyan-500 h-full rounded-full w-full"></div>
-                    </div>
-                </div>
-
-                <!-- Card 5: Registered Clients & Warranties -->
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
-                    <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Client Coverage</span>
-                        <div class="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
-                            <?php echo number_format($total_clients); ?>
-                        </div>
-                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-                            <span>Total accounts</span>
-                            <span class="text-purple-400 font-bold"><?php echo $active_warranty_clients; ?> warranty</span>
-                        </div>
-                    </div>
-                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                        <div class="bg-purple-500 h-full rounded-full" style="width: <?php echo ($total_clients > 0) ? round(($active_warranty_clients / $total_clients) * 100) : 0; ?>%"></div>
-                    </div>
-                </div>
-
-                <!-- Card 6: Inventory Stock Health -->
-                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
-                    <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Inventory Health</span>
-                        <div class="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-                            </svg>
-                        </div>
-                    </div>
-                    <div>
-                        <div class="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
-                            <?php echo number_format($total_stock_units); ?>
-                        </div>
-                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-                            <span><?php echo $total_inventory_items; ?> SKU items</span>
-                            <span class="text-amber-400 font-bold"><?php echo $low_stock_count + $out_of_stock_count; ?> alerts</span>
-                        </div>
-                    </div>
-                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                        <div class="bg-amber-500 h-full rounded-full" style="width: <?php echo ($low_stock_count > 0) ? '65' : '100'; ?>%"></div>
+                        <div class="bg-indigo-500 h-full rounded-full" style="width: <?php echo ($total_revenue > 0) ? min(100, round(($total_hardware_revenue / $total_revenue) * 100)) : 0; ?>%"></div>
                     </div>
                 </div>
 
                 <?php if ($can_view_expenses): ?>
-                <!-- Card 7: Total Client Expenses -->
+                <!-- Card 4: Total Client Expenses -->
                 <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
                     <div class="flex items-center justify-between">
                         <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Expenses</span>
@@ -981,30 +1037,153 @@ $page_title = 'Executive Analytics & BI';
                     </div>
                 </div>
 
-                <!-- Card 8: Net Position (collected revenue less expenses) -->
+                <!-- Card 5: Total Sales - the bottom line, sitting as a full-width
+                     band between what was billed and how the team performed -->
+                <?php
+                $ts_positive = ($total_sales >= 0);
+                $ts_accent = $ts_positive ? 'emerald' : 'rose';
+                $ts_bar_pct = ($total_revenue > 0) ? min(100, abs(round(($total_sales / $total_revenue) * 100))) : 0;
+                ?>
+                <div class="kpi-hero<?php echo $ts_positive ? '' : ' is-negative'; ?> col-span-full bg-gradient-to-br from-slate-900 via-slate-900 to-<?php echo $ts_accent; ?>-900/30 border border-<?php echo $ts_accent; ?>-500/40 rounded-3xl p-5 sm:p-6 shadow-lg relative overflow-hidden group hover:border-<?php echo $ts_accent; ?>-400/70 transition-colors">
+                    <span class="kpi-hero__sheen no-print"></span>
+
+                    <div class="relative flex flex-col lg:flex-row lg:items-center gap-5 lg:gap-8">
+
+                        <!-- Identity + headline figure -->
+                        <div class="flex items-start gap-4 flex-1 min-w-0">
+                            <div class="w-11 h-11 rounded-2xl bg-<?php echo $ts_accent; ?>-500/15 text-<?php echo $ts_accent; ?>-300 flex items-center justify-center ring-1 ring-<?php echo $ts_accent; ?>-500/30 shrink-0">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="<?php echo $ts_positive ? 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' : 'M13 17h8m0 0V9m0 8l-8-8-4 4-6-6'; ?>"/>
+                                </svg>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[11px] font-bold text-<?php echo $ts_accent; ?>-300 uppercase tracking-wider">Total Sales</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-<?php echo $ts_accent; ?>-500/15 text-<?php echo $ts_accent; ?>-300 border border-<?php echo $ts_accent; ?>-500/30">Bottom Line</span>
+                                </div>
+                                <div class="kpi-hero__value font-mono text-3xl sm:text-4xl font-black tracking-tight text-<?php echo $ts_accent; ?>-400 drop-shadow mt-1">
+                                    &#8369;<span id="totalSalesValue" data-value="<?php echo $total_sales; ?>"><?php echo number_format($total_sales, 2); ?></span>
+                                </div>
+                                <p class="text-[11px] text-slate-400 mt-1">
+                                    Billed less hardware &amp; expenses &bull; <?php echo $active_range_label; ?>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Share of billed -->
+                        <div class="w-full lg:w-80 shrink-0">
+                            <div class="flex items-center justify-between text-[11px] mb-2">
+                                <span class="font-bold text-slate-400 uppercase tracking-wider">Share of billed</span>
+                                <span class="font-mono font-bold text-<?php echo $ts_accent; ?>-300"><?php echo $sales_ratio; ?>%</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                <div class="kpi-hero__bar bg-<?php echo $ts_accent; ?>-500 h-full rounded-full" style="--kpi-w: <?php echo $ts_bar_pct; ?>%"></div>
+                            </div>
+                            <div class="flex items-center justify-between text-[10px] text-slate-500 mt-2 font-mono">
+                                <span>Billed &#8369;<?php echo number_format($total_revenue, 2); ?></span>
+                                <span>Out &#8369;<?php echo number_format($total_hardware_revenue + $total_expenses, 2); ?></span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <!-- Card 6: Ticket Resolution Rate -->
                 <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
                     <div class="flex items-center justify-between">
-                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Net Position</span>
-                        <div class="w-8 h-8 rounded-xl <?php echo ($net_position >= 0) ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'; ?> flex items-center justify-center">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ticket Resolution</span>
+                        <div class="w-8 h-8 rounded-xl bg-[#EB3E0B]/10 text-[#FEAA73] flex items-center justify-center">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="<?php echo ($net_position >= 0) ? 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' : 'M13 17h8m0 0V9m0 8l-8-8-4 4-6-6'; ?>"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
                         </div>
                     </div>
                     <div>
-                        <div class="font-mono text-xl sm:text-2xl font-black tracking-tight <?php echo ($net_position >= 0) ? 'text-emerald-400' : 'text-rose-400'; ?>">
-                            &#8369;<?php echo number_format($net_position, 2); ?>
+                        <div class="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
+                            <?php echo $resolution_rate; ?>%
                         </div>
                         <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-                            <span>Collected less expenses</span>
-                            <span class="font-bold <?php echo ($net_position >= 0) ? 'text-emerald-400' : 'text-rose-400'; ?>"><?php echo ($net_position >= 0) ? 'Surplus' : 'Deficit'; ?></span>
+                            <span><?php echo $total_tickets; ?> total tickets</span>
+                            <span class="text-amber-400 font-bold"><?php echo $pending_tickets + $in_progress_tickets; ?> active</span>
                         </div>
                     </div>
                     <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                        <div class="<?php echo ($net_position >= 0) ? 'bg-emerald-500' : 'bg-rose-500'; ?> h-full rounded-full" style="width: <?php echo ($paid_revenue > 0) ? min(100, abs(round(($net_position / $paid_revenue) * 100))) : 0; ?>%"></div>
+                        <div class="bg-[#EB3E0B] h-full rounded-full" style="width: <?php echo $resolution_rate; ?>%"></div>
                     </div>
                 </div>
-                <?php endif; ?>
+
+                <!-- Card 7: Field Operations / Tech Notes -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Field Visits</span>
+                        <div class="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5m0 0h4m-4 0V11m0 0h4m-4 0H9m4 0V7m0 0h4m-4 0H9"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
+                            <?php echo number_format($total_technotes); ?>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                            <span>Service reports logged</span>
+                            <span class="text-cyan-400 font-bold"><?php echo $total_diag_logs; ?> diags</span>
+                        </div>
+                    </div>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-cyan-500 h-full rounded-full w-full"></div>
+                    </div>
+                </div>
+
+                <!-- Card 8: Registered Clients & Warranties -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Client Coverage</span>
+                        <div class="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
+                            <?php echo number_format($total_clients); ?>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                            <span>Total accounts</span>
+                            <span class="text-purple-400 font-bold"><?php echo $active_warranty_clients; ?> warranty</span>
+                        </div>
+                    </div>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-purple-500 h-full rounded-full" style="width: <?php echo ($total_clients > 0) ? round(($active_warranty_clients / $total_clients) * 100) : 0; ?>%"></div>
+                    </div>
+                </div>
+
+                <!-- Card 9: Inventory Stock Health -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col justify-between space-y-3 relative overflow-hidden group hover:border-[#EB3E0B]/50 transition-colors">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Inventory Health</span>
+                        <div class="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="font-mono text-xl sm:text-2xl font-black text-white tracking-tight">
+                            <?php echo number_format($total_stock_units); ?>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                            <span><?php echo $total_inventory_items; ?> SKU items</span>
+                            <span class="text-amber-400 font-bold"><?php echo $low_stock_count + $out_of_stock_count; ?> alerts</span>
+                        </div>
+                    </div>
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                        <div class="bg-amber-500 h-full rounded-full" style="width: <?php echo ($low_stock_count > 0) ? '65' : '100'; ?>%"></div>
+                    </div>
+                </div>
 
             </div>
 
@@ -1074,7 +1253,7 @@ $page_title = 'Executive Analytics & BI';
             <!-- 5. SUPPORT & OPERATIONS BREAKDOWN (Row 2) -->
             <!-- ========================================================================= -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                
+
                 <!-- Chart 3: Support Tickets by Category -->
                 <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 print-card">
                     <div class="border-b border-slate-800 pb-3">
@@ -1354,6 +1533,173 @@ $page_title = 'Executive Analytics & BI';
                 </div>
             </div>
 
+            <!-- ========================================================================= -->
+            <!-- 7c. HARDWARE RELEASED TO CLIENTS -->
+            <!-- ========================================================================= -->
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 print-card">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h2 class="text-base font-extrabold text-white flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                            <span>Hardware Released to Clients</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">
+                            Hardware recorded on accounts in this range &bull; &#8369;<?php echo number_format($hardware_assets_value, 2); ?> across
+                            <?php echo number_format($hardware_items_count); ?> record<?php echo ($hardware_items_count === 1) ? '' : 's'; ?>
+                            (<?php echo number_format($hardware_units_count); ?> unit<?php echo ($hardware_units_count === 1) ? '' : 's'; ?>)<?php if ($hardware_items_count > 10): ?>, latest 10 shown<?php endif; ?>
+                        </p>
+                    </div>
+                    <a href="accounts.php" class="no-print text-xs font-bold text-[#EB3E0B] hover:text-[#FEAA73] flex items-center gap-1 transition-colors">
+                        <span>View All Client Accounts</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </a>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-950/80 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-800">
+                                <th class="py-3 px-4">Date</th>
+                                <th class="py-3 px-4">Account #</th>
+                                <th class="py-3 px-4">Business / Trade Name</th>
+                                <th class="py-3 px-4">Hardware Item</th>
+                                <th class="py-3 px-4 text-center">Qty</th>
+                                <th class="py-3 px-4">Released By</th>
+                                <th class="py-3 px-4 text-right">Amount (PHP)</th>
+                                <th class="py-3 px-4 text-center no-print">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60">
+                            <?php if (!empty($recent_hardware)): ?>
+                                <?php foreach ($recent_hardware as $hw): ?>
+                                    <?php
+                                    $hw_client = !empty($hw['tradename']) ? $hw['tradename'] : (!empty($hw['cl_owner']) ? $hw['cl_owner'] : 'Acct #' . $hw['accountnum']);
+                                    ?>
+                                    <tr class="hover:bg-slate-800/40 transition-colors">
+                                        <td class="py-3.5 px-4 font-mono text-slate-400 whitespace-nowrap">
+                                            <?php echo format_date_only($hw['created_at']); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 font-mono font-bold text-[#FEAA73]">
+                                            #<?php echo sanitize($hw['accountnum']); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 font-bold text-white">
+                                            <a href="accounts.php?search=<?php echo urlencode($hw['accountnum']); ?>&tab=assets" class="hover:text-[#EB3E0B] transition-colors">
+                                                <?php echo sanitize($hw_client); ?>
+                                            </a>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-slate-300 max-w-xs truncate">
+                                            <?php echo sanitize($hw['name']); ?>
+                                            <?php /* Some items carry their name as the code; no point printing it twice */ ?>
+                                            <?php if (!empty($hw['item_code']) && strcasecmp(trim($hw['item_code']), trim($hw['name'])) !== 0): ?>
+                                                <span class="block text-[10px] font-mono text-slate-500"><?php echo sanitize($hw['item_code']); ?></span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-center font-mono font-semibold text-slate-300">
+                                            <?php echo intval($hw['quantity']); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-slate-400">
+                                            <?php echo !empty($hw['recorded_by']) ? sanitize($hw['recorded_by']) : '&mdash;'; ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-right font-mono font-extrabold text-indigo-300 text-sm">
+                                            &#8369;<?php echo number_format(floatval($hw['total_amount']), 2); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-center no-print">
+                                            <a href="accounts.php?search=<?php echo urlencode($hw['accountnum']); ?>&tab=assets" class="bg-slate-800 hover:bg-[#EB3E0B] text-slate-200 hover:text-white px-2.5 py-1 rounded-xl font-bold text-[11px] transition-all inline-flex items-center gap-1">
+                                                <span>Profile</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="8" class="py-8 text-center text-slate-500">No hardware released to clients in the selected date range.</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ========================================================================= -->
+            <!-- 7b. CLIENT EXPENSE LEDGER (Master only) -->
+            <!-- ========================================================================= -->
+            <?php if ($can_view_expenses): ?>
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 print-card">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h2 class="text-base font-extrabold text-white flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                            <span>Client Expenses in Scope</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">
+                            Internal servicing costs in this range &bull; &#8369;<?php echo number_format($total_expenses, 2); ?> across
+                            <?php echo number_format($total_expense_count); ?> record<?php echo ($total_expense_count === 1) ? '' : 's'; ?><?php if ($total_expense_count > 10): ?>, latest 10 shown<?php endif; ?>
+                        </p>
+                    </div>
+                    <a href="accounts.php" class="no-print text-xs font-bold text-[#EB3E0B] hover:text-[#FEAA73] flex items-center gap-1 transition-colors">
+                        <span>View All Client Accounts</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </a>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-950/80 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-800">
+                                <th class="py-3 px-4">Date</th>
+                                <th class="py-3 px-4">Account #</th>
+                                <th class="py-3 px-4">Business / Trade Name</th>
+                                <th class="py-3 px-4">Expense Description</th>
+                                <th class="py-3 px-4">Recorded By</th>
+                                <th class="py-3 px-4 text-right">Amount (PHP)</th>
+                                <th class="py-3 px-4 text-center no-print">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60">
+                            <?php if (!empty($recent_expenses)): ?>
+                                <?php foreach ($recent_expenses as $ex): ?>
+                                    <?php
+                                    $ex_client = !empty($ex['tradename']) ? $ex['tradename'] : (!empty($ex['cl_owner']) ? $ex['cl_owner'] : 'Acct #' . $ex['accountnum']);
+                                    ?>
+                                    <tr class="hover:bg-slate-800/40 transition-colors">
+                                        <td class="py-3.5 px-4 font-mono text-slate-400 whitespace-nowrap">
+                                            <?php echo format_date_only($ex['expense_date']); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 font-mono font-bold text-[#FEAA73]">
+                                            #<?php echo sanitize($ex['accountnum']); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 font-bold text-white">
+                                            <a href="accounts.php?search=<?php echo urlencode($ex['accountnum']); ?>&tab=expenses" class="hover:text-[#EB3E0B] transition-colors">
+                                                <?php echo sanitize($ex_client); ?>
+                                            </a>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-slate-300 max-w-xs truncate">
+                                            <?php echo sanitize($ex['description']); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-slate-400">
+                                            <?php echo !empty($ex['recorded_by']) ? sanitize($ex['recorded_by']) : '&mdash;'; ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-right font-mono font-extrabold text-rose-300 text-sm">
+                                            &#8369;<?php echo number_format(floatval($ex['amount']), 2); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-center no-print">
+                                            <a href="accounts.php?search=<?php echo urlencode($ex['accountnum']); ?>&tab=expenses" class="bg-slate-800 hover:bg-[#EB3E0B] text-slate-200 hover:text-white px-2.5 py-1 rounded-xl font-bold text-[11px] transition-all inline-flex items-center gap-1">
+                                                <span>Profile</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="7" class="py-8 text-center text-slate-500">No client expenses recorded for the selected date range.</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <?php endif; ?>
+
         </main>
 
         <!-- Footer Component -->
@@ -1368,6 +1714,46 @@ $page_title = 'Executive Analytics & BI';
     document.addEventListener('DOMContentLoaded', function() {
         Chart.defaults.color = '#94a3b8';
         Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
+
+        // Total Sales counts up to its value on load. The real figure is already
+        // in the markup, so this only ever replaces it with the same number.
+        (function countUpTotalSales() {
+            var el = document.getElementById('totalSalesValue');
+            if (!el) return;
+
+            var target = parseFloat(el.getAttribute('data-value'));
+            if (isNaN(target)) return;
+
+            var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            if (reduced || !window.requestAnimationFrame) return;
+
+            var negative = target < 0;
+            var magnitude = Math.abs(target);
+            var duration = 1100;
+            var started = null;
+
+            function render(value) {
+                el.textContent = (negative ? '-' : '') + value.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            }
+
+            function step(now) {
+                if (started === null) started = now;
+                var progress = Math.min(1, (now - started) / duration);
+                var eased = 1 - Math.pow(1 - progress, 3);
+                render(magnitude * eased);
+                if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                } else {
+                    render(magnitude);
+                }
+            }
+
+            render(0);
+            window.requestAnimationFrame(step);
+        })();
 
         // 1. Revenue & Billing Trend Chart
         var ctxRev = document.getElementById('revenueChart');

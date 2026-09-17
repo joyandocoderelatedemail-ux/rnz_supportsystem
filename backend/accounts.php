@@ -1880,12 +1880,25 @@ $page_title = 'Manage Accounts';
                         <!-- Action Buttons Group (Warranty & Profile) -->
                         <div class="flex items-center flex-wrap gap-2.5 self-start md:self-center">
                             <?php if ($my_tier >= 2): ?>
+                                <!-- Create Work Order Button -->
+                                <button type="button"
+                                        data-acct="<?php echo htmlspecialchars($client_acct, ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-name="<?php echo htmlspecialchars(!empty($selected_client['tradename']) ? $selected_client['tradename'] : $selected_client['clientname'], ENT_QUOTES, 'UTF-8'); ?>"
+                                        data-addr="<?php echo htmlspecialchars(!empty($selected_client['address']) ? $selected_client['address'] : '', ENT_QUOTES, 'UTF-8'); ?>"
+                                        onclick="openCreateWorkOrderModalFromBtn(this)"
+                                        class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                    <span>Create Work Order</span>
+                                </button>
+
                                 <!-- Add Software / Hardware Item Button -->
                                 <button onclick="openAssetTypeModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                                     </svg>
-                                    <span>Add Item</span>
+                                    <span>Add Hardware / SoftWare</span>
                                 </button>
 
                                 <!-- Pull Out Hardware Item Button -->
@@ -2324,19 +2337,6 @@ $page_title = 'Manage Accounts';
                                     <h3 class="text-base font-extrabold text-slate-900">Work Orders & Billing History</h3>
                                     <p class="text-xs text-slate-500">Service statements, supplies, hardware repairs, and billing for Account #<?php echo sanitize($client_acct); ?></p>
                                 </div>
-                                <?php if ($my_tier >= 2): ?>
-                                <button type="button"
-                                        data-acct="<?php echo htmlspecialchars($client_acct, ENT_QUOTES, 'UTF-8'); ?>"
-                                        data-name="<?php echo htmlspecialchars(!empty($selected_client['tradename']) ? $selected_client['tradename'] : $selected_client['clientname'], ENT_QUOTES, 'UTF-8'); ?>"
-                                        data-addr="<?php echo htmlspecialchars(!empty($selected_client['address']) ? $selected_client['address'] : '', ENT_QUOTES, 'UTF-8'); ?>"
-                                        onclick="openCreateWorkOrderModalFromBtn(this)" 
-                                        class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-4 py-2 rounded-full shadow-sm flex items-center space-x-1.5 transition-all active:scale-95">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
-                                    </svg>
-                                    <span>Create Work Order</span>
-                                </button>
-                                <?php endif; ?>
                             </div>
 
                             <div class="overflow-x-auto">
@@ -2440,15 +2440,6 @@ $page_title = 'Manage Accounts';
                                     <h3 class="text-base font-extrabold text-slate-900">Hardware & Software Pull-Outs & Deployments</h3>
                                     <p class="text-xs text-slate-500">Equipment retrieval, warranty exchange, diagnostics, and stock deployments for Account #<?php echo sanitize($client_acct); ?></p>
                                 </div>
-                                <?php if ($my_tier >= 2): ?>
-                                <a href="inventory.php?pullout_client=<?php echo urlencode($client_acct); ?>" 
-                                   class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs px-4 py-2.5 rounded-full shadow-sm shadow-amber-500/25 flex items-center space-x-1.5 transition-all active:scale-95 self-start sm:self-auto">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
-                                    </svg>
-                                    <span>Record New Pull-Out</span>
-                                </a>
-                                <?php endif; ?>
                             </div>
 
                             <div class="overflow-x-auto">
@@ -2526,14 +2517,6 @@ $page_title = 'Manage Accounts';
                                         <span class="block text-[10px] font-bold uppercase tracking-wider text-rose-500">Total Expenses</span>
                                         <span class="font-mono font-black text-rose-700 text-sm">&#8369;<?php echo number_format($client_expenses_total, 2); ?></span>
                                     </div>
-                                    <?php if ($my_tier >= 2): ?>
-                                        <button onclick="openAddExpenseModal()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2.5 rounded-full shadow-sm flex items-center space-x-1.5 transition-all active:scale-95 shrink-0">
-                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                                            </svg>
-                                            <span>Add Expense</span>
-                                        </button>
-                                    <?php endif; ?>
                                 </div>
                             </div>
 
@@ -2627,14 +2610,6 @@ $page_title = 'Manage Accounts';
                                     <h3 class="text-base font-extrabold text-slate-900">Client Software &amp; Hardware</h3>
                                     <p class="text-xs text-slate-500 mt-0.5">Software licences and hardware units on record for this account.</p>
                                 </div>
-                                <?php if ($my_tier >= 2): ?>
-                                    <button onclick="openAssetTypeModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-5 py-2.5 rounded-full shadow-sm transition-all active:scale-95 flex items-center space-x-2 shrink-0">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                                        </svg>
-                                        <span>Add Item</span>
-                                    </button>
-                                <?php endif; ?>
                             </div>
 
                             <?php
