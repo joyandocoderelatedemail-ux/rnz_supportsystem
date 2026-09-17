@@ -670,6 +670,39 @@ try {
     $recent_hardware = $stmt_rhw ? $stmt_rhw->fetchAll(PDO::FETCH_ASSOC) : array();
 } catch (PDOException $e) {}
 
+// ----------------------------------------------------
+// 7e. Outstanding Receivables (work orders still unpaid)
+// ----------------------------------------------------
+$receivables_list = array();
+$receivables_with_balance = 0;
+try {
+    $rec_where = " WHERE LOWER(TRIM(w.status)) <> 'paid' ";
+    $rec_params = array();
+    if ($is_filtered && !empty($start_date) && !empty($end_date)) {
+        $rec_where .= " AND w.xdate >= :s_date AND w.xdate <= :e_date ";
+        $rec_params = array(':s_date' => $start_date, ':e_date' => $end_date);
+    }
+
+    // Largest balance first: most unpaid work orders carry no amount at all,
+    // so ordering by age would bury the ones actually worth chasing. The
+    // aging badge on each row still carries the urgency. amount is a varchar
+    // in this legacy table, so it has to be cast or it sorts as text.
+    $stmt_rec = $pdo->prepare("SELECT w.*, c.tradename, c.clientname as cl_owner 
+        FROM bucket_workorder w 
+        LEFT JOIN bucket_client c ON w.accountnum = c.accountnum 
+        " . $rec_where . " AND CAST(w.amount AS DECIMAL(15,2)) > 0 
+        ORDER BY CAST(w.amount AS DECIMAL(15,2)) DESC, w.xdate ASC 
+        LIMIT 10");
+    $stmt_rec->execute($rec_params);
+    $receivables_list = $stmt_rec ? $stmt_rec->fetchAll(PDO::FETCH_ASSOC) : array();
+
+    // How many of those actually owe something, for the header line
+    $stmt_recn = $pdo->prepare("SELECT COUNT(*) AS n FROM bucket_workorder w " . $rec_where . " AND CAST(w.amount AS DECIMAL(15,2)) > 0");
+    $stmt_recn->execute($rec_params);
+    $row_recn = $stmt_recn->fetch(PDO::FETCH_ASSOC);
+    $receivables_with_balance = $row_recn ? intval($row_recn['n']) : 0;
+} catch (PDOException $e) {}
+
 $active_page = 'analytics';
 $page_title = 'Executive Analytics & BI';
 ?>
@@ -1197,14 +1230,14 @@ $page_title = 'Executive Analytics & BI';
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
                         <div>
                             <h2 class="text-base font-extrabold text-white flex items-center gap-2">
-                                <span class="w-2.5 h-2.5 rounded-full bg-[#EB3E0B]"></span>
+                                <span class="w-2.5 h-2.5 rounded-full bg-[#14b8a6]"></span>
                                 <span><?php echo $can_view_expenses ? 'Monthly Revenue vs Expenses Trend' : 'Monthly Revenue &amp; Work Order Billing Trend'; ?></span>
                             </h2>
                             <p class="text-xs text-slate-400"><?php echo $can_view_expenses ? 'Billed service fees against the client expenses recorded in the same month' : 'Track billed service fees and client maintenance totals over time'; ?></p>
                         </div>
                         <div class="flex items-center space-x-3 text-xs font-mono">
                             <span class="flex items-center gap-1.5 text-slate-300">
-                                <span class="w-3 h-3 rounded-md bg-[#EB3E0B]"></span> Revenue (PHP)
+                                <span class="w-3 h-3 rounded-md bg-[#14b8a6]"></span> Revenue (PHP)
                             </span>
                             <?php if ($can_view_expenses): ?>
                             <span class="flex items-center gap-1.5 text-slate-300">
@@ -1371,6 +1404,111 @@ $page_title = 'Executive Analytics & BI';
                 </div>
 
             </div>
+
+            <!-- ========================================================================= -->
+            <!-- 7e. OUTSTANDING RECEIVABLES LEDGER -->
+            <!-- ========================================================================= -->
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 print-card">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h2 class="text-base font-extrabold text-white flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                            <span>Outstanding Receivables</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">
+                            Billed but not yet collected &bull; &#8369;<?php echo number_format($unpaid_revenue, 2); ?> across
+                            <?php echo number_format($receivables_with_balance); ?> work order<?php echo ($receivables_with_balance === 1) ? '' : 's'; ?> carrying a balance,
+                            largest first<?php if ($receivables_with_balance > 10): ?>, top 10 shown<?php endif; ?>
+                            <?php if ($unpaid_workorders_count > $receivables_with_balance): ?>
+                                &bull; <?php echo number_format($unpaid_workorders_count - $receivables_with_balance); ?> further unpaid <?php echo (($unpaid_workorders_count - $receivables_with_balance) === 1) ? 'record carries' : 'records carry'; ?> no amount
+                            <?php endif; ?>
+                        </p>
+                    </div>
+                    <a href="accounts.php?tab=orders" class="no-print text-xs font-bold text-[#EB3E0B] hover:text-[#FEAA73] flex items-center gap-1 transition-colors">
+                        <span>All Work Orders</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </a>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-slate-950/80 text-slate-400 font-bold uppercase text-[10px] border-b border-slate-800">
+                                <th class="py-3 px-4">Billed On</th>
+                                <th class="py-3 px-4">WO Ref</th>
+                                <th class="py-3 px-4">Account #</th>
+                                <th class="py-3 px-4">Business / Trade Name</th>
+                                <th class="py-3 px-4">Scope of Work</th>
+                                <th class="py-3 px-4 text-center">Aging</th>
+                                <th class="py-3 px-4 text-right">Amount (PHP)</th>
+                                <th class="py-3 px-4 text-center no-print">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/60">
+                            <?php if (!empty($receivables_list)): ?>
+                                <?php foreach ($receivables_list as $rc): ?>
+                                    <?php
+                                    $rc_client = !empty($rc['tradename']) ? $rc['tradename'] : (!empty($rc['cl_owner']) ? $rc['cl_owner'] : 'Acct #' . $rc['accountnum']);
+
+                                    // Age in days, guarding against blank or zero dates
+                                    $rc_days = 0;
+                                    if (!empty($rc['xdate']) && $rc['xdate'] !== '0000-00-00') {
+                                        $rc_days = floor((strtotime(date('Y-m-d')) - strtotime($rc['xdate'])) / 86400);
+                                        if ($rc_days < 0) {
+                                            $rc_days = 0;
+                                        }
+                                    }
+                                    if ($rc_days > 90) {
+                                        $rc_age_class = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+                                    } elseif ($rc_days > 30) {
+                                        $rc_age_class = 'bg-amber-500/10 text-amber-400 border-amber-500/30';
+                                    } else {
+                                        $rc_age_class = 'bg-slate-800 text-slate-300 border-slate-700';
+                                    }
+                                    ?>
+                                    <tr class="hover:bg-slate-800/40 transition-colors">
+                                        <td class="py-3.5 px-4 font-mono text-slate-400 whitespace-nowrap">
+                                            <?php echo format_date_only($rc['xdate']); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 font-mono font-bold text-slate-300 whitespace-nowrap">
+                                            WO-<?php echo str_pad($rc['id'], 6, '0', STR_PAD_LEFT); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 font-mono font-bold text-[#FEAA73]">
+                                            #<?php echo sanitize($rc['accountnum']); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 font-bold text-white">
+                                            <a href="accounts.php?search=<?php echo urlencode($rc['accountnum']); ?>&tab=orders" class="hover:text-[#EB3E0B] transition-colors">
+                                                <?php echo sanitize($rc_client); ?>
+                                            </a>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-slate-300 max-w-xs truncate">
+                                            <?php echo sanitize($rc['natureofwork']); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border <?php echo $rc_age_class; ?>">
+                                                <?php echo number_format($rc_days); ?> day<?php echo ($rc_days === 1) ? '' : 's'; ?>
+                                            </span>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-right font-mono font-extrabold text-amber-300 text-sm">
+                                            &#8369;<?php echo number_format(floatval($rc['amount']), 2); ?>
+                                        </td>
+                                        <td class="py-3.5 px-4 text-center no-print">
+                                            <a href="print_document.php?type=workorder&id=<?php echo intval($rc['id']); ?>&autoprint=1" target="_blank" class="bg-slate-800 hover:bg-[#EB3E0B] text-slate-200 hover:text-white px-2.5 py-1 rounded-xl font-bold text-[11px] transition-all inline-flex items-center gap-1" title="Print statement for this work order">
+                                                <span>Statement</span>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="8" class="py-8 text-center text-slate-500">No outstanding receivables in the selected date range.</td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
 
             <!-- ========================================================================= -->
             <!-- 6. TOP BILLED CLIENT ACCOUNTS LEADERBOARD -->
@@ -1715,6 +1853,10 @@ $page_title = 'Executive Analytics & BI';
         Chart.defaults.color = '#94a3b8';
         Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
 
+        // One categorical palette for the bar charts, so neighbouring bars are
+        // told apart by hue rather than by reading the axis.
+        var categoryPalette = ['#f43f5e', '#fb923c', '#facc15', '#34d399', '#22d3ee', '#818cf8', '#e879f9', '#94a3b8'];
+
         // Total Sales counts up to its value on load. The real figure is already
         // in the markup, so this only ever replaces it with the same number.
         (function countUpTotalSales() {
@@ -1766,12 +1908,12 @@ $page_title = 'Executive Analytics & BI';
                         {
                             label: 'Revenue',
                             data: <?php echo json_encode($monthly_rev_data); ?>,
-                            borderColor: '#EB3E0B',
-                            backgroundColor: 'rgba(235, 62, 11, 0.12)',
+                            borderColor: '#14b8a6',
+                            backgroundColor: 'rgba(20, 184, 166, 0.12)',
                             fill: true,
                             tension: 0.35,
                             borderWidth: 3,
-                            pointBackgroundColor: '#EB3E0B',
+                            pointBackgroundColor: '#14b8a6',
                             pointRadius: 4,
                             pointHoverRadius: 7
                         }<?php if ($can_view_expenses): ?>,
@@ -1935,7 +2077,7 @@ $page_title = 'Executive Analytics & BI';
                     datasets: [{
                         label: 'Diagnostic Sessions',
                         data: <?php echo json_encode($device_counts); ?>,
-                        backgroundColor: '#06b6d4',
+                        backgroundColor: categoryPalette,
                         borderRadius: 8
                     }]
                 },
@@ -1969,7 +2111,7 @@ $page_title = 'Executive Analytics & BI';
                     datasets: [{
                         label: 'Expenses (PHP)',
                         data: <?php echo json_encode($top_exp_values); ?>,
-                        backgroundColor: '#f43f5e',
+                        backgroundColor: categoryPalette,
                         borderRadius: 8
                     }]
                 },
