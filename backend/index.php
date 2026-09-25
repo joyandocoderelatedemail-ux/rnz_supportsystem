@@ -20,6 +20,44 @@ init_events_table();
 // Read markers behind the unread badges on the ticket queue
 init_ticket_chat_tables();
 
+// Delete a ticket from the queue's Actions column. Same access-tier gate as
+// the tickets center; other POSTs (the footer's service note modal) pass through.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_ticket') {
+    $action_code = isset($_POST['action_access_code']) ? trim($_POST['action_access_code']) : '';
+    $perm_check = check_tech_action_permission($action_code);
+
+    if (!$perm_check['allowed']) {
+        header("Location: index.php?msg=error&err_msg=" . urlencode($perm_check['message']));
+        exit;
+    }
+
+    $ticket_id = isset($_POST['ticket_id']) ? intval($_POST['ticket_id']) : 0;
+    $t_num = ($ticket_id > 0) ? delete_support_ticket(get_db_connection(), $ticket_id) : false;
+
+    if ($t_num !== false) {
+        header("Location: index.php?msg=ticket_deleted&num=" . urlencode($t_num));
+    } else {
+        header("Location: index.php?msg=error&err_msg=" . urlencode("Ticket not found or already deleted."));
+    }
+    exit;
+}
+
+// Access Level Tier for currently logged-in technician (delete modal)
+$my_tier = get_logged_tech_access_tier();
+
+// Notification Messages
+$msg = isset($_GET['msg']) ? sanitize($_GET['msg']) : '';
+$msg_type = 'success';
+$msg_text = '';
+
+if ($msg === 'ticket_deleted') {
+    $num = isset($_GET['num']) ? sanitize($_GET['num']) : '';
+    $msg_text = 'Support ticket ' . (!empty($num) ? '<strong>' . $num . '</strong> ' : '') . 'and its conversation thread were permanently deleted.';
+} elseif ($msg === 'error') {
+    $msg_type = 'error';
+    $msg_text = isset($_GET['err_msg']) ? sanitize($_GET['err_msg']) : 'An error occurred during the requested operation.';
+}
+
 // Register this visit before reading the list so the viewer always sees
 // themselves in the Online Staff panel. Only backend `user` accounts are
 // tracked - client portal sessions are never recorded.
@@ -198,6 +236,23 @@ $auto_open_popup = ($today_events_count > 0);
         <?php include __DIR__ . '/includes/header.php'; ?>
 
         <main class="p-4 sm:p-6 md:p-8 pb-24 md:pb-8 space-y-6 sm:space-y-8 max-w-7xl w-full mx-auto">
+
+            <!-- Notification Banner -->
+            <?php if (!empty($msg_text)): ?>
+                <div class="p-4 rounded-2xl flex items-center justify-between shadow-sm border <?php echo ($msg_type === 'success') ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'; ?>">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 <?php echo ($msg_type === 'success') ? 'bg-emerald-500 text-white' : 'bg-rose-500 text-white'; ?>">
+                            <?php if ($msg_type === 'success'): ?>
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            <?php else: ?>
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            <?php endif; ?>
+                        </div>
+                        <p class="text-xs sm:text-sm font-medium"><?php echo $msg_text; ?></p>
+                    </div>
+                    <a href="index.php" class="text-xs font-bold opacity-70 hover:opacity-100 transition-opacity">Dismiss</a>
+                </div>
+            <?php endif; ?>
 
             <!-- Today's Schedule Quick Action Banner -->
             <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-5 sm:p-6 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl border border-slate-800">
@@ -549,6 +604,13 @@ $auto_open_popup = ($today_events_count > 0);
                                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                                                     </svg>
                                                 </button>
+
+                                                <!-- Delete Ticket Button (Opens Modal) -->
+                                                <button type="button" onclick="openDeleteTicketModal(<?php echo $t['id']; ?>, '<?php echo addslashes($t['ticket_number']); ?>', '<?php echo addslashes($client_display); ?>', '<?php echo addslashes($t['subject']); ?>')" class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white transition-all shadow-xs" title="Delete Ticket">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                                    </svg>
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -560,6 +622,90 @@ $auto_open_popup = ($today_events_count > 0);
             </div>
 
         </main>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- DELETE TICKET CONFIRMATION MODAL (TIER-PROTECTED) -->
+<!-- ========================================================================= -->
+<div id="deleteTicketModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 transform transition-all space-y-5">
+
+        <div class="flex items-center space-x-3.5">
+            <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center font-bold shrink-0">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-base font-extrabold text-slate-900">Delete Support Ticket</h3>
+                <p class="text-xs text-slate-500">Permanent record deletion</p>
+            </div>
+        </div>
+
+        <!-- Ticket Particulars Box -->
+        <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5 text-xs">
+            <div class="flex justify-between items-center">
+                <span class="text-slate-400 font-bold uppercase text-[10px]">Ticket No.</span>
+                <span id="delete_ticket_number" class="font-mono font-bold text-rose-600 text-xs"></span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-slate-400 font-bold uppercase text-[10px]">Client</span>
+                <span id="delete_ticket_client" class="font-bold text-slate-800 text-xs truncate max-w-[200px]"></span>
+            </div>
+            <div class="pt-1 border-t border-slate-200">
+                <span class="text-slate-400 font-bold uppercase text-[10px] block">Subject</span>
+                <span id="delete_ticket_subject" class="font-semibold text-slate-700 text-xs truncate block"></span>
+            </div>
+        </div>
+
+        <p class="text-xs text-slate-600 leading-relaxed">
+            Are you sure you want to delete this support ticket? This will permanently remove the ticket thread, client replies, reactions, and attached files.
+        </p>
+
+        <!-- Access Tier Condition Form -->
+        <form method="POST" action="index.php" class="space-y-4">
+            <input type="hidden" name="action" value="delete_ticket">
+            <input type="hidden" name="ticket_id" id="delete_ticket_id" value="">
+
+            <?php if ($my_tier === 1): ?>
+                <div class="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-900 leading-relaxed flex items-start space-x-2">
+                    <svg class="w-4 h-4 text-rose-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    <span><strong>Action Disabled:</strong> Level 1 (View Only) accounts are not permitted to delete ticket records.</span>
+                </div>
+            <?php elseif ($my_tier === 2): ?>
+                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 space-y-2">
+                    <div class="flex items-center space-x-1.5 font-bold text-[11px] text-amber-800">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                        <span>Security Level 2 Access Verification Required</span>
+                    </div>
+                    <p class="text-[11px] text-amber-800/90 leading-snug">
+                        Please enter your security access code to authorize this deletion.
+                    </p>
+                    <div>
+                        <input type="password" name="action_access_code" id="delete_ticket_access_code" placeholder="Enter security access code" required class="w-full bg-white border border-amber-300 text-slate-900 text-xs px-3 py-2 rounded-xl focus:outline-none focus:border-[#EB3E0B] font-mono tracking-widest text-center placeholder:tracking-normal">
+                    </div>
+                </div>
+            <?php else: ?>
+                <div class="text-[11px] text-slate-500 font-mono flex items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>Authorized for Direct Deletion (Level 3 Tier)</span>
+                </div>
+            <?php endif; ?>
+
+            <div class="flex items-center justify-end space-x-2 pt-2">
+                <button type="button" onclick="closeDeleteTicketModal()" class="px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors">
+                    Cancel
+                </button>
+                <?php if ($my_tier !== 1): ?>
+                    <button type="submit" class="px-5 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs transition-all shadow-md shadow-rose-600/25 flex items-center space-x-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        <span>Confirm Deletion</span>
+                    </button>
+                <?php endif; ?>
+            </div>
+        </form>
+
     </div>
 </div>
 
@@ -1016,6 +1162,47 @@ function openTicketTechNote(btn) {
         row.getAttribute('data-ticket-id') || ''
     );
 }
+
+/* ----- Delete ticket confirmation ----- */
+function openDeleteTicketModal(id, ticketNumber, clientName, subject) {
+    document.getElementById('delete_ticket_id').value = id;
+    document.getElementById('delete_ticket_number').textContent = ticketNumber;
+    document.getElementById('delete_ticket_client').textContent = clientName;
+    document.getElementById('delete_ticket_subject').textContent = subject;
+
+    var codeInput = document.getElementById('delete_ticket_access_code');
+    if (codeInput) {
+        codeInput.value = '';
+    }
+
+    var modal = document.getElementById('deleteTicketModal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+}
+
+function closeDeleteTicketModal() {
+    var modal = document.getElementById('deleteTicketModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeDeleteTicketModal();
+    }
+});
+
+// Close modal when clicking on backdrop
+document.getElementById('deleteTicketModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeDeleteTicketModal();
+    }
+});
 
 /* ----- Staff Online Now panel -----
    The same request doubles as this dashboard's heartbeat, so an admin who

@@ -457,3 +457,60 @@ function is_other_side_typing($pdo, $ticket_id, $viewer_actor_type) {
     }
     return (time() - strtotime($row['updated_at'])) <= TICKET_TYPING_WINDOW_SECONDS;
 }
+
+/**
+ * Permanently delete a support ticket with its replies, reactions and the
+ * attachment files on disk. Shared by the tickets center and the dashboard.
+ * Returns the deleted ticket number, or false when the ticket doesn't exist.
+ */
+function delete_support_ticket($pdo, $ticket_id) {
+    $ticket_id = intval($ticket_id);
+    $root = __DIR__ . '/../../';
+
+    // Fetch ticket number & attachments for cleanup
+    $stmt_tn = $pdo->prepare("SELECT ticket_number, attachment_path FROM client_support_tickets WHERE id = :id LIMIT 1");
+    $stmt_tn->execute(array(':id' => $ticket_id));
+    $t_row = $stmt_tn->fetch();
+
+    if (!$t_row) {
+        return false;
+    }
+
+    // Delete ticket main attachments if on disk
+    if (!empty($t_row['attachment_path'])) {
+        $main_att = $root . ltrim($t_row['attachment_path'], '/\\');
+        if (file_exists($main_att) && is_file($main_att)) {
+            @unlink($main_att);
+        }
+    }
+
+    // Delete reply attachments if on disk
+    try {
+        $stmt_rep_att = $pdo->prepare("SELECT attachment_path FROM client_ticket_replies WHERE ticket_id = :id AND attachment_path IS NOT NULL AND attachment_path != ''");
+        $stmt_rep_att->execute(array(':id' => $ticket_id));
+        while ($r_att = $stmt_rep_att->fetch()) {
+            $rep_file = $root . ltrim($r_att['attachment_path'], '/\\');
+            if (file_exists($rep_file) && is_file($rep_file)) {
+                @unlink($rep_file);
+            }
+        }
+    } catch (PDOException $e) {}
+
+    // Delete reactions if table exists
+    try {
+        $stmt_del_rx = $pdo->prepare("DELETE FROM client_ticket_reactions WHERE ticket_id = :id");
+        $stmt_del_rx->execute(array(':id' => $ticket_id));
+    } catch (PDOException $e) {}
+
+    // Delete replies
+    try {
+        $stmt_del_rep = $pdo->prepare("DELETE FROM client_ticket_replies WHERE ticket_id = :id");
+        $stmt_del_rep->execute(array(':id' => $ticket_id));
+    } catch (PDOException $e) {}
+
+    // Delete the ticket record
+    $stmt_del_tkt = $pdo->prepare("DELETE FROM client_support_tickets WHERE id = :id");
+    $stmt_del_tkt->execute(array(':id' => $ticket_id));
+
+    return $t_row['ticket_number'];
+}
