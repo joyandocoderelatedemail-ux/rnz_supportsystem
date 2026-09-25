@@ -484,12 +484,13 @@ $auto_open_popup = ($today_events_count > 0);
                                 <th class="py-3.5 px-6">Subject / Summary</th>
                                 <th class="py-3.5 px-6">Status</th>
                                 <th class="py-3.5 px-6">Created Date</th>
+                                <th class="py-3.5 px-6 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 font-medium">
                             <?php if (empty($recent_tickets)): ?>
                                 <tr>
-                                    <td colspan="5" class="py-8 text-center text-slate-400">
+                                    <td colspan="6" class="py-8 text-center text-slate-400">
                                         No client support tickets found.
                                     </td>
                                 </tr>
@@ -539,6 +540,16 @@ $auto_open_popup = ($today_events_count > 0);
                                         </td>
                                         <td data-cell="date" class="py-4 px-6 <?php echo $pal['date']; ?>">
                                             <?php echo format_date($t['created_at']); ?>
+                                        </td>
+                                        <td class="py-4 px-6 text-right">
+                                            <div class="flex items-center justify-end space-x-1.5">
+                                                <!-- Log Technician Service Note (pre-filled from this ticket) -->
+                                                <button type="button" onclick="openTicketTechNote(this)" data-cell="note" class="inline-flex items-center justify-center w-9 h-9 rounded-full <?php echo $pal['btn']; ?> transition-colors shadow-xs" title="Log Technician Service Note">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                                    </svg>
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>
@@ -976,11 +987,34 @@ function handleStaffNotesBackdrop(e) {
    The row also counts as reading that ticket, so its notification badge
    clears exactly as the old Manage button used to do. */
 function openDashboardTicketChat(row, e) {
+    // The Actions buttons keep their own behaviour and don't mark the ticket read
+    if (e && e.target && e.target.closest && e.target.closest('button, a')) return;
+
     var ticketId = parseInt(row.getAttribute('data-ticket-id'), 10) || 0;
     if (ticketId && typeof markNotificationClicked === 'function') {
         markNotificationClicked('ticket_' + ticketId, ticketId * 100000);
     }
     openTicketChat(row, e);
+}
+
+/* Log Technician Service Note - opens the shared footer modal already filled
+   in with this ticket's client. The ticket id goes along so saving the note
+   as Done resolves this ticket. */
+function openTicketTechNote(btn) {
+    var row = btn.closest('.ticket-row');
+    if (!row) return;
+
+    var ticketNumber = row.getAttribute('data-ticket-number') || '';
+    var subject = row.getAttribute('data-subject') || '';
+    var reason = ticketNumber ? ('Ticket ' + ticketNumber + ' - ' + subject) : subject;
+
+    openNewServiceNoteModal(
+        row.getAttribute('data-account') || '',
+        row.getAttribute('data-tradename') || '',
+        row.getAttribute('data-address') || '',
+        reason,
+        row.getAttribute('data-ticket-id') || ''
+    );
 }
 
 /* ----- Staff Online Now panel -----
