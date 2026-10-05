@@ -746,9 +746,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         <!-- 5. CLIENT ASSET CERTIFICATE BODY -->
         <?php elseif ($doc_type === 'asset'): ?>
             <div class="space-y-3">
-                <h3 class="font-extrabold text-sm text-slate-900 uppercase tracking-wider border-b-2 border-slate-800 pb-1.5">
-                    Registered Asset &amp; Warranty Certificate
-                </h3>
+                <div class="border-b-2 border-slate-800"></div>
 
                 <table class="w-full text-left border-collapse text-xs">
                     <thead>
@@ -1018,34 +1016,31 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
         <?php else: ?>
             <div class="pt-6 border-t-2 border-slate-900 grid grid-cols-2 gap-8 text-xs">
                 <!-- Servicing Technician -->
-                <div class="space-y-4">
-                    <div>
+                <div class="flex flex-col">
+                    <div class="mb-4">
                         <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Prepared &amp; Serviced By:</span>
-                        <p class="text-[9px] text-slate-400">Certified accurate by attending technical representative.</p>
+                        <p class="text-[9px] text-slate-400 leading-snug">Certified accurate by attending technical representative.</p>
                     </div>
-                    <div class="space-y-1">
+                    <div class="space-y-1 mt-auto">
                         <div class="border-b-2 border-slate-800 h-8 w-full flex items-end justify-center pb-0.5">
                             <span class="font-extrabold text-slate-900 text-xs uppercase tracking-wide"><?php echo sanitize($tech_name); ?></span>
                         </div>
-                        <div class="flex justify-between text-slate-500 text-[9px] font-bold uppercase">
+                        <div class="flex justify-between items-baseline gap-2 text-slate-500 text-[9px] font-bold uppercase">
                             <span>Authorized Representative / Admin</span>
-                            <span>Date: <?php echo format_date_only($doc_date); ?></span>
+                            <span class="whitespace-nowrap">Date: <?php echo format_date_only($doc_date); ?></span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Client Conforme -->
-                <div class="space-y-4">
-                    <div>
+                <div class="flex flex-col">
+                    <div class="mb-4">
                         <span class="font-bold uppercase tracking-wider text-slate-700 block text-[10px]">Client Conforme &amp; Acceptance:</span>
-                        <p class="text-[9px] text-slate-400">I acknowledge that the work and services indicated have been performed satisfactorily.</p>
+                        <p class="text-[9px] text-slate-400 leading-snug">I acknowledge that the work and services indicated have been performed satisfactorily.</p>
                     </div>
-                    <div class="space-y-1">
+                    <div class="space-y-1 mt-auto">
                         <div class="border-b-2 border-slate-800 h-8 w-full"></div>
-                        <div class="flex justify-between text-slate-500 text-[9px] font-bold uppercase">
-                            <span>Authorized Client Signature / Name</span>
-                            <span>Date</span>
-                        </div>
+                        <div class="text-slate-500 text-[9px] font-bold uppercase">Authorized Client Signature / Name</div>
                     </div>
                 </div>
             </div>
