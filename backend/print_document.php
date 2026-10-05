@@ -157,7 +157,7 @@ if ($doc_type === 'workorder') {
         die("Client Asset Record #$doc_id not found.");
     }
 
-    $doc_title = 'CLIENT EQUIPMENT CERTIFICATE';
+    $doc_title = 'CLIENT WARRANTY SLIP';
     $doc_subtitle = 'Registered Hardware Asset, Warranty Scope & Maintenance Record';
     $doc_ref = 'AST-' . str_pad($data['id'], 6, '0', STR_PAD_LEFT);
     $doc_date = !empty($data['created_at']) ? date('Y-m-d', strtotime($data['created_at'])) : date('Y-m-d');
@@ -743,7 +743,7 @@ $ornum_val = (!empty($data) && isset($data['ornum'])) ? trim($data['ornum']) : '
                 </div>
             </div>
 
-        <!-- 5. CLIENT ASSET CERTIFICATE BODY -->
+        <!-- 5. CLIENT WARRANTY SLIP BODY -->
         <?php elseif ($doc_type === 'asset'): ?>
             <div class="space-y-3">
                 <div class="border-b-2 border-slate-800"></div>
