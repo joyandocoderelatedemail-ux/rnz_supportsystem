@@ -831,9 +831,6 @@ $page_title = 'Executive Analytics & BI';
     <!-- Main Content Wrapper -->
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
         
-        <!-- Header Component -->
-        <?php include __DIR__ . '/includes/header.php'; ?>
-
         <!-- Main Analytics View -->
         <main class="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 pb-24 md:pb-12 max-w-7xl mx-auto w-full">
             
@@ -1687,8 +1684,8 @@ $page_title = 'Executive Analytics & BI';
                             (<?php echo number_format($hardware_units_count); ?> unit<?php echo ($hardware_units_count === 1) ? '' : 's'; ?>)<?php if ($hardware_items_count > 10): ?>, latest 10 shown<?php endif; ?>
                         </p>
                     </div>
-                    <a href="accounts.php" class="no-print text-xs font-bold text-[#EB3E0B] hover:text-[#FEAA73] flex items-center gap-1 transition-colors">
-                        <span>View All Client Accounts</span>
+                    <a href="hardware_released.php<?php echo ($is_filtered && !empty($start_date) && !empty($end_date)) ? ('?' . http_build_query(array('from' => $start_date, 'to' => $end_date))) : ''; ?>" class="no-print text-xs font-bold text-[#EB3E0B] hover:text-[#FEAA73] flex items-center gap-1 transition-colors">
+                        <span>View All Hardware</span>
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                     </a>
                 </div>
@@ -1774,8 +1771,8 @@ $page_title = 'Executive Analytics & BI';
                             <?php echo number_format($total_expense_count); ?> record<?php echo ($total_expense_count === 1) ? '' : 's'; ?><?php if ($total_expense_count > 10): ?>, latest 10 shown<?php endif; ?>
                         </p>
                     </div>
-                    <a href="accounts.php" class="no-print text-xs font-bold text-[#EB3E0B] hover:text-[#FEAA73] flex items-center gap-1 transition-colors">
-                        <span>View All Client Accounts</span>
+                    <a href="expenses.php<?php echo ($is_filtered && !empty($start_date) && !empty($end_date)) ? ('?' . http_build_query(array('from' => $start_date, 'to' => $end_date))) : ''; ?>" class="no-print text-xs font-bold text-[#EB3E0B] hover:text-[#FEAA73] flex items-center gap-1 transition-colors">
+                        <span>View All Expenses</span>
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                     </a>
                 </div>
