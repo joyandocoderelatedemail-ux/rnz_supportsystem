@@ -262,6 +262,107 @@ function get_software_issues_list() {
                     'expected' => 'Z-Read report prints out and shift registers are closed.'
                 )
             )
+        ),
+
+        'reports-mismatch' => array(
+            'id' => 'reports-mismatch',
+            'name' => 'Reports Mismatch',
+            'category' => 'Software Support',
+            'icon' => '<svg class="w-6 h-6 text-[#EB3E0B]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>',
+            'description' => 'Sales, stock or day end figures that do not tally between two reports, between the printed copy and the screen, or against actual cash on hand.',
+            'common_causes' => array(
+                'Transaction details encoded without being checked before posting',
+                'Items renamed, re-priced or edited after the sales were recorded',
+                'Voided, refunded or re-printed transactions not reflected in the report',
+                'Two reports compared that count totals differently',
+                'A terminal not yet synced, or a shift left open without a Z-Read'
+            ),
+            'questions' => array(
+                array(
+                    'id' => 'q1',
+                    'text' => 'Did you review the details you encoded on screen before proceeding to the next procedure?',
+                    'type' => 'yesno',
+                    'no_solution' => 'Unverified entries are the most common source of mismatched reports. Re-check each entry before confirming it, then generate the report again.'
+                ),
+                array(
+                    'id' => 'q2',
+                    'text' => 'Which two records do not match?',
+                    'type' => 'choice',
+                    'options' => array(
+                        'Day End / Z-Reading vs actual cash on hand',
+                        'Fast Moving Report vs Sales Summary',
+                        'Printed hard copy vs on-screen report',
+                        'Sales report vs Stock / Inventory movement'
+                    )
+                ),
+                array(
+                    'id' => 'q3',
+                    'text' => 'What period is affected?',
+                    'type' => 'choice',
+                    'options' => array(
+                        'A single transaction',
+                        'One specific day',
+                        'A range of days',
+                        'Since a recent price or system update'
+                    )
+                ),
+                array(
+                    'id' => 'q4',
+                    'text' => 'Were any items renamed, re-priced or edited after those transactions were recorded?',
+                    'type' => 'yesno',
+                    'no_solution' => 'Noted. Proceeding to check voided entries and the shift totals instead.'
+                ),
+                array(
+                    'id' => 'q5',
+                    'text' => 'Were there voided, refunded or re-printed transactions during that period?',
+                    'type' => 'yesno',
+                    'no_solution' => 'Noted. Proceeding to compare the report against the posted transactions.'
+                ),
+                // Two options only. Picking the escalate_on answer jumps straight to
+                // the ticket screen instead of walking through the steps first.
+                array(
+                    'id' => 'q6',
+                    'text' => 'The checks above have not explained the difference. How would you like to proceed?',
+                    'type' => 'choice',
+                    'options' => array(
+                        'Show me the self-check steps first',
+                        'Report this to RNZ Support now'
+                    ),
+                    'escalate_on' => 'Report this to RNZ Support now'
+                )
+            ),
+            'steps' => array(
+                array(
+                    'step_num' => 1,
+                    'title' => 'Re-run the Report for the Exact Same Period',
+                    'instruction' => 'Go to Reports and generate both reports again using identical From and To dates, and the same terminal or cashier filter. Compare the totals side by side.',
+                    'expected' => 'Both reports cover the same period, confirming the difference is real and not a date range mismatch.'
+                ),
+                array(
+                    'step_num' => 2,
+                    'title' => 'Check the Encoded Details of the Flagged Transactions',
+                    'instruction' => 'Open the transaction list for that period. For each questionable entry, compare the encoded item, quantity and amount against the printed receipt or invoice.',
+                    'expected' => 'Any entry encoded with the wrong amount, quantity or item is identified.'
+                ),
+                array(
+                    'step_num' => 3,
+                    'title' => 'Review Voided, Refunded & Edited Transactions',
+                    'instruction' => 'Filter the period for voided, refunded or re-printed transactions, and note any item that was renamed or re-priced after the sale was posted.',
+                    'expected' => 'Entries that explain the difference between the two reports are listed.'
+                ),
+                array(
+                    'step_num' => 4,
+                    'title' => 'Close the Shift & Z-Read on Every Terminal',
+                    'instruction' => 'Make sure every POS terminal for that period has completed its Z-Read and that no shift is still open, then generate the report again.',
+                    'expected' => 'All terminals have posted their sales, so the report totals are complete.'
+                ),
+                array(
+                    'step_num' => 5,
+                    'title' => 'Submit Ticket with UltraViewer Credentials & Report Details',
+                    'instruction' => 'Open UltraViewer on the POS terminal and submit a support ticket with your ID and Password, the report names, the exact dates, and the two figures that do not match.',
+                    'expected' => 'A technician can read the database directly and reconcile the records.'
+                )
+            )
         )
     );
 }

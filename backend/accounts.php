@@ -3,6 +3,9 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/inventory_init.php';
+// can_edit_service_note() decides who may rewrite a note; footer.php loads this
+// too, but the notes tab needs it long before the footer is included.
+require_once __DIR__ . '/includes/technote_init.php';
 
 require_page_access('accounts');
 init_inventory_tables();
@@ -591,6 +594,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $update_error = "Error adding service charge: " . $e->getMessage();
                 }
             }
+        } elseif ($action === 'update_tech_note') {
+            $note_id = isset($_POST['note_id']) ? intval($_POST['note_id']) : 0;
+            $n_reason = isset($_POST['reasonoftech']) ? trim($_POST['reasonoftech']) : '';
+            $n_cause = isset($_POST['causeoftheissue']) ? trim($_POST['causeoftheissue']) : '';
+            $n_resso = isset($_POST['resso']) ? trim($_POST['resso']) : '';
+            $n_status = isset($_POST['status']) ? trim($_POST['status']) : 'Done';
+
+            if ($note_id <= 0 || $n_reason === '') {
+                $update_error = "A reason for the technical service is required.";
+            } else {
+                try {
+                    $stmt_n = $pdo->prepare("SELECT id, techname FROM bucket_technotes WHERE id = :id LIMIT 1");
+                    $stmt_n->execute(array(':id' => $note_id));
+                    $note_row = $stmt_n->fetch();
+
+                    $tech_now = get_logged_tech();
+                    $my_tech_name = ($tech_now && isset($tech_now['fullname'])) ? $tech_now['fullname'] : '';
+
+                    if (!$note_row) {
+                        $update_error = "That service note no longer exists.";
+                    } elseif (!can_edit_service_note($note_row, $my_tech_name)) {
+                        // Same rule the ticket modal enforces: the author rewrites
+                        // their own note, everyone else only reads it.
+                        $update_error = "Service note #$note_id was logged by "
+                            . (!empty($note_row['techname']) ? sanitize($note_row['techname']) : 'another technician')
+                            . ". Only they can edit it.";
+                    } else {
+                        // xdate and techname stay as first saved - correcting the
+                        // write-up does not move the visit date or reassign the note.
+                        $stmt_nu = $pdo->prepare("UPDATE bucket_technotes
+                            SET reasonoftech = :reason,
+                                causeoftheissue = :cause,
+                                resso = :resso,
+                                status = :status
+                            WHERE id = :id");
+                        $stmt_nu->execute(array(
+                            ':reason' => $n_reason,
+                            ':cause' => $n_cause,
+                            ':resso' => $n_resso,
+                            ':status' => $n_status,
+                            ':id' => $note_id
+                        ));
+                        $update_msg = "Service note #$note_id updated successfully.";
+                    }
+                } catch (PDOException $e) {
+                    $update_error = "Error updating service note: " . $e->getMessage();
+                }
+            }
         } elseif ($action === 'add_client_expense') {
             $accountnum = isset($_POST['accountnum']) ? trim($_POST['accountnum']) : '';
             $description = isset($_POST['description']) ? trim($_POST['description']) : '';
@@ -906,6 +957,9 @@ if (isset($_POST['action']) && in_array($_POST['action'], array('create_workorde
 }
 if (isset($_POST['action']) && in_array($_POST['action'], array('add_client_asset', 'update_client_asset', 'delete_client_asset'))) {
     $active_tab = 'assets';
+}
+if (isset($_POST['action']) && $_POST['action'] === 'update_tech_note') {
+    $active_tab = 'notes';
 }
 if ($can_view_expenses && isset($_POST['action']) && in_array($_POST['action'], array('add_client_expense', 'update_client_expense', 'delete_client_expense'))) {
     $active_tab = 'expenses';
@@ -2275,8 +2329,14 @@ $page_title = 'Manage Accounts';
                                                 <td colspan="4" class="py-8 text-center text-slate-400">No service notes found for this account.</td>
                                             </tr>
                                         <?php else: ?>
+                                            <?php
+                                            $note_tech_now = get_logged_tech();
+                                            $my_tech_name = ($note_tech_now && isset($note_tech_now['fullname'])) ? $note_tech_now['fullname'] : '';
+                                            ?>
                                             <?php foreach ($tech_notes as $tn): 
                                                 $st_badge = get_status_badge_class($tn['status']);
+                                                // Only the technician who logged it may rewrite it
+                                                $note_is_mine = can_edit_service_note($tn, $my_tech_name);
                                             ?>
                                                 <tr class="hover:bg-slate-50/80 transition-colors">
                                                     <td class="py-3 px-4 space-y-1">
@@ -2304,6 +2364,7 @@ $page_title = 'Manage Accounts';
                                                     <td class="py-3 px-4 text-right">
                                                         <div class="flex items-center justify-end space-x-1.5">
                                                             <button data-note="<?php echo htmlspecialchars(json_encode($tn), ENT_QUOTES, 'UTF-8'); ?>"
+                                                                    data-can-edit="<?php echo $note_is_mine ? '1' : '0'; ?>"
                                                                     onclick="openServiceNoteDetailsModal(this)" 
                                                                     class="bg-slate-100 hover:bg-[#FFE8D5] text-slate-700 hover:text-[#EB3E0B] font-bold text-[11px] px-3 py-1.5 rounded-full inline-flex items-center space-x-1 transition-all">
                                                                 <svg class="w-4 h-4 text-[#FA5915]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3886,6 +3947,7 @@ $page_title = 'Manage Accounts';
                             </div>
                         </div>
 
+                        <div id="v_note_read" class="space-y-5">
                         <div class="grid grid-cols-2 gap-4 text-xs">
                             <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
                                 <span class="block text-slate-400 font-bold uppercase text-[10px]">Technician</span>
@@ -3913,8 +3975,61 @@ $page_title = 'Manage Accounts';
                                 <p id="v_note_resso" class="font-semibold text-emerald-950 leading-relaxed whitespace-pre-wrap text-xs sm:text-sm">-</p>
                             </div>
                         </div>
+                        </div>
 
-                        <div class="pt-3 flex items-center justify-between border-t border-slate-100">
+                        <!-- Owner's edit form, swapped in by startEditServiceNote() -->
+                        <form id="v_note_edit_form" method="POST" action="accounts.php?q=<?php echo urlencode($client_acct); ?>&tab=notes" class="hidden space-y-4 text-xs">
+                            <input type="hidden" name="action" value="update_tech_note">
+                            <input type="hidden" name="note_id" id="v_note_edit_id" value="">
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Reason for Technical Service <span class="text-[#EB3E0B]">*</span></label>
+                                <textarea name="reasonoftech" id="v_note_edit_reason" rows="3" required class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all leading-relaxed"></textarea>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Root Cause of the Issue</label>
+                                <textarea name="causeoftheissue" id="v_note_edit_cause" rows="3" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all leading-relaxed"></textarea>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Resolution / Work Done</label>
+                                <textarea name="resso" id="v_note_edit_resso" rows="3" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all leading-relaxed"></textarea>
+                            </div>
+
+                            <div>
+                                <label class="block font-bold text-slate-700 uppercase tracking-wider mb-1">Status</label>
+                                <select name="status" id="v_note_edit_status" class="w-full bg-slate-50 border border-slate-200 text-slate-900 text-xs rounded-xl p-3 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all font-bold">
+                                    <option value="Done">Done</option>
+                                    <option value="Working">Working</option>
+                                    <option value="Pending Issue">Pending Issue</option>
+                                </select>
+                            </div>
+
+                            <?php if ($my_tier === 2): ?>
+                                <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl space-y-1.5">
+                                    <label class="text-xs font-bold text-amber-900 flex items-center space-x-1.5">
+                                        <svg class="w-4 h-4 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                        <span>Security Access Code Required (Level 2 Account)</span>
+                                    </label>
+                                    <input type="password" name="action_access_code" required placeholder="Enter your 4-digit security access code" class="w-full bg-white text-slate-800 text-xs px-3.5 py-2.5 rounded-xl border border-amber-300 focus:border-amber-500 focus:outline-none font-mono">
+                                </div>
+                            <?php endif; ?>
+
+                            <div class="pt-3 flex items-center justify-end space-x-3 border-t border-slate-100">
+                                <button type="button" onclick="cancelEditServiceNote()" class="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">Cancel</button>
+                                <button type="submit" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md transition-all active:scale-95">Save Changes</button>
+                            </div>
+                        </form>
+
+                        <div id="v_note_actions" class="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                            <!-- Shown only to the technician who logged the note -->
+                            <button type="button" id="v_note_edit_btn" onclick="startEditServiceNote()" class="hidden bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-5 py-2.5 rounded-full transition-all items-center space-x-1.5">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                                <span>Edit Note</span>
+                            </button>
                             <a id="v_note_print_btn" href="#" target="_blank" 
                                class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-5 py-2.5 rounded-full shadow-md flex items-center space-x-1.5 transition-all">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -3925,6 +4040,7 @@ $page_title = 'Manage Accounts';
                             <button onclick="closeServiceNoteModal()" class="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-sm">
                                 Close Details
                             </button>
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -4694,10 +4810,30 @@ $page_title = 'Manage Accounts';
                     if (modal) modal.classList.add('hidden');
                 }
 
+                // Remembers the note currently open so the edit form can be filled
+                // from the same data the read-only view is showing.
+                var _currentServiceNote = null;
+
                 function openServiceNoteDetailsModal(btn) {
                     try {
                         var raw = btn.getAttribute('data-note');
                         var tn = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                        _currentServiceNote = tn;
+
+                        // Back to the read-only view every time the modal opens
+                        cancelEditServiceNote();
+
+                        // The Edit button only appears for the technician who logged it
+                        var editBtn = document.getElementById('v_note_edit_btn');
+                        if (editBtn) {
+                            if (btn.getAttribute('data-can-edit') === '1') {
+                                editBtn.classList.remove('hidden');
+                                editBtn.classList.add('inline-flex');
+                            } else {
+                                editBtn.classList.add('hidden');
+                                editBtn.classList.remove('inline-flex');
+                            }
+                        }
                         document.getElementById('v_note_id').innerText = '#' + (tn.id || '0');
                         document.getElementById('v_note_date').innerText = tn.xdate || '';
                         document.getElementById('v_note_tech').innerText = tn.techname || '';
@@ -4721,6 +4857,43 @@ $page_title = 'Manage Accounts';
                 function closeServiceNoteModal() {
                     var modal = document.getElementById('viewServiceNoteModal');
                     if (modal) modal.classList.add('hidden');
+                    cancelEditServiceNote();
+                }
+
+                // Swap the read-only blocks for the form, prefilled with this note
+                function startEditServiceNote() {
+                    if (!_currentServiceNote) return;
+                    var tn = _currentServiceNote;
+
+                    document.getElementById('v_note_edit_id').value = tn.id || '0';
+                    document.getElementById('v_note_edit_reason').value = tn.reasonoftech || '';
+                    document.getElementById('v_note_edit_cause').value = tn.causeoftheissue || '';
+                    document.getElementById('v_note_edit_resso').value = tn.resso || '';
+
+                    var statusSel = document.getElementById('v_note_edit_status');
+                    if (statusSel) {
+                        var wanted = (tn.status || 'Done');
+                        statusSel.value = wanted;
+                        // A legacy status outside the three options would blank the
+                        // select, which would then save an empty status
+                        if (statusSel.selectedIndex < 0) statusSel.value = 'Done';
+                    }
+
+                    var readBlocks = document.getElementById('v_note_read');
+                    var form = document.getElementById('v_note_edit_form');
+                    var actions = document.getElementById('v_note_actions');
+                    if (readBlocks) readBlocks.classList.add('hidden');
+                    if (form) form.classList.remove('hidden');
+                    if (actions) actions.classList.add('hidden');
+                }
+
+                function cancelEditServiceNote() {
+                    var readBlocks = document.getElementById('v_note_read');
+                    var form = document.getElementById('v_note_edit_form');
+                    var actions = document.getElementById('v_note_actions');
+                    if (readBlocks) readBlocks.classList.remove('hidden');
+                    if (form) form.classList.add('hidden');
+                    if (actions) actions.classList.remove('hidden');
                 }
 
                 function openCreateWorkOrderModalFromBtn(btn) {

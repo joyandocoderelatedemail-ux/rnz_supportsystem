@@ -107,6 +107,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $issue_item) {
         $current_issue = isset($_SESSION['selected_software_issue']) ? $_SESSION['selected_software_issue'] : $issue_item['name'];
         log_software_activity($pdo, $accountnum, $session_id, $issue_item['name'], $current_issue, $q_id, $answer, $custom_ans, 0, 0, 'In Progress');
 
+        // An answer flagged as escalate_on skips the remaining questions and
+        // the self-check steps, and goes straight to the ticket screen.
+        $answered_q = isset($issue_item['questions'][$q_idx]) ? $issue_item['questions'][$q_idx] : null;
+        if ($answered_q && !empty($answered_q['escalate_on']) && $answer === $answered_q['escalate_on']) {
+            log_software_activity($pdo, $accountnum, $session_id, $issue_item['name'], $current_issue, $q_id, $answer, $custom_ans, 0, 0, 'Unresolved');
+            header("Location: software.php?issue=" . $selected_issue_id . "&step=unresolved");
+            exit;
+        }
+
         $total_q = count($issue_item['questions']);
         $next_q = $q_idx + 1;
 
