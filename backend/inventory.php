@@ -752,6 +752,18 @@ $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 $stock_status = isset($_GET['stock_status']) ? trim($_GET['stock_status']) : '';
 $sort_by = isset($_GET['sort']) ? trim($_GET['sort']) : 'name_asc';
 
+// Date the item was added to inventory. Both blank means every item, which
+// is how the page opens.
+$date_from = isset($_GET['from']) ? trim($_GET['from']) : '';
+$date_to = isset($_GET['to']) ? trim($_GET['to']) : '';
+
+// A reversed range would quietly return nothing, so swap it instead
+if ($date_from !== '' && $date_to !== '' && strtotime($date_from) > strtotime($date_to)) {
+    $swap_d = $date_from;
+    $date_from = $date_to;
+    $date_to = $swap_d;
+}
+
 $where_clauses = array("1=1");
 $params = array();
 
@@ -760,6 +772,15 @@ if (!empty($search)) {
     $params[':s1'] = "%" . $search . "%";
     $params[':s2'] = "%" . $search . "%";
     $params[':s3'] = "%" . $search . "%";
+}
+
+if ($date_from !== '') {
+    $where_clauses[] = "DATE(created_at) >= :d_from";
+    $params[':d_from'] = $date_from;
+}
+if ($date_to !== '') {
+    $where_clauses[] = "DATE(created_at) <= :d_to";
+    $params[':d_to'] = $date_to;
 }
 
 // Stock health is judged on deployable (good) stock, not the grand total -
@@ -1087,12 +1108,25 @@ $page_title = 'Hardware Inventory Hub';
                         </select>
                     </div>
 
+                    <!-- Date Added Range -->
+                    <div class="sm:col-span-12 flex flex-wrap items-center gap-2 pt-3 mt-1 border-t border-slate-100">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Date Added:</span>
+                        <input type="date" name="from" value="<?php echo sanitize($date_from); ?>" class="bg-slate-50 text-slate-800 text-xs px-3 py-2 rounded-xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all font-mono">
+                        <span class="text-slate-400 text-xs font-bold">&rarr;</span>
+                        <input type="date" name="to" value="<?php echo sanitize($date_to); ?>" class="bg-slate-50 text-slate-800 text-xs px-3 py-2 rounded-xl border border-slate-200 focus:border-[#EB3E0B] focus:bg-white focus:outline-none transition-all font-mono">
+                        <?php if ($date_from !== '' || $date_to !== ''): ?>
+                            <span class="text-[11px] text-slate-500 font-semibold ml-1">
+                                showing <?php echo count($items); ?> of <?php echo $total_skus; ?> items
+                            </span>
+                        <?php endif; ?>
+                    </div>
+
                     <!-- Sort and Filter Submit Button -->
                     <div class="sm:col-span-1 flex items-center gap-1.5">
                         <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 px-3 rounded-2xl transition-all shadow-sm">
                             Go
                         </button>
-                        <?php if (!empty($search) || !empty($stock_status) || $sort_by !== 'name_asc'): ?>
+                        <?php if (!empty($search) || !empty($stock_status) || $sort_by !== 'name_asc' || $date_from !== '' || $date_to !== ''): ?>
                             <a href="inventory.php" class="p-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-xs font-bold transition-all flex items-center justify-center shrink-0" title="Reset Filters">
                                 &times;
                             </a>

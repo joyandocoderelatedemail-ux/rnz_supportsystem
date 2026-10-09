@@ -660,9 +660,13 @@ try {
 // ----------------------------------------------------
 $recent_hardware = array();
 try {
-    $stmt_rhw = $pdo->prepare("SELECT a.*, c.tradename, c.clientname as cl_owner 
+    // i.cost_price is what the unit cost us; a.unit_price is what the client
+    // was charged. The item may have been deleted since, hence the LEFT JOIN
+    // and the null handling in the table below.
+    $stmt_rhw = $pdo->prepare("SELECT a.*, c.tradename, c.clientname as cl_owner, i.cost_price 
         FROM client_assets a 
         LEFT JOIN bucket_client c ON a.accountnum = c.accountnum 
+        LEFT JOIN support_inventory_items i ON i.id = a.item_id 
         WHERE a.asset_type = 'Hardware' " . $asset_date_sql . "
         ORDER BY a.created_at DESC, a.id DESC 
         LIMIT 10");
@@ -1700,6 +1704,7 @@ $page_title = 'Executive Analytics & BI';
                                 <th class="py-3 px-4">Hardware Item</th>
                                 <th class="py-3 px-4 text-center">Qty</th>
                                 <th class="py-3 px-4">Released By</th>
+                                <th class="py-3 px-4 text-right">Cost (PHP)</th>
                                 <th class="py-3 px-4 text-right">Amount (PHP)</th>
                                 <th class="py-3 px-4 text-center no-print">Action</th>
                             </tr>
@@ -1709,6 +1714,10 @@ $page_title = 'Executive Analytics & BI';
                                 <?php foreach ($recent_hardware as $hw): ?>
                                     <?php
                                     $hw_client = !empty($hw['tradename']) ? $hw['tradename'] : (!empty($hw['cl_owner']) ? $hw['cl_owner'] : 'Acct #' . $hw['accountnum']);
+                                    // No inventory row behind this asset means no cost on record
+                                    $hw_has_cost = ($hw['cost_price'] !== null && $hw['cost_price'] !== '');
+                                    $hw_unit_cost = $hw_has_cost ? floatval($hw['cost_price']) : 0;
+                                    $hw_line_cost = $hw_unit_cost * intval($hw['quantity']);
                                     ?>
                                     <tr class="hover:bg-slate-800/40 transition-colors">
                                         <td class="py-3.5 px-4 font-mono text-slate-400 whitespace-nowrap">
@@ -1735,6 +1744,14 @@ $page_title = 'Executive Analytics & BI';
                                         <td class="py-3.5 px-4 text-slate-400">
                                             <?php echo !empty($hw['recorded_by']) ? sanitize($hw['recorded_by']) : '&mdash;'; ?>
                                         </td>
+                                        <td class="py-3.5 px-4 text-right font-mono text-slate-300 whitespace-nowrap">
+                                            <?php if ($hw_has_cost): ?>
+                                                &#8369;<?php echo number_format($hw_line_cost, 2); ?>
+                                                <span class="block text-[10px] text-slate-500">&#8369;<?php echo number_format($hw_unit_cost, 2); ?> / unit</span>
+                                            <?php else: ?>
+                                                <span class="text-slate-600">&mdash;</span>
+                                            <?php endif; ?>
+                                        </td>
                                         <td class="py-3.5 px-4 text-right font-mono font-extrabold text-indigo-300 text-sm">
                                             &#8369;<?php echo number_format(floatval($hw['total_amount']), 2); ?>
                                         </td>
@@ -1747,7 +1764,7 @@ $page_title = 'Executive Analytics & BI';
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="8" class="py-8 text-center text-slate-500">No hardware released to clients in the selected date range.</td>
+                                    <td colspan="9" class="py-8 text-center text-slate-500">No hardware released to clients in the selected date range.</td>
                                 </tr>
                             <?php endif; ?>
                         </tbody>
