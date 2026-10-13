@@ -23,11 +23,24 @@ RNZWEBSITE/videos/
 RNZWEBSITE/IMAGES/caferesto.sql
 IMAGES/caferesto.sql
 
-# User uploads
+# User uploads - client ticket attachments and package images (keep folder structure via .gitkeep)
 uploads/ticket_attachments/*
 !uploads/ticket_attachments/.gitkeep
 uploads/packages/*
 !uploads/packages/.gitkeep
 
-# AI summariser API key - never commit the real one
+# AI summariser API key - never commit the real one (see backend/includes/ai_config.sample.php)
 backend/includes/ai_config.php
+
+# Runtime data
+data/demo-requests.imported
+RNZWEBSITE/data/demo-requests.imported
+
+# Full DB dumps (may contain live client data) - small schema files (database.sql) are still tracked
+database/rnzsoftwaredsdatabasex1.sql
+RNZWEBSITE/database/rnzsoftwaredsdatabasex1.sql
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

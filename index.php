@@ -136,21 +136,14 @@ $page_title = 'Dashboard';
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-        /* Packages marquee (dashboard) */
+        /* Packages carousel (dashboard) */
         .rnz-packages, .rnz-packages * { font-family: 'Poppins', 'Plus Jakarta Sans', sans-serif; }
 
-        .rnz-marquee-inner { animation: rnzMarqueeScroll linear infinite; }
-        .rnz-marquee:hover .rnz-marquee-inner,
-        .rnz-marquee:focus-within .rnz-marquee-inner { animation-play-state: paused; }
-
-        @keyframes rnzMarqueeScroll {
-            0%   { transform: translateX(0%); }
-            100% { transform: translateX(-50%); }
-        }
+        .rnz-carousel-track { transition: transform 0.55s ease-in-out; }
+        .rnz-carousel-dot { transition: all 0.25s ease; }
 
         @media (prefers-reduced-motion: reduce) {
-            .rnz-marquee-inner { animation: none; }
-            .rnz-marquee { overflow-x: auto; }
+            .rnz-carousel-track { transition: none; }
         }
     </style>
 </head>
@@ -204,49 +197,136 @@ $page_title = 'Dashboard';
                 </div>
             </div>
 
-            <!-- PACKAGES WE OFFER - SLIDESHOW (managed in backend/packages.php) -->
-            <?php if (!empty($dashboard_packages)):
-                $pkg_metrics = package_marquee_metrics(count($dashboard_packages));
-            ?>
-            <section class="rnz-packages bg-white rounded-3xl border border-[#FECDAA] shadow-sm py-6 overflow-hidden">
-                <div class="px-6 text-center">
-                    <h2 class="text-lg sm:text-xl font-semibold text-slate-900">Packages We Offer</h2>
-                    <p class="text-xs text-slate-500 mt-1.5 max-w-md mx-auto leading-relaxed">
-                        Complete POS hardware and software bundles from RNZ.
-                    </p>
-                </div>
-
-                <div class="rnz-marquee overflow-hidden w-full relative max-w-6xl mx-auto mt-6">
-                    <div class="absolute left-0 top-0 h-full w-12 z-10 pointer-events-none bg-gradient-to-r from-white to-transparent"></div>
-
-                    <div class="rnz-marquee-inner flex w-max" style="animation-duration: <?php echo $pkg_metrics['duration_ms']; ?>ms;">
-                        <?php // Two identical groups, each repeated until it is wider than the
-                              // strip, so translateX(-50%) loops without ever showing a gap.
-                              for ($pkg_group = 0; $pkg_group < 2; $pkg_group++): ?>
-                            <div class="flex shrink-0"<?php echo $pkg_group ? ' aria-hidden="true"' : ''; ?>>
-                                <?php for ($pkg_rep = 0; $pkg_rep < $pkg_metrics['reps']; $pkg_rep++): ?>
-                                    <?php foreach ($dashboard_packages as $pkg): ?>
-                                        <div class="w-36 mx-3 shrink-0 group">
-                                            <div class="h-40 w-full overflow-hidden rounded-xl bg-slate-100">
-                                                <img src="<?php echo sanitize(package_image_url($pkg['image_path'])); ?>"
-                                                     alt="<?php echo sanitize($pkg['title']); ?>"
-                                                     decoding="async"
-                                                     class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
-                                            </div>
-                                            <p class="text-xs text-slate-800 font-medium mt-2 leading-snug line-clamp-2"><?php echo sanitize($pkg['title']); ?></p>
-                                            <?php if (trim($pkg['tag']) !== ''): ?>
-                                                <p class="text-[10px] text-[#EB3E0B] font-medium mt-0.5"><?php echo sanitize($pkg['tag']); ?></p>
-                                            <?php endif; ?>
-                                        </div>
-                                    <?php endforeach; ?>
-                                <?php endfor; ?>
-                            </div>
-                        <?php endfor; ?>
+            <!-- PACKAGES WE OFFER - CAROUSEL (managed in backend/packages.php) -->
+            <?php if (!empty($dashboard_packages)): ?>
+            <section class="rnz-packages bg-white rounded-3xl border border-[#FECDAA] shadow-sm overflow-hidden">
+                <div class="relative">
+                    <div id="pkgViewport" class="overflow-hidden">
+                        <div id="pkgTrack" class="rnz-carousel-track flex">
+                            <?php foreach ($dashboard_packages as $pkg): ?>
+                                <div class="w-full shrink-0 relative">
+                                    <div class="h-[560px] sm:h-[640px] w-full overflow-hidden bg-[#1c0e0a] flex items-center justify-center">
+                                        <img src="<?php echo sanitize(package_image_url($pkg['image_path'])); ?>"
+                                             alt="<?php echo sanitize($pkg['title']); ?>"
+                                             decoding="async"
+                                             class="h-full w-full object-contain pointer-events-none select-none" draggable="false">
+                                    </div>
+                                    <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-4 sm:p-6 pt-12 pointer-events-none">
+                                        <p class="text-base sm:text-lg text-white font-bold leading-snug"><?php echo sanitize($pkg['title']); ?></p>
+                                        <?php if (trim($pkg['tag']) !== ''): ?>
+                                            <p class="text-xs sm:text-sm text-white/80 font-medium mt-0.5"><?php echo sanitize($pkg['tag']); ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
-
-                    <div class="absolute right-0 top-0 h-full w-12 md:w-24 z-10 pointer-events-none bg-gradient-to-l from-white to-transparent"></div>
+                    <button type="button" id="pkgPrev" aria-label="Previous package" class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 backdrop-blur border border-[#FECDAA] text-[#7C2112] hover:bg-[#EB3E0B] hover:border-[#EB3E0B] hover:text-white shadow-lg transition-all active:scale-95 flex items-center justify-center z-10">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <button type="button" id="pkgNext" aria-label="Next package" class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#EB3E0B] border border-[#EB3E0B] text-white hover:bg-[#C32C0B] shadow-lg transition-all active:scale-95 flex items-center justify-center z-10">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
                 </div>
             </section>
+            <script>
+            (function () {
+                var track = document.getElementById('pkgTrack');
+                var viewport = document.getElementById('pkgViewport');
+                if (!track || !viewport) return;
+                var realTotal = track.children.length;
+                if (realTotal <= 1) return;
+
+                // Seamless infinite loop: clone first/last so sliding forward
+                // from the last image continues into the first (and vice versa)
+                // instead of rewinding backwards through the whole strip.
+                var firstClone = track.children[0].cloneNode(true);
+                var lastClone = track.children[realTotal - 1].cloneNode(true);
+                firstClone.setAttribute('aria-hidden', 'true');
+                lastClone.setAttribute('aria-hidden', 'true');
+                track.appendChild(firstClone);
+                track.insertBefore(lastClone, track.children[0]);
+
+                var pos = 1; // physical position in track (1..realTotal = real slides)
+                var animating = false;
+                var timer = null;
+
+                function render(animate) {
+                    track.style.transition = animate ? '' : 'none';
+                    track.style.transform = 'translateX(-' + (pos * 100) + '%)';
+                    if (!animate) {
+                        void track.offsetWidth;
+                        track.style.transition = '';
+                    }
+                }
+                function step(dir) {
+                    if (animating) return;
+                    animating = true;
+                    pos += dir;
+                    render(true);
+                    restart();
+                }
+                function next() { step(1); }
+                function prev() { step(-1); }
+                function stop() { if (timer) { clearInterval(timer); timer = null; } }
+                function restart() {
+                    stop();
+                    timer = setInterval(function () {
+                        if (!animating) {
+                            animating = true;
+                            pos += 1;
+                            render(true);
+                        }
+                    }, 3000);
+                }
+
+                // After sliding onto a clone, jump back to the matching real
+                // slide with no animation so the flow never reverses.
+                track.addEventListener('transitionend', function (e) {
+                    if (e && e.propertyName && e.propertyName !== 'transform') return;
+                    if (pos === realTotal + 1) {
+                        pos = 1;
+                        render(false);
+                    } else if (pos === 0) {
+                        pos = realTotal;
+                        render(false);
+                    }
+                    animating = false;
+                });
+
+                document.getElementById('pkgNext').addEventListener('click', next);
+                document.getElementById('pkgPrev').addEventListener('click', prev);
+
+                // Pause auto-slide while the user is interacting, resume after.
+                viewport.addEventListener('mouseenter', stop);
+                viewport.addEventListener('mouseleave', restart);
+
+                // Touch / mouse swipe to slide left or right.
+                var startX = null;
+                viewport.addEventListener('touchstart', function (e) {
+                    startX = e.touches[0].clientX;
+                    stop();
+                }, { passive: true });
+                viewport.addEventListener('touchend', function (e) {
+                    if (startX === null) return;
+                    var dx = e.changedTouches[0].clientX - startX;
+                    if (Math.abs(dx) > 40) { step(dx < 0 ? 1 : -1); }
+                    else { restart(); }
+                    startX = null;
+                });
+                viewport.addEventListener('mousedown', function (e) { startX = e.clientX; stop(); });
+                viewport.addEventListener('mouseup', function (e) {
+                    if (startX === null) return;
+                    var dxm = e.clientX - startX;
+                    if (Math.abs(dxm) > 40) { step(dxm < 0 ? 1 : -1); }
+                    else { restart(); }
+                    startX = null;
+                });
+
+                render(false);
+                restart();
+            })();
+            </script>
             <?php endif; ?>
 
             <!-- WARRANTY NOTIFICATION CARD -->
