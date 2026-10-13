@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/db_init.php';
 require_once __DIR__ . '/includes/support_availability.php';
 require_once __DIR__ . '/includes/packages_data.php';
+require_once __DIR__ . '/includes/ad_inquiry_init.php';
 
 if (!is_logged_in()) {
     // Serve RNZ Landing Website to public visitors
@@ -91,10 +92,11 @@ $next_duty_phrase = next_duty_day_phrase();
 
 $has_active_warranty = (is_array($client) && isset($client['warranty_status']) && $client['warranty_status'] === 'Active');
 
-// Package slideshow shown under the welcome card. Admins curate it in
+// Client ads carousel shown under the welcome card. Admins curate it in
 // backend/packages.php; an empty list simply hides the whole section.
 init_package_tables($pdo);
 $dashboard_packages = get_active_packages($pdo);
+init_ad_inquiry_tables($pdo);
 
 $active_page = 'dashboard';
 $page_title = 'Dashboard';
@@ -136,7 +138,7 @@ $page_title = 'Dashboard';
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-        /* Packages carousel (dashboard) */
+        /* Client ads carousel (dashboard) */
         .rnz-packages, .rnz-packages * { font-family: 'Poppins', 'Plus Jakarta Sans', sans-serif; }
 
         .rnz-carousel-track { transition: transform 0.55s ease-in-out; }
@@ -197,7 +199,7 @@ $page_title = 'Dashboard';
                 </div>
             </div>
 
-            <!-- PACKAGES WE OFFER - CAROUSEL (managed in backend/packages.php) -->
+            <!-- DASHBOARD CLIENT ADS - CAROUSEL (managed in backend/packages.php) -->
             <?php if (!empty($dashboard_packages)): ?>
             <section class="rnz-packages bg-white rounded-3xl border border-[#FECDAA] shadow-sm overflow-hidden">
                 <div class="relative">
@@ -212,19 +214,27 @@ $page_title = 'Dashboard';
                                              class="h-full w-full object-contain pointer-events-none select-none" draggable="false">
                                     </div>
                                     <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-4 sm:p-6 pt-12 pointer-events-none">
-                                        <p class="text-base sm:text-lg text-white font-bold leading-snug"><?php echo sanitize($pkg['title']); ?></p>
-                                        <?php if (trim($pkg['tag']) !== ''): ?>
-                                            <p class="text-xs sm:text-sm text-white/80 font-medium mt-0.5"><?php echo sanitize($pkg['tag']); ?></p>
-                                        <?php endif; ?>
+                                        <div class="flex items-end justify-between gap-3">
+                                            <div class="min-w-0">
+                                                <p class="text-base sm:text-lg text-white font-bold leading-snug"><?php echo sanitize($pkg['title']); ?></p>
+                                                <?php if (trim($pkg['tag']) !== ''): ?>
+                                                    <p class="text-xs sm:text-sm text-white/80 font-medium mt-0.5"><?php echo sanitize($pkg['tag']); ?></p>
+                                                <?php endif; ?>
+                                            </div>
+                                            <button type="button" onclick="openAdInquiryChat(this)" data-ad-title="<?php echo sanitize($pkg['title']); ?>" data-ad-tag="<?php echo sanitize($pkg['tag']); ?>" data-ad-image="<?php echo sanitize($pkg['image_path']); ?>" class="pointer-events-auto shrink-0 inline-flex items-center gap-1.5 bg-[#EB3E0B] hover:bg-[#C32C0B] text-white text-xs sm:text-sm font-bold px-4 sm:px-5 py-2 sm:py-2.5 rounded-full shadow-lg transition-all active:scale-95">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                                                <span>Inquire</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             <?php endforeach; ?>
                         </div>
                     </div>
-                    <button type="button" id="pkgPrev" aria-label="Previous package" class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 backdrop-blur border border-[#FECDAA] text-[#7C2112] hover:bg-[#EB3E0B] hover:border-[#EB3E0B] hover:text-white shadow-lg transition-all active:scale-95 flex items-center justify-center z-10">
+                    <button type="button" id="pkgPrev" aria-label="Previous ad" class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 backdrop-blur border border-[#FECDAA] text-[#7C2112] hover:bg-[#EB3E0B] hover:border-[#EB3E0B] hover:text-white shadow-lg transition-all active:scale-95 flex items-center justify-center z-10">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                     </button>
-                    <button type="button" id="pkgNext" aria-label="Next package" class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#EB3E0B] border border-[#EB3E0B] text-white hover:bg-[#C32C0B] shadow-lg transition-all active:scale-95 flex items-center justify-center z-10">
+                    <button type="button" id="pkgNext" aria-label="Next ad" class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#EB3E0B] border border-[#EB3E0B] text-white hover:bg-[#C32C0B] shadow-lg transition-all active:scale-95 flex items-center justify-center z-10">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                     </button>
                 </div>
@@ -326,6 +336,282 @@ $page_title = 'Dashboard';
                 render(false);
                 restart();
             })();
+            </script>
+            <!-- AD INQUIRY REALTIME CHAT BOX -->
+            <div id="adChatBox" class="hidden fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] sm:w-[380px] bg-white rounded-3xl border border-[#FECDAA] shadow-2xl shadow-[#430D07]/20 overflow-hidden flex-col">
+                <div class="shrink-0 bg-gradient-to-r from-[#EB3E0B] to-[#FA5915] text-white px-4 py-3 flex items-center gap-3">
+                    <button type="button" onclick="toggleAdChatMinimize()" class="min-w-0 flex-1 text-left" title="Click to minimize / expand">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0"></span>
+                            <span class="font-bold text-xs">Ad Inquiry</span>
+                        </div>
+                        <div id="adChatTitle" class="text-[11px] font-semibold truncate opacity-95"></div>
+                    </button>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <span id="adChatStatus" class="px-2 py-0.5 rounded-full whitespace-nowrap text-[9px] font-bold bg-white/20 border border-white/30">Open</span>
+                        <button type="button" onclick="toggleAdChatMinimize()" title="Minimize" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
+                            <svg id="adChatMinIcon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 13H5"/></svg>
+                        </button>
+                        <button type="button" onclick="closeAdChat()" title="Close chat" class="w-7 h-7 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="adChatBody" class="flex flex-col min-h-0">
+                    <div id="adChatThread" class="h-[46vh] sm:h-[340px] overflow-y-auto bg-[#FFF9F5] px-3.5 py-4 space-y-3"></div>
+                    <div id="adChatClosed" class="hidden shrink-0 px-4 py-3.5 bg-[#FFF5ED] border-t border-[#FFE8D5] text-center space-y-1">
+                        <p class="text-[11px] font-bold text-[#7C2112]">This conversation is closed.</p>
+                        <p class="text-[10px] text-[#9A2512]/80 leading-relaxed">Tap Inquire on the ad again if you still need help.</p>
+                    </div>
+                    <div id="adChatComposer" class="shrink-0 border-t border-[#FFE8D5] bg-white p-3 space-y-2">
+                        <div id="adChatError" class="hidden text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-xl px-2.5 py-1.5"></div>
+                        <div class="flex items-end gap-2">
+                            <textarea id="adChatInput" rows="2" placeholder="Ask about this ad..." class="flex-1 resize-none bg-[#FFF9F5] border border-[#FECDAA] text-[#430D07] text-xs rounded-2xl px-3.5 py-2.5 max-h-28 focus:bg-white focus:border-[#FA5915] focus:outline-none transition-all"></textarea>
+                            <button type="button" onclick="sendAdChat()" title="Send message (Enter)" class="w-9 h-9 shrink-0 rounded-full bg-[#EB3E0B] hover:bg-[#C32C0B] active:scale-95 text-white flex items-center justify-center transition-all shadow-md shadow-[#EB3E0B]/25">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                            </button>
+                        </div>
+                        <p class="text-[9px] text-[#B4785F] font-medium px-1">Enter sends - Shift + Enter starts a new line</p>
+                    </div>
+                </div>
+            </div>
+            <script>
+            // Ad inquiry realtime chat: the Inquire button opens (or rejoins) a
+            // live chat thread for that ad. Messages poll every 3 seconds, so
+            // the client/admin conversation happens here - not in a ticket.
+            var adChatInquiryId = 0;
+            var adChatLastId = 0;
+            var adChatTimer = null;
+            var adChatSending = false;
+            var adChatMinimized = false;
+
+            function escapeAdHtml(str) {
+                return String(str === null || typeof str === 'undefined' ? '' : str)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+            }
+
+            function adChatNearBottom() {
+                var thread = document.getElementById('adChatThread');
+                return (thread.scrollHeight - thread.scrollTop - thread.clientHeight) < 100;
+            }
+
+            function adChatScrollBottom() {
+                var thread = document.getElementById('adChatThread');
+                thread.scrollTop = thread.scrollHeight;
+            }
+
+            // The ad this chat is about: image + title + caption pinned as the
+            // first thing in the thread, straight from the inquiry record.
+            function buildAdCard(info) {
+                var title = (info && info.ad_title) ? info.ad_title : '';
+                var tag = (info && info.ad_tag) ? info.ad_tag : '';
+                var img = (info && info.ad_image) ? info.ad_image : '';
+                var html = '<div class="bg-white border border-[#FECDAA] rounded-2xl overflow-hidden" data-ad-card="1">';
+                if (img) {
+                    html += '<img src="' + escapeAdHtml(encodeURI(img)) + '" alt="" class="w-full h-40 object-cover pointer-events-none">';
+                }
+                html += '<div class="p-3">' +
+                    '<p class="text-[11px] font-extrabold text-[#430D07] leading-snug">' + escapeAdHtml(title) + '</p>';
+                if (tag) {
+                    html += '<p class="text-[10px] text-[#EB3E0B] font-semibold mt-0.5">' + escapeAdHtml(tag) + '</p>';
+                }
+                html += '</div></div>';
+                return html;
+            }
+
+            function buildAdBubble(m) {
+                var mine = !!m.is_mine;
+                var bubbleClass = mine
+                    ? 'bg-[#FFF5ED] border-[#FECDAA] rounded-br-md'
+                    : 'bg-white border-[#FFE8D5] rounded-bl-md';
+                var labelClass = mine ? 'text-[#EB3E0B]' : 'text-[#7C2112]';
+                var label = escapeAdHtml(m.sender_name) + (mine ? '' : ' (Support)') + ' - ' + escapeAdHtml(m.formatted_date);
+                return '<div class="flex flex-col ' + (mine ? 'items-end' : 'items-start') + '" data-ad-msg="' + parseInt(m.id, 10) + '">' +
+                    '<span class="text-[9px] font-bold uppercase tracking-wider mb-1 px-1 ' + labelClass + '">' + label + '</span>' +
+                    '<div class="max-w-[85%] px-3.5 py-2.5 rounded-2xl border text-left ' + bubbleClass + '">' +
+                        '<p class="text-[11.5px] text-[#430D07] leading-relaxed font-medium whitespace-pre-wrap break-words">' + escapeAdHtml(m.message) + '</p>' +
+                    '</div>' +
+                '</div>';
+            }
+
+            function showAdChatError(msg) {
+                var box = document.getElementById('adChatError');
+                if (!msg) {
+                    box.classList.add('hidden');
+                    box.textContent = '';
+                    return;
+                }
+                box.textContent = msg;
+                box.classList.remove('hidden');
+            }
+
+            function applyAdChatStatus(status) {
+                document.getElementById('adChatStatus').textContent = status || 'Open';
+                var closed = (status === 'Closed');
+                document.getElementById('adChatComposer').classList.toggle('hidden', closed);
+                document.getElementById('adChatClosed').classList.toggle('hidden', !closed);
+            }
+
+            function openAdInquiryChat(btn) {
+                var title = btn.getAttribute('data-ad-title') || '';
+                var tag = btn.getAttribute('data-ad-tag') || '';
+                var img = btn.getAttribute('data-ad-image') || '';
+
+                var box = document.getElementById('adChatBox');
+                var thread = document.getElementById('adChatThread');
+                document.getElementById('adChatTitle').textContent = title;
+                box.classList.remove('hidden');
+                box.classList.add('flex');
+                if (adChatMinimized) {
+                    toggleAdChatMinimize();
+                }
+                thread.innerHTML = '<div class="text-center text-[11px] text-[#B4785F] font-bold py-6">Starting conversation...</div>';
+                showAdChatError('');
+
+                var body = new FormData();
+                body.append('action', 'start');
+                body.append('ad_title', title);
+                body.append('ad_tag', tag);
+                body.append('ad_image', img);
+
+                fetch('api_ad_inquiry.php', { method: 'POST', body: body })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (data && data.success && data.inquiry) {
+                            adChatInquiryId = parseInt(data.inquiry.id, 10);
+                            adChatLastId = 0;
+                            applyAdChatStatus(data.inquiry.status);
+                            thread.innerHTML = buildAdCard(data.inquiry);
+                            loadAdChat();
+                            if (adChatTimer) {
+                                clearInterval(adChatTimer);
+                            }
+                            adChatTimer = setInterval(loadAdChat, 3000);
+                            var input = document.getElementById('adChatInput');
+                            if (input) {
+                                input.value = '';
+                                input.focus();
+                            }
+                        } else {
+                            thread.innerHTML = '<div class="text-center text-[11px] text-rose-600 font-bold py-6">' + escapeAdHtml((data && data.error) ? data.error : 'Could not start the conversation.') + '</div>';
+                        }
+                    })
+                    .catch(function () {
+                        thread.innerHTML = '<div class="text-center text-[11px] text-rose-600 font-bold py-6">Network error - please try again.</div>';
+                    });
+            }
+
+            function loadAdChat() {
+                if (!adChatInquiryId) {
+                    return;
+                }
+                var stick = adChatNearBottom();
+                fetch('api_ad_inquiry.php?id=' + adChatInquiryId + '&after_id=' + adChatLastId)
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (!data || !data.success) {
+                            return;
+                        }
+                        applyAdChatStatus(data.status);
+                        var thread = document.getElementById('adChatThread');
+                        var list = data.messages || [];
+                        for (var i = 0; i < list.length; i++) {
+                            var mid = parseInt(list[i].id, 10);
+                            if (thread.querySelector('[data-ad-msg="' + mid + '"]')) {
+                                continue;
+                            }
+                            thread.insertAdjacentHTML('beforeend', buildAdBubble(list[i]));
+                            if (mid > adChatLastId) {
+                                adChatLastId = mid;
+                            }
+                        }
+                        if (stick && list.length) {
+                            adChatScrollBottom();
+                        }
+                    })
+                    .catch(function () { /* the next poll retries */ });
+            }
+
+            function sendAdChat() {
+                if (adChatSending || !adChatInquiryId) {
+                    return;
+                }
+                var input = document.getElementById('adChatInput');
+                var text = input.value.replace(/^\s+|\s+$/g, '');
+                if (text === '') {
+                    return;
+                }
+                adChatSending = true;
+                showAdChatError('');
+
+                var body = new FormData();
+                body.append('action', 'send');
+                body.append('id', adChatInquiryId);
+                body.append('message', text);
+
+                fetch('api_ad_inquiry.php', { method: 'POST', body: body })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        adChatSending = false;
+                        if (data && data.success && data.message) {
+                            var thread = document.getElementById('adChatThread');
+                            thread.insertAdjacentHTML('beforeend', buildAdBubble(data.message));
+                            var mid = parseInt(data.message.id, 10);
+                            if (mid > adChatLastId) {
+                                adChatLastId = mid;
+                            }
+                            input.value = '';
+                            adChatScrollBottom();
+                        } else {
+                            showAdChatError((data && data.error) ? data.error : 'Your message could not be sent.');
+                        }
+                    })
+                    .catch(function () {
+                        adChatSending = false;
+                        showAdChatError('Network error - your message was not sent.');
+                    });
+            }
+
+            function closeAdChat() {
+                var box = document.getElementById('adChatBox');
+                box.classList.add('hidden');
+                box.classList.remove('flex');
+                if (adChatTimer) {
+                    clearInterval(adChatTimer);
+                    adChatTimer = null;
+                }
+                adChatInquiryId = 0;
+                adChatLastId = 0;
+            }
+
+            function toggleAdChatMinimize() {
+                adChatMinimized = !adChatMinimized;
+                var bodyEl = document.getElementById('adChatBody');
+                var icon = document.getElementById('adChatMinIcon');
+                if (adChatMinimized) {
+                    bodyEl.classList.add('hidden');
+                    bodyEl.classList.remove('flex');
+                    icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/>';
+                } else {
+                    bodyEl.classList.remove('hidden');
+                    bodyEl.classList.add('flex');
+                    icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 13H5"/>';
+                    adChatScrollBottom();
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                var input = document.getElementById('adChatInput');
+                if (input) {
+                    input.addEventListener('keydown', function (e) {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            sendAdChat();
+                        }
+                    });
+                }
+            });
             </script>
             <?php endif; ?>
 

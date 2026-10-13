@@ -3,6 +3,7 @@
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/presence_init.php';
+require_once __DIR__ . '/../includes/ad_inquiry_init.php';
 
 header('Content-Type: application/json');
 
@@ -16,6 +17,34 @@ if (!is_tech_logged_in()) {
 touch_user_presence(presence_current_page_label());
 
 $pdo = get_db_connection();
+init_ad_inquiry_tables($pdo);
+
+// Ad inquiry threads are only visible to techs with client ads access -
+// everyone else gets no inquiry fields at all.
+$has_ads_access = user_has_page_access('packages');
+
+/**
+ * Shape one client inquiry message for the realtime poller.
+ *
+ * @param array $row message row joined to its inquiry
+ * @return array
+ */
+function build_ad_inquiry_notif($row) {
+    $snippet = trim(isset($row['message']) ? $row['message'] : '');
+    if (strlen($snippet) > 120) {
+        $snippet = substr($snippet, 0, 117) . '...';
+    }
+    return array(
+        'id' => intval($row['id']),
+        'inquiry_id' => intval($row['inquiry_id']),
+        'inquiry_number' => $row['inquiry_number'],
+        'tradename' => !empty($row['tradename']) ? $row['tradename'] : $row['sender_name'],
+        'sender_name' => $row['sender_name'],
+        'ad_title' => $row['ad_title'],
+        'message' => $snippet,
+        'created_at' => $row['created_at']
+    );
+}
 
 try {
     // 1. Get latest ticket ID & count
@@ -105,6 +134,40 @@ try {
         );
     }
 
+    // Newest FIRST client message per ad thread: that question is the "new
+    // inquiry" event (a thread is created empty when the client taps Inquire,
+    // so thread creation alone carries no question yet). Follow-up client
+    // messages are tracked separately below, so one message never fires both.
+    $latest_inquiry_event = null;
+    $latest_inquiry_reply = null;
+    if ($has_ads_access) {
+        $stmt_ie = $pdo->query("SELECT m.id, m.inquiry_id, m.sender_name, m.message, m.created_at,
+                i.inquiry_number, i.tradename, i.ad_title
+            FROM client_ad_inquiry_messages m
+            INNER JOIN client_ad_inquiries i ON i.id = m.inquiry_id
+            WHERE m.sender_type = 'client'
+              AND m.id = (SELECT MIN(id) FROM client_ad_inquiry_messages WHERE inquiry_id = m.inquiry_id)
+            ORDER BY m.id DESC
+            LIMIT 1");
+        $event_row = $stmt_ie ? $stmt_ie->fetch() : null;
+        if ($event_row) {
+            $latest_inquiry_event = build_ad_inquiry_notif($event_row);
+        }
+
+        $stmt_ir = $pdo->query("SELECT m.id, m.inquiry_id, m.sender_name, m.message, m.created_at,
+                i.inquiry_number, i.tradename, i.ad_title
+            FROM client_ad_inquiry_messages m
+            INNER JOIN client_ad_inquiries i ON i.id = m.inquiry_id
+            WHERE m.sender_type = 'client'
+              AND m.id <> (SELECT MIN(id) FROM client_ad_inquiry_messages WHERE inquiry_id = m.inquiry_id)
+            ORDER BY m.id DESC
+            LIMIT 1");
+        $reply_ir_row = $stmt_ir ? $stmt_ir->fetch() : null;
+        if ($reply_ir_row) {
+            $latest_inquiry_reply = build_ad_inquiry_notif($reply_ir_row);
+        }
+    }
+
     echo json_encode(array(
         'success' => true,
         'latest_id' => $combined_latest_id,
@@ -112,7 +175,11 @@ try {
         'latest_type' => $latest_type,
         'latest_ticket' => $latest_item,
         'latest_client_reply_id' => $latest_reply ? $latest_reply['id'] : 0,
-        'latest_client_reply' => $latest_reply
+        'latest_client_reply' => $latest_reply,
+        'latest_inquiry_event_id' => $latest_inquiry_event ? $latest_inquiry_event['id'] : 0,
+        'latest_inquiry_event' => $latest_inquiry_event,
+        'latest_inquiry_reply_id' => $latest_inquiry_reply ? $latest_inquiry_reply['id'] : 0,
+        'latest_inquiry_reply' => $latest_inquiry_reply
     ));
 } catch (PDOException $e) {
     echo json_encode(array('error' => $e->getMessage()));

@@ -78,7 +78,7 @@ function get_all_backend_pages() {
         'inventory' => array('name' => 'Hardware Inventory', 'url' => 'inventory.php', 'desc' => 'Hardware stock levels, quick adjustments & log history'),
         'maintenance' => array('name' => 'POS Maintenance', 'url' => 'maintenance.php', 'desc' => 'Quarterly POS preventive maintenance requests'),
         'analytics' => array('name' => 'Analytics', 'url' => 'analytics.php', 'desc' => 'Executive business analytics, revenue trends & performance KPIs (Super Admin)'),
-        'packages' => array('name' => 'Dashboard Packages', 'url' => 'packages.php', 'desc' => 'Images and captions for the client dashboard package slideshow'),
+        'packages' => array('name' => 'Dashboard Client Ads', 'url' => 'packages.php', 'desc' => 'Images and captions for the client dashboard ads carousel'),
         'settings' => array('name' => 'Admin Settings', 'url' => 'settings.php', 'desc' => 'User accounts management & permission level access')
     );
 }

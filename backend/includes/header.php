@@ -68,6 +68,36 @@ foreach ($header_pending_list as $pt) {
     );
 }
 
+// 3. Ad inquiry chats waiting on support - client ads access only, so techs
+// without the packages permission never see these threads.
+if (user_has_page_access('packages')) {
+    require_once dirname(dirname(__DIR__)) . '/includes/ad_inquiry_init.php';
+    init_ad_inquiry_tables($pdo);
+    $stmt_inq_notifs = $pdo->query("SELECT i.id, i.inquiry_number, i.tradename, i.clientname, i.ad_title, i.updated_at
+        FROM client_ad_inquiries i
+        WHERE i.status = 'Open'
+          AND COALESCE((SELECT m.sender_type FROM client_ad_inquiry_messages m
+              WHERE m.inquiry_id = i.id ORDER BY m.id DESC LIMIT 1), 'client') = 'client'
+        ORDER BY i.updated_at DESC LIMIT 5");
+    $inq_notif_list = $stmt_inq_notifs ? $stmt_inq_notifs->fetchAll() : array();
+    foreach ($inq_notif_list as $iq) {
+        $iq_name = (isset($iq['tradename']) && trim($iq['tradename']) !== '') ? $iq['tradename'] : $iq['clientname'];
+        $admin_notifications[] = array(
+            'type' => 'adinquiry',
+            'key' => 'adinquiry_' . $iq['id'],
+            'combined_id' => intval($iq['id']) * 100000 + 50000,
+            'title' => 'Ad Inquiry: ' . $iq_name,
+            'subtitle' => $iq['ad_title'],
+            // Notifications land on the ads page with the chat pop-up already
+            // open on that thread.
+            'link' => 'packages.php?open_inquiry=' . intval($iq['id']),
+            'number' => $iq['inquiry_number'],
+            'date' => $iq['updated_at'],
+            'badge' => 'Ad Inquiry'
+        );
+    }
+}
+
 $current_admin_search_q = isset($_GET['q']) ? trim($_GET['q']) : '';
 ?>
 <!-- Top Admin Header Bar -->

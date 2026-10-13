@@ -251,6 +251,24 @@ $init_combined_id = ($init_max_ticket_id * 100000) + $init_max_maint_id;
 // that arrive from here on rather than for the whole backlog.
 $stmt_max_r = $pdo_footer->query("SELECT MAX(id) FROM client_ticket_replies WHERE sender_type = 'client'");
 $init_max_client_reply_id = intval($stmt_max_r->fetchColumn());
+
+// Same baselines for ad inquiry chats - gated so only techs with client ads
+// access ever track (or hear about) these threads.
+$has_ads_access = user_has_page_access('packages');
+$init_max_inquiry_event_id = 0;
+$init_max_inquiry_reply_id = 0;
+if ($has_ads_access) {
+    require_once __DIR__ . '/../../includes/ad_inquiry_init.php';
+    init_ad_inquiry_tables($pdo_footer);
+    $stmt_ie0 = $pdo_footer->query("SELECT MAX(m.id) FROM client_ad_inquiry_messages m
+        WHERE m.sender_type = 'client'
+          AND m.id = (SELECT MIN(id) FROM client_ad_inquiry_messages WHERE inquiry_id = m.inquiry_id)");
+    $init_max_inquiry_event_id = intval($stmt_ie0->fetchColumn());
+    $stmt_ir0 = $pdo_footer->query("SELECT MAX(m.id) FROM client_ad_inquiry_messages m
+        WHERE m.sender_type = 'client'
+          AND m.id <> (SELECT MIN(id) FROM client_ad_inquiry_messages WHERE inquiry_id = m.inquiry_id)");
+    $init_max_inquiry_reply_id = intval($stmt_ir0->fetchColumn());
+}
 ?>
 <script>
 function getClickedNotifications() {
@@ -353,6 +371,9 @@ var serverMaxId = <?php echo $init_combined_id; ?>;
 var storedMaxClickedId = parseInt(localStorage.getItem('rnz_last_clicked_notif_id') || '0', 10);
 var lastKnownTicketId = Math.max(serverMaxId, storedMaxClickedId);
 var lastKnownClientReplyId = <?php echo $init_max_client_reply_id; ?>;
+var HAS_ADS_ACCESS = <?php echo !empty($has_ads_access) ? 'true' : 'false'; ?>;
+var lastKnownInquiryEventId = <?php echo $init_max_inquiry_event_id; ?>;
+var lastKnownInquiryReplyId = <?php echo $init_max_inquiry_reply_id; ?>;
 
 document.addEventListener('DOMContentLoaded', function() {
     updateUnreadBadgeCount();
@@ -721,6 +742,24 @@ function pollForNewTickets() {
                         handleNewClientReply(res.latest_client_reply);
                     }
                 }
+
+                // A client asking about an ad - first question or follow-up -
+                // gets the same alarm, but only for techs with client ads
+                // access (the API sends no inquiry fields to anyone else).
+                if (res.success && HAS_ADS_ACCESS && res.latest_inquiry_event_id > lastKnownInquiryEventId) {
+                    lastKnownInquiryEventId = res.latest_inquiry_event_id;
+                    if (res.latest_inquiry_event) {
+                        playNewTicketChime();
+                        showAdInquiryToast(res.latest_inquiry_event, false);
+                        prependAdInquiryNotif(res.latest_inquiry_event);
+                    }
+                }
+                if (res.success && HAS_ADS_ACCESS && res.latest_inquiry_reply_id > lastKnownInquiryReplyId) {
+                    lastKnownInquiryReplyId = res.latest_inquiry_reply_id;
+                    if (res.latest_inquiry_reply) {
+                        handleNewInquiryReply(res.latest_inquiry_reply);
+                    }
+                }
             } catch (e) {
                 console.error(e);
             }
@@ -853,6 +892,93 @@ function showClientReplyToast(reply) {
             toast.remove();
         }
     }, 12000);
+}
+
+// =========================================================================
+// NEW AD INQUIRY / INQUIRY REPLY (client ads access only)
+// Same alarm as a ticket. Links land on the ads page with the chat pop-up
+// already open on that thread.
+// =========================================================================
+function handleNewInquiryReply(rep) {
+    var qid = parseInt(rep.inquiry_id, 10) || 0;
+    if (!qid) return;
+
+    // The ads chat pop-up sounds for a thread that already has its own box
+    // open, so skip that one here rather than sounding the alarm twice.
+    if (typeof adSupInquiryId !== 'undefined' && adSupInquiryId === qid) return;
+
+    playNewTicketChime();
+    showAdInquiryToast(rep, true);
+    prependAdInquiryNotif(rep);
+
+    if (typeof adSupUpdateRow === 'function') {
+        adSupUpdateRow(qid, rep.sender_name + ': ' + rep.message);
+    }
+    var row = document.getElementById('adSupRow' + qid);
+    if (row) {
+        row.classList.add('bg-amber-50');
+    }
+}
+
+function showAdInquiryToast(ev, isReply) {
+    var toast = document.createElement('div');
+    toast.className = 'pointer-events-auto w-full max-w-sm bg-slate-900 text-white rounded-3xl p-5 shadow-2xl border border-[#FA5915] space-y-3';
+
+    var link = 'packages.php?open_inquiry=' + parseInt(ev.inquiry_id, 10);
+    var labelText = isReply ? 'NEW INQUIRY REPLY' : 'NEW AD INQUIRY';
+    var iconSymbol = isReply ? '💬' : '📣';
+    var html = '';
+    html += '<div class="flex items-start justify-between gap-3 min-w-0">';
+    html += '  <div class="flex items-center space-x-3 min-w-0 flex-1 overflow-hidden">';
+    html += '    <div class="w-10 h-10 rounded-2xl bg-[#EB3E0B] text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-md">' + iconSymbol + '</div>';
+    html += '    <div class="min-w-0 flex-1 overflow-hidden">';
+    html += '      <span class="text-[10px] font-extrabold uppercase tracking-wider text-[#FEAA73] block truncate">' + labelText + '</span>';
+    html += '      <h4 class="text-sm font-extrabold text-white truncate max-w-full" title="' + escapeHtml(ev.tradename) + '">' + escapeHtml(ev.tradename) + '</h4>';
+    html += '    </div>';
+    html += '  </div>';
+    html += '  <button onclick="this.parentElement.parentElement.remove()" class="text-slate-400 hover:text-white p-1 text-lg font-bold shrink-0">&times;</button>';
+    html += '</div>';
+    html += '<p class="text-xs text-slate-300 line-clamp-1 bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 font-medium">Re: ' + escapeHtml(ev.ad_title) + '</p>';
+    html += '<p class="text-xs text-slate-300 line-clamp-2 bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 font-medium">' + escapeHtml(ev.message) + '</p>';
+    html += '<div class="flex items-center justify-between pt-1">';
+    html += '  <span class="text-[11px] font-mono text-slate-400">' + escapeHtml(ev.inquiry_number) + '</span>';
+    html += '  <a href="' + link + '" class="bg-[#EB3E0B] hover:bg-[#C32C0B] text-white font-bold text-xs px-4 py-1.5 rounded-full transition-all shadow-sm">Open Chat &rarr;</a>';
+    html += '</div>';
+
+    toast.innerHTML = html;
+    getAdminToastDock().appendChild(toast);
+
+    setTimeout(function() {
+        if (toast && toast.parentElement) {
+            toast.remove();
+        }
+    }, 12000);
+}
+
+// Prepends the inquiry to the bell dropdown list, mirroring new tickets.
+function prependAdInquiryNotif(ev) {
+    var dropList = document.getElementById('notification_tickets_list');
+    if (!dropList) return;
+    var qid = parseInt(ev.inquiry_id, 10) || 0;
+    if (!qid) return;
+    if (dropList.querySelector('a[data-notif-key="adinquiry_' + qid + '"]')) return;
+
+    var notifKey = 'adinquiry_' + qid;
+    var notifId = qid * 100000 + 50000;
+    var itemLink = 'packages.php?open_inquiry=' + qid;
+    var itemHtml = '<a href="' + itemLink + '" data-notif-key="' + notifKey + '" data-notif-id="' + notifId + '" onclick="markNotificationClicked(\'' + notifKey + '\', ' + notifId + ')" class="block p-3 rounded-2xl bg-amber-50 hover:bg-[#FFE8D5] border border-amber-200 transition-all space-y-1 group animate-pulse">'
+        + '<div class="flex items-center justify-between gap-2 min-w-0">'
+        + '  <span class="font-extrabold text-xs text-slate-900 group-hover:text-[#EB3E0B] truncate flex-1 min-w-0" title="' + escapeHtml(ev.tradename) + '">' + escapeHtml(ev.tradename) + '</span>'
+        + '  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 bg-amber-100 text-amber-800 border-amber-300">Ad Inquiry</span>'
+        + '</div>'
+        + '<p class="text-xs text-slate-600 font-medium line-clamp-1">Re: ' + escapeHtml(ev.ad_title) + '</p>'
+        + '<div class="flex items-center justify-between pt-1 text-[10px] text-slate-400 font-mono">'
+        + '  <span>' + escapeHtml(ev.inquiry_number) + '</span>'
+        + '  <span>Just now</span>'
+        + '</div>'
+        + '</a>';
+    dropList.insertAdjacentHTML('afterbegin', itemHtml);
+    updateUnreadBadgeCount();
 }
 
 function escapeHtml(str) {

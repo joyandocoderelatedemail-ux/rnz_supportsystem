@@ -156,13 +156,13 @@ if ($pdo_sb) {
                     </a>
                 <?php endif; ?>
 
-                <!-- Client Dashboard Package Slideshow -->
+                <!-- Client Dashboard Ads Carousel -->
                 <?php if (user_has_page_access('packages')): ?>
-                    <a href="packages.php" title="Dashboard Packages" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'packages') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
+                    <a href="packages.php" title="Dashboard Client Ads" class="flex items-center px-3 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-colors duration-150 <?php echo ($active_page === 'packages') ? 'bg-[#EB3E0B] text-white shadow-sm shadow-[#EB3E0B]/20 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
                         <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'packages') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                         </svg>
-                        <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Dashboard Packages</span>
+                        <span class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap overflow-hidden">Dashboard Client Ads</span>
                     </a>
                 <?php endif; ?>
 
@@ -327,13 +327,13 @@ if ($pdo_sb) {
                 </a>
             <?php endif; ?>
 
-            <!-- Client Dashboard Package Slideshow -->
+            <!-- Client Dashboard Ads Carousel -->
             <?php if (user_has_page_access('packages')): ?>
                 <a href="packages.php" onclick="closeAdminMobileSidebar()" class="flex items-center space-x-3.5 px-4 py-3 rounded-2xl text-sm font-semibold transition-all <?php echo ($active_page === 'packages') ? 'bg-[#EB3E0B] text-white shadow-md shadow-[#EB3E0B]/25 font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'; ?>">
                     <svg class="w-5 h-5 shrink-0 <?php echo ($active_page === 'packages') ? 'text-white' : 'text-slate-400'; ?>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
                     </svg>
-                    <span>Dashboard Packages</span>
+                    <span>Dashboard Client Ads</span>
                 </a>
             <?php endif; ?>
 
